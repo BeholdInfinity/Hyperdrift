@@ -120,6 +120,16 @@ src/
 
 ## Resuming in a new chat
 
+Say something like:
+
 ```
-Continue Hyperdrift. Read PROJECT.md. For design work, also read VISION.md and OPEN_QUESTIONS.md.
+Let's continue
 ```
+
+or:
+
+```
+Continue Hyperdrift. Catch up from the docs.
+```
+
+Project rules tell the agent to read `PROJECT.md`, recent `CHANGELOG.md`, and design docs as needed before coding. For design-only sessions, also mention VISION / OPEN_QUESTIONS.
