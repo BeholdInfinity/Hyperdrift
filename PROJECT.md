@@ -19,6 +19,8 @@ Open http://localhost:8080 → click **LAUNCH**.
 
 **Stop the server:** close the black command window, press **Ctrl+C** in it, or double-click [`stop-game.bat`](stop-game.bat).
 
+Note: `start-game.bat` automatically stops any stale server already on port 8080 before launching.
+
 ## Tech stack
 
 - Vanilla JavaScript (ES6+ modules)
