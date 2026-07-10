@@ -1,0 +1,262 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #000;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+  color: #c8d6e5;
+  user-select: none;
+}
+
+#game-container {
+  position: relative;
+  width: 100vw;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(ellipse at center, #0a0e1a 0%, #000 70%);
+}
+
+#game-canvas {
+  display: block;
+  cursor: crosshair;
+}
+
+#corner-ui {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.corner-panel {
+  position: absolute;
+  width: 22vmin;
+  height: 22vmin;
+  border: 1px solid rgba(100, 180, 255, 0.15);
+  background: rgba(5, 12, 24, 0.75);
+  backdrop-filter: blur(4px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-start;
+  padding: 10px;
+}
+
+.corner-panel.top-left {
+  top: 0;
+  left: 0;
+  border-radius: 0 0 12px 0;
+}
+
+.corner-panel.top-right {
+  top: 0;
+  right: 0;
+  border-radius: 0 0 0 12px;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ui-btn {
+  pointer-events: auto;
+  padding: 6px 10px;
+  font-size: 9px;
+  letter-spacing: 1px;
+  background: rgba(100, 180, 255, 0.08);
+  border: 1px solid rgba(100, 180, 255, 0.25);
+  color: rgba(100, 180, 255, 0.7);
+  cursor: pointer;
+  transition: all 0.2s;
+  margin-top: 8px;
+}
+
+.ui-btn:hover {
+  background: rgba(100, 180, 255, 0.18);
+  color: #64b4ff;
+}
+
+.corner-panel.bottom-left {
+  bottom: 0;
+  left: 0;
+  border-radius: 0 12px 0 0;
+}
+
+.corner-panel.bottom-right {
+  bottom: 0;
+  right: 0;
+  border-radius: 12px 0 0 0;
+}
+
+.panel-label {
+  font-size: 10px;
+  letter-spacing: 3px;
+  color: rgba(100, 180, 255, 0.5);
+  font-weight: 600;
+}
+
+#overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
+#overlay > * {
+  pointer-events: auto;
+}
+
+#start-screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.85);
+  gap: 16px;
+}
+
+#start-screen h1 {
+  font-size: 3rem;
+  letter-spacing: 12px;
+  font-weight: 300;
+  color: #64b4ff;
+  text-shadow: 0 0 30px rgba(100, 180, 255, 0.5);
+}
+
+#start-screen .subtitle {
+  font-size: 0.9rem;
+  letter-spacing: 4px;
+  color: rgba(200, 214, 229, 0.5);
+  margin-bottom: 24px;
+}
+
+#start-btn {
+  padding: 14px 48px;
+  font-size: 1.1rem;
+  letter-spacing: 6px;
+  background: transparent;
+  border: 1px solid #64b4ff;
+  color: #64b4ff;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+#start-btn:hover {
+  background: rgba(100, 180, 255, 0.15);
+  box-shadow: 0 0 20px rgba(100, 180, 255, 0.3);
+}
+
+.controls-hint {
+  margin-top: 32px;
+  text-align: center;
+  font-size: 0.8rem;
+  color: rgba(200, 214, 229, 0.4);
+  line-height: 1.8;
+}
+
+.controls-hint kbd {
+  display: inline-block;
+  padding: 2px 6px;
+  border: 1px solid rgba(100, 180, 255, 0.3);
+  border-radius: 3px;
+  font-size: 0.75rem;
+  color: rgba(100, 180, 255, 0.7);
+  min-width: 24px;
+  text-align: center;
+}
+
+#hud {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 24px;
+  font-size: 0.75rem;
+  letter-spacing: 2px;
+  color: rgba(100, 180, 255, 0.6);
+  pointer-events: none;
+  z-index: 5;
+}
+
+#pause-menu {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.88);
+  gap: 12px;
+  z-index: 20;
+  pointer-events: auto;
+}
+
+#pause-menu h2 {
+  font-size: 2rem;
+  letter-spacing: 10px;
+  font-weight: 300;
+  color: #64b4ff;
+  margin-bottom: 16px;
+}
+
+.menu-btn {
+  padding: 12px 40px;
+  min-width: 240px;
+  font-size: 0.85rem;
+  letter-spacing: 3px;
+  background: transparent;
+  border: 1px solid rgba(100, 180, 255, 0.35);
+  color: rgba(200, 214, 229, 0.8);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.menu-btn:hover:not(.disabled) {
+  background: rgba(100, 180, 255, 0.12);
+  border-color: #64b4ff;
+  color: #64b4ff;
+}
+
+.menu-btn.disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.pause-hint {
+  margin-top: 20px;
+  font-size: 0.75rem;
+  color: rgba(200, 214, 229, 0.35);
+  letter-spacing: 2px;
+}
+
+#hud.hidden {
+  display: none;
+}
+
+#start-screen.hidden {
+  display: none;
+}
+
+#overlay.hidden {
+  display: none;
+}
+
+.hidden {
+  display: none !important;
+}
+
+#corner-ui .corner-panel {
+  pointer-events: none;
+}
+
+#corner-ui .ui-btn {
+  pointer-events: auto;
+}

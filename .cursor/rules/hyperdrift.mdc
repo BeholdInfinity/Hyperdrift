@@ -1,0 +1,26 @@
+---
+description: Hyperdrift project context — read handoff docs before coding
+alwaysApply: true
+---
+
+# Hyperdrift
+
+Browser 2D spaceflight prototype (ES modules, Canvas, no build step).
+
+## Before making changes
+
+1. Read `PROJECT.md` for architecture, run instructions, and current status
+2. Read `GDD.md` when changing gameplay, controls, or scope
+3. Update `CHANGELOG.md` for user-visible changes
+4. Update `GDD.md` if design intent changes; update `PROJECT.md` if structure or handoff facts change
+
+## Code conventions
+
+- Vanilla JS modules under `src/` — no frameworks or bundler
+- One primary class per file; wire through `GameEngine`
+- Thruster visuals must reflect `ship.thrusters` physics state
+- Keep diffs focused; no new dependencies without explicit request
+
+## Run
+
+`python -m http.server 8080` from project root → http://localhost:8080

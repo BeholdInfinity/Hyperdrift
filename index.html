@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hyperdrift</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="game-container">
+    <canvas id="game-canvas"></canvas>
+
+    <div id="corner-ui">
+      <div class="corner-panel top-left" data-panel="radar">
+        <span class="panel-label">RADAR</span>
+      </div>
+      <div class="corner-panel top-right" data-panel="systems">
+        <span class="panel-label">SYSTEMS</span>
+        <button id="fullscreen-btn" class="ui-btn">Enter Fullscreen</button>
+      </div>
+      <div class="corner-panel bottom-left" data-panel="weapons">
+        <span class="panel-label">WEAPONS</span>
+      </div>
+      <div class="corner-panel bottom-right" data-panel="navigation">
+        <span class="panel-label">NAVIGATION</span>
+      </div>
+    </div>
+
+    <div id="overlay">
+      <div id="start-screen">
+        <h1>HYPERDRIFT</h1>
+        <p class="subtitle">Procedural Universe Prototype</p>
+        <button id="start-btn">LAUNCH</button>
+        <div class="controls-hint">
+          <p><kbd>WASD</kbd> Maneuvering thrusters</p>
+          <p><kbd>SPACE</kbd> Main engine &nbsp; <kbd>SHIFT</kbd> Afterburner</p>
+          <p><kbd>CTRL</kbd> Space brakes &nbsp; <kbd>MOUSE</kbd> Aim &amp; fire</p>
+          <p><kbd>SCROLL</kbd> Zoom &nbsp; <kbd>ESC</kbd> Pause</p>
+        </div>
+      </div>
+    </div>
+
+    <div id="pause-menu" class="hidden">
+      <h2>PAUSED</h2>
+      <button id="resume-btn" class="menu-btn">Resume Game</button>
+      <button id="pause-fullscreen-btn" class="menu-btn">Enter Fullscreen</button>
+      <button id="settings-btn" class="menu-btn disabled" disabled>Settings</button>
+      <button id="main-menu-btn" class="menu-btn disabled" disabled>Return to Main Menu</button>
+      <p class="pause-hint">Press ESC to resume</p>
+    </div>
+
+    <div id="hud" class="hidden">
+        <div id="speed-readout">SPD: <span id="speed-value">0</span></div>
+        <div id="coords-readout">POS: <span id="coords-value">0, 0</span></div>
+        <div id="zoom-readout">ZOOM: <span id="zoom-value">1.0</span>x</div>
+    </div>
+  </div>
+
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>
