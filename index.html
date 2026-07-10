@@ -10,7 +10,7 @@
   <div id="game-container">
     <canvas id="game-canvas"></canvas>
 
-    <div id="corner-ui">
+    <div id="corner-ui" class="hidden">
       <div class="corner-panel top-left" data-panel="radar">
         <span class="panel-label">RADAR</span>
       </div>
@@ -38,6 +38,7 @@
           <p><kbd>SCROLL</kbd> Zoom &nbsp; <kbd>ESC</kbd> Pause</p>
         </div>
       </div>
+      <p id="build-stamp" class="build-stamp">v0.1.5 · Last edit: loading…</p>
     </div>
 
     <div id="pause-menu" class="hidden">
@@ -56,6 +57,70 @@
     </div>
   </div>
 
+  <!-- Inline so the stamp does not depend on cached ES modules -->
+  <script>
+    (function () {
+      var VERSION = '0.1.5';
+      var el = document.getElementById('build-stamp');
+      if (!el) return;
+
+      function formatStamp(date) {
+        return date.toLocaleString(undefined, {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+        });
+      }
+
+      function setStamp(version, when, file) {
+        el.textContent = 'v' + version + ' · Last edit: ' + formatStamp(when);
+        el.title = file ? 'Newest file: ' + file : '';
+      }
+
+      fetch('/build-info.json?t=' + Date.now(), { cache: 'no-store' })
+        .then(function (res) {
+          if (!res.ok) throw new Error('no build-info');
+          return res.json();
+        })
+        .then(function (info) {
+          var version = info.version || VERSION;
+          var when = new Date(info.iso || info.mtime * 1000);
+          setStamp(version, when, info.file);
+        })
+        .catch(function () {
+          var probes = [
+            'src/version.js',
+            'src/main.js',
+            'src/world/Starfield.js',
+            'src/world/SpeedStreaks.js',
+            'styles.css',
+            'index.html',
+          ];
+          Promise.all(
+            probes.map(function (file) {
+              return fetch(file + '?t=' + Date.now(), { method: 'HEAD', cache: 'no-store' }).then(
+                function (res) {
+                  var lm = res.headers.get('Last-Modified');
+                  return lm ? new Date(lm).getTime() : 0;
+                }
+              );
+            })
+          ).then(function (dates) {
+            var newest = Math.max.apply(null, dates);
+            if (newest > 0) {
+              setStamp(VERSION, new Date(newest), null);
+            } else {
+              el.textContent = 'v' + VERSION + ' · Last edit: unknown';
+            }
+          }).catch(function () {
+            el.textContent = 'v' + VERSION + ' · Last edit: unknown';
+          });
+        });
+    })();
+  </script>
   <script type="module" src="src/main.js"></script>
 </body>
 </html>

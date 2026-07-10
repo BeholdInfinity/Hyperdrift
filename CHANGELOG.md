@@ -6,19 +6,35 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
-### Added
-- `VISION.md` — long-term *Hyperdrift Crewline* design (multiplayer crew, logistics, extraction)
-- `OPEN_QUESTIONS.md` — unresolved design decisions for future conversation sessions
-
-### Changed
-- `VISION.md` revised with author's original intent (fluid stations, carry chains, per-station views, scoop vs grapple)
-
 ### Planned
 - Asteroid fragmentation on destroy
 - Fuel system for afterburner
 - Radar minimap in corner panel
 - Settings and main-menu flows
 - Audio
+
+---
+
+## [0.1.5] — 2026-07-10
+
+### Added
+- Title screen: live fullscreen starfield + nebula with slow camera drift; launch continues from that view
+- Title-screen build stamp (bottom-left): version + last-edit datetime from `/build-info.json`
+- `src/version.js` — prototype version source of truth
+- Local `dev-server.py` (used by `start-game.bat`) with no-cache headers and build-info endpoint
+- `VISION.md` — long-term *Hyperdrift Crewline* design
+- `OPEN_QUESTIONS.md` — unresolved design decisions
+
+### Changed
+- Starfield: 7 denser parallax layers; screen-fixed star size (no zoom swell); brief blink twinkle
+- Speed streaks: subtler screen-space particles that fill the viewport at any zoom
+- Title UI + backdrop fade in together; light vignette so backdrop matches in-game vibrancy
+- Chunk load/unload radii 3 / 5
+- `VISION.md` revised with author's original intent (fluid stations, carry chains, scoop vs grapple)
+
+### Fixed
+- Starfield hard edge at max zoom-out (tile repeats fill the view)
+- Nebula edge color pop-in (ambient generation margin covers full glow before enter)
 
 ---
 

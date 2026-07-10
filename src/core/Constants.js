@@ -22,8 +22,8 @@ export const SHIP = {
 
 export const WORLD = {
   CHUNK_SIZE: 2000,
-  LOAD_RADIUS: 2,
-  UNLOAD_RADIUS: 4,
+  LOAD_RADIUS: 3,
+  UNLOAD_RADIUS: 5,
   SEED: 42,
 };
 

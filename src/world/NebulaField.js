@@ -5,6 +5,8 @@ export class NebulaField {
       { parallax: 0.25, alphaMult: 0.85, driftMult: 0.7, sizeMult: 1.0 },
       { parallax: 0.55, alphaMult: 1.1, driftMult: 1.0, sizeMult: 0.75 },
     ];
+    // Largest blob glow in screen px (procedural path is not zoom-scaled)
+    this._maxGlowPx = 2000;
   }
 
   render(ctx, nebulae, cameraX, cameraY, time) {
@@ -49,14 +51,19 @@ export class NebulaField {
     const pseudoNebulae = this._generateAmbientNebulae(cameraX, cameraY, viewportRadius, zoom);
     for (const nebula of pseudoNebulae) {
       const layer = this.depthLayers[nebula.depth - 1];
-      this._renderNebula(ctx, nebula, cameraX, cameraY, time, layer);
+      this._renderNebula(ctx, nebula, cameraX, cameraY, time, layer, viewportRadius);
     }
   }
 
-  _generateAmbientNebulae(cx, cy, radius, zoom) {
+  _generateAmbientNebulae(cx, cy, radius, _zoom) {
     const nebulae = [];
     const cellSize = 3000;
-    const gridRadius = Math.ceil(radius * 2 / cellSize / zoom) + 1;
+    const minParallax = this.depthLayers[0].parallax;
+    // Generate far enough that a nebula's full glow already exists before any
+    // part of it enters the viewport (avoids edge color pop-in).
+    const screenCover = radius + this._maxGlowPx;
+    const worldCover = screenCover / minParallax;
+    const gridRadius = Math.ceil(worldCover / cellSize) + 1;
 
     for (let gx = -gridRadius; gx <= gridRadius; gx++) {
       for (let gy = -gridRadius; gy <= gridRadius; gy++) {
@@ -95,13 +102,18 @@ export class NebulaField {
     return nebulae;
   }
 
-  _renderNebula(ctx, nebula, cameraX, cameraY, time, layer) {
+  _renderNebula(ctx, nebula, cameraX, cameraY, time, layer, viewportRadius = Infinity) {
     const px = (nebula.x - cameraX) * layer.parallax;
     const py = (nebula.y - cameraY) * layer.parallax;
 
     const drift = Math.sin(time * 0.08 + nebula.phase) * 25 * layer.driftMult;
     const cx = px + nebula.driftX * time * layer.driftMult + drift;
     const cy = py + nebula.driftY * time * layer.driftMult;
+
+    // Skip if the entire glow is outside the cover (still generated early to avoid pop-in)
+    const maxReach = nebula.radius * layer.sizeMult + this._maxGlowPx * 0.15;
+    const dist = Math.hypot(cx, cy);
+    if (dist - maxReach > viewportRadius + this._maxGlowPx) return;
 
     for (const blob of nebula.blobs) {
       const bx = cx + blob.offsetX * layer.parallax;

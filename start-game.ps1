@@ -78,7 +78,7 @@ Write-Host ''
 
 $psi = New-Object System.Diagnostics.ProcessStartInfo
 $psi.FileName = $python.File
-$psi.Arguments = (($python.Args + @('-m', 'http.server', "$Port")) -join ' ')
+$psi.Arguments = (($python.Args + @('dev-server.py', "$Port")) -join ' ')
 $psi.WorkingDirectory = $Root
 $psi.UseShellExecute = $false
 $psi.CreateNoWindow = $true

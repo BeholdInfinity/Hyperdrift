@@ -5,21 +5,23 @@ const startScreen = document.getElementById('start-screen');
 const startBtn = document.getElementById('start-btn');
 const hud = document.getElementById('hud');
 const overlay = document.getElementById('overlay');
+const cornerUi = document.getElementById('corner-ui');
 const pauseMenu = document.getElementById('pause-menu');
 const resumeBtn = document.getElementById('resume-btn');
 const fullscreenBtn = document.getElementById('fullscreen-btn');
 const pauseFullscreenBtn = document.getElementById('pause-fullscreen-btn');
 
-let engine = null;
+const engine = new GameEngine(canvas);
+engine.startTitle();
 
 function startGame() {
   startScreen.classList.add('hidden');
   overlay.classList.add('hidden');
   hud.classList.remove('hidden');
   pauseMenu.classList.add('hidden');
+  if (cornerUi) cornerUi.classList.remove('hidden');
 
-  engine = new GameEngine(canvas);
-  engine.start();
+  engine.beginPlay();
 }
 
 startBtn.addEventListener('click', startGame);

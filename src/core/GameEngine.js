@@ -13,11 +13,17 @@ import { SpeedStreaks } from '../world/SpeedStreaks.js';
 import { Vec2 } from '../utils/MathUtils.js';
 import { PHYSICS } from '../core/Constants.js';
 
+/** Slow title-screen drift (world units / sec) */
+const TITLE_DRIFT_SPEED = 52;
+/** How quickly the drift heading turns (rad / sec) */
+const TITLE_TURN_RATE = 0.12;
+
 export class GameEngine {
   constructor(canvas) {
     this.canvas = canvas;
     this.running = false;
     this.paused = false;
+    this.mode = 'title'; // 'title' | 'playing'
     this.lastTime = 0;
 
     this.renderer = new Renderer(canvas);
@@ -34,6 +40,11 @@ export class GameEngine {
 
     this.ship = null;
     this.gameTime = 0;
+    this._titleHeading = Math.random() * Math.PI * 2;
+    this._titleFade = 0;
+    this._titleHasDrawn = false;
+    this._startScreen = document.getElementById('start-screen');
+    this._buildStamp = document.getElementById('build-stamp');
 
     this._hudSpeed = document.getElementById('speed-value');
     this._hudCoords = document.getElementById('coords-value');
@@ -47,17 +58,47 @@ export class GameEngine {
 
     window.addEventListener('resize', () => this.renderer.resize());
     this.renderer.resize();
+    this._setTitleFade(0);
   }
 
-  start() {
-    this.ship = new Ship(0, 0);
-    this.entityManager.add(this.ship, 'ship');
+  _setTitleFade(opacity) {
+    this._titleFade = opacity;
+    this.canvas.style.opacity = String(opacity);
+    if (this._startScreen) this._startScreen.style.opacity = String(opacity);
+    if (this._buildStamp) this._buildStamp.style.opacity = String(opacity);
+  }
+
+  /** Begin the title-screen loop (fullscreen starfield + nebula drift). */
+  startTitle() {
+    this.mode = 'title';
     this.running = true;
     this.paused = false;
+    this._titleHasDrawn = false;
+    this._setTitleFade(0);
     this.lastTime = performance.now();
+    this.camera.position.set(0, 0);
+    this.camera.offset.set(0, 0);
+    this.camera.effectiveZoom = 1;
+    this.camera.userZoom = 1;
+    this.camera.targetUserZoom = 1;
+    this.camera.speedZoom = 1;
+    this.asteroidSystem.update(0, 0);
+    requestAnimationFrame((t) => this._loop(t));
+  }
+
+  /** Transition from title into playable flight. */
+  beginPlay() {
+    const x = this.camera.position.x;
+    const y = this.camera.position.y;
+    this.ship = new Ship(x, y);
+    this.entityManager.add(this.ship, 'ship');
+    this.mode = 'playing';
+    this.paused = false;
+    this._setTitleFade(1);
+    this.canvas.style.opacity = '1';
     this.input.enable();
     this.input.paused = false;
-    requestAnimationFrame((t) => this._loop(t));
+    this.asteroidSystem.update(x, y);
   }
 
   stop() {
@@ -65,6 +106,7 @@ export class GameEngine {
   }
 
   togglePause() {
+    if (this.mode !== 'playing') return;
     this.paused = !this.paused;
     this.input.paused = this.paused;
     if (this._pauseMenu) {
@@ -93,19 +135,42 @@ export class GameEngine {
     const deltaTime = Math.min((timestamp - this.lastTime) / 1000, 0.05);
     this.lastTime = timestamp;
 
-    if (this.input.consumePauseToggle()) {
+    if (this.mode === 'playing' && this.input.consumePauseToggle()) {
       this.togglePause();
     }
 
     if (!this.paused) {
       this.gameTime += deltaTime;
-      this.update(deltaTime);
+      if (this.mode === 'title') {
+        this._updateTitle(deltaTime);
+      } else {
+        this.update(deltaTime);
+      }
     } else if (this.ship) {
       this._updateHUD();
     }
 
     this.render();
     requestAnimationFrame((t) => this._loop(t));
+  }
+
+  _updateTitle(deltaTime) {
+    this._titleHeading += TITLE_TURN_RATE * deltaTime;
+    this.camera.position.x += Math.cos(this._titleHeading) * TITLE_DRIFT_SPEED * deltaTime;
+    this.camera.position.y += Math.sin(this._titleHeading) * TITLE_DRIFT_SPEED * deltaTime;
+    this.camera.offset.set(0, 0);
+    this.camera.effectiveZoom = 1;
+
+    this.asteroidSystem.update(this.camera.position.x, this.camera.position.y);
+
+    if (this._titleHasDrawn && this._titleFade < 1) {
+      this._setTitleFade(Math.min(1, this._titleFade + deltaTime / 0.7));
+    }
+  }
+
+  /** Screen-corner cover radius so stars/nebulae fill the full window (not just the play circle). */
+  _coverRadius() {
+    return Math.hypot(this.renderer.centerX, this.renderer.centerY) + 40;
   }
 
   update(deltaTime) {
@@ -134,6 +199,14 @@ export class GameEngine {
     this.entityManager.update(deltaTime);
     this.particleSystem.update(deltaTime);
 
+    this.camera.update(
+      shipPos,
+      shipVel,
+      deltaTime,
+      this.renderer.viewportRadius,
+      zoomWheel
+    );
+
     const speed = shipVel.length();
     this.speedStreaks.update(
       { x: this.ship.velocity.x, y: this.ship.velocity.y },
@@ -143,25 +216,18 @@ export class GameEngine {
       this.renderer.viewportRadius
     );
 
-    this.camera.update(
-      shipPos,
-      shipVel,
-      deltaTime,
-      this.renderer.viewportRadius,
-      zoomWheel
-    );
-
     this.renderer.emitThrusterParticles(this.ship, this.particleSystem);
     this._updateHUD();
   }
 
-  render() {
-    this.renderer.beginFrame();
-    this.renderer.setupCircularClip();
-
+  _renderBackground({ fullscreen = false, includeWorldNebulae = true } = {}) {
     const cameraPos = this.camera.position;
     const time = this.gameTime;
     const zoom = this.camera.effectiveZoom;
+    // Extra margin so edge glows / star tiles exist before they enter the clip
+    const coverRadius = fullscreen
+      ? this._coverRadius()
+      : this.renderer.viewportRadius + 200;
 
     this.renderer.ctx.save();
     this.renderer.ctx.translate(
@@ -174,7 +240,7 @@ export class GameEngine {
       cameraPos.x,
       cameraPos.y,
       time,
-      this.renderer.viewportRadius,
+      coverRadius,
       zoom
     );
 
@@ -182,20 +248,39 @@ export class GameEngine {
       this.renderer.ctx,
       cameraPos.x,
       cameraPos.y,
-      this.renderer.viewportRadius,
+      coverRadius,
       time,
       zoom
     );
 
     this.renderer.ctx.restore();
 
-    this.renderer.renderWorldLayer((ctx) => {
-      this.nebulaField.renderWorldNebulae(ctx, this.asteroidSystem.getNebulae(), time);
-    }, this.camera);
+    if (includeWorldNebulae) {
+      this.renderer.renderWorldLayer((ctx) => {
+        this.nebulaField.renderWorldNebulae(ctx, this.asteroidSystem.getNebulae(), time);
+      }, this.camera);
+    }
+  }
 
-    this.renderer.renderScreenLayer((ctx) => {
-      this.speedStreaks.render(ctx, zoom);
-    }, this.camera);
+  render() {
+    this.renderer.beginFrame();
+
+    if (this.mode === 'title') {
+      this._renderBackground({ fullscreen: true, includeWorldNebulae: true });
+      this._titleHasDrawn = true;
+      return;
+    }
+
+    this.renderer.setupCircularClip();
+    this._renderBackground({ fullscreen: false, includeWorldNebulae: true });
+
+    this.renderer.ctx.save();
+    this.renderer.ctx.translate(
+      this.renderer.centerX + this.camera.offset.x,
+      this.renderer.centerY + this.camera.offset.y
+    );
+    this.speedStreaks.render(this.renderer.ctx);
+    this.renderer.ctx.restore();
 
     this.renderer.renderAsteroids(
       this.asteroidSystem.getActiveAsteroids(),

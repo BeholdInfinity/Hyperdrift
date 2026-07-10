@@ -6,7 +6,7 @@
 |-----|-------|
 | **[`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md)** | Unresolved design decisions — for conversation sessions |
 | **[`VISION.md`](VISION.md)** | Long-term north star — *Hyperdrift Crewline* (multiplayer crew game) |
-| **This file (`GDD.md`)** | Prototype v0.1 — solo flight, procedural space |
+| **This file (`GDD.md`)** | Prototype v0.1.5 — solo flight, procedural space |
 | **[`PROJECT.md`](PROJECT.md)** | Dev handoff — architecture, run, status |
 
 | Field | Value |
@@ -14,7 +14,7 @@
 | Title | Hyperdrift *(prototype)* / Hyperdrift Crewline *(working title, see VISION.md)* |
 | Genre | Top-down 2D spaceflight / exploration |
 | Platform | Web browser |
-| Status | Prototype v0.1 |
+| Status | Prototype v0.1.5 |
 
 ---
 
@@ -97,7 +97,7 @@ When turning toward cursor, opposing maneuvering thrusters fire in pairs to show
 
 ### Starfield
 
-Five parallax layers from extremely distant to very near — independent density, size, brightness, twinkle.
+Five → seven parallax layers from extremely distant to very near — independent density, size, brightness, twinkle. Star draw size is screen-fixed so camera zoom does not swell stars.
 
 ### Nebulae
 
@@ -119,6 +119,7 @@ Foreground particles moving **opposite** ship velocity — length, brightness, a
 
 | Region | Purpose | Status |
 |--------|---------|--------|
+| Title screen | Fullscreen live starfield + nebula (same vibrancy as play); soft edge vignette; UI fades in with backdrop | Done |
 | Top-left | Radar | Placeholder |
 | Top-right | Systems (+ fullscreen) | Partial |
 | Bottom-left | Weapons | Placeholder |

@@ -8,14 +8,16 @@ Browser-based 2D spaceflight prototype. Top-down semi-Newtonian physics, procedu
 
 **Easiest:** double-click [`start-game.bat`](start-game.bat) in the project folder. It starts a local server, **waits until the page is actually ready**, then opens your browser.
 
-Uses `start-game.ps1` under the hood so Python is found reliably when launched from Explorer (not only from a dev terminal).
+Uses `start-game.ps1` under the hood so Python is found reliably when launched from Explorer (not only from a dev terminal). Serves via `dev-server.py` with **no-cache** headers (plain `http.server` can leave browsers stuck on old JS modules). Title screen bottom-left shows **vX.Y.Z · Last edit:** from `/build-info.json` (version in `src/version.js`, newest project file mtime).
 
 **Manual:**
 
 ```powershell
 cd hyperdrift
-python -m http.server 8080
+python dev-server.py 8080
 ```
+
+(Or `python -m http.server 8080` — but prefer `dev-server.py`, which disables browser caching of JS modules so code edits show up on refresh.)
 
 Open http://localhost:8080 → click **LAUNCH**.
 
@@ -32,12 +34,13 @@ Note: `start-game.bat` waits for the server to respond before opening the browse
 ## Repository layout
 
 ```
-index.html, styles.css
+index.html, styles.css, dev-server.py, start-game.bat / .ps1, stop-game.bat
 src/
   main.js                 Entry point, UI wiring
+  version.js              Prototype semver (title stamp + build-info)
   core/
-    GameEngine.js         Main loop, system orchestration, pause
-    Constants.js          Physics, camera, ship tuning
+    GameEngine.js         Main loop, title/play modes, system orchestration
+    Constants.js          Physics, camera, ship, world tuning
   systems/
     InputSystem.js        Keyboard, mouse, wheel, fullscreen, ESC pause
     PhysicsSystem.js      Forces, braking, rotation
@@ -50,9 +53,9 @@ src/
     Ship.js, ShipController.js, Projectile.js, Asteroid.js
     Particle.js, Entity.js, EntityManager.js
   world/
-    Starfield.js          5 parallax star layers
+    Starfield.js          7 parallax star layers (screen-fixed size, tiled when zoomed out)
     NebulaField.js        3 depth layers + ambient procedural nebulae
-    SpeedStreaks.js       Velocity-opposed foreground streaks
+    SpeedStreaks.js       Velocity-opposed foreground streaks (screen-space)
   utils/
     MathUtils.js, SeededRandom.js
 ```
@@ -60,7 +63,7 @@ src/
 ## Architecture principles
 
 - **Modular systems** wired by `GameEngine` — extend via new systems/entities, not monolith edits
-- **Chunk-based world** — deterministic seeds, load radius 2, unload radius 4 (`WORLD` in Constants)
+- **Chunk-based world** — deterministic seeds, load radius 3, unload radius 5 (`WORLD` in Constants)
 - **Thruster visuals driven by physics** — `ship.thrusters` state mirrors applied forces
 - **Future-ready** for multiple ships, AI, trading, mining, missions, networking, save/load
 
@@ -73,9 +76,10 @@ src/
 | RCS rotation thruster visuals | Done |
 | Energy cannon (hold fire) | Done |
 | Circular viewport + corner UI placeholders | Done |
+| Title screen (fullscreen backdrop drift, fade-in, version stamp) | Done |
 | Procedural asteroids + nebulae | Done |
-| 5-layer starfield, 3-layer nebulae | Done |
-| Speed streaks (velocity-opposed) | Done |
+| 7-layer starfield, 3-layer nebulae | Done |
+| Speed streaks (velocity-opposed, screen-space) | Done |
 | Camera lead offset + scroll zoom + speed zoom | Done |
 | Fullscreen button + pause menu (ESC) | Done |
 | Sound, fuel, fragmentation, minimap, settings | Not started |
@@ -85,6 +89,7 @@ src/
 - `PHYSICS.MAX_SPEED` — 900
 - `CAMERA.ZOOM_MIN/MAX` — 0.4 / 2.0
 - `WORLD.CHUNK_SIZE` — 2000
+- `WORLD.LOAD_RADIUS` / `UNLOAD_RADIUS` — 3 / 5
 
 ## Controls
 
