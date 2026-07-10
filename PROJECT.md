@@ -6,12 +6,18 @@ Browser-based 2D spaceflight prototype. Top-down semi-Newtonian physics, procedu
 
 ## Run
 
+**Easiest:** double-click [`start-game.bat`](start-game.bat) in the project folder. It starts a local server and opens your browser.
+
+**Manual:**
+
 ```powershell
 cd hyperdrift
 python -m http.server 8080
 ```
 
 Open http://localhost:8080 → click **LAUNCH**.
+
+**Stop the server:** close the black command window, press **Ctrl+C** in it, or double-click [`stop-game.bat`](stop-game.bat).
 
 ## Tech stack
 
