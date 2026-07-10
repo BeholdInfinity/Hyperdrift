@@ -6,7 +6,9 @@ Browser-based 2D spaceflight prototype. Top-down semi-Newtonian physics, procedu
 
 ## Run
 
-**Easiest:** double-click [`start-game.bat`](start-game.bat) in the project folder. It starts a local server and opens your browser.
+**Easiest:** double-click [`start-game.bat`](start-game.bat) in the project folder. It starts a local server, **waits until the page is actually ready**, then opens your browser.
+
+Uses `start-game.ps1` under the hood so Python is found reliably when launched from Explorer (not only from a dev terminal).
 
 **Manual:**
 
@@ -19,7 +21,7 @@ Open http://localhost:8080 → click **LAUNCH**.
 
 **Stop the server:** close the black command window, press **Ctrl+C** in it, or double-click [`stop-game.bat`](stop-game.bat).
 
-Note: `start-game.bat` automatically stops any stale server already on port 8080 before launching.
+Note: `start-game.bat` waits for the server to respond before opening the browser. If port 8080 has a stuck process, it clears only **unresponsive** listeners.
 
 ## Tech stack
 
