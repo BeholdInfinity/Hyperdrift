@@ -6,6 +6,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Added
+- `VISION.md` — long-term *Hyperdrift Crewline* design (multiplayer crew, logistics, extraction)
+- `OPEN_QUESTIONS.md` — unresolved design decisions for future conversation sessions
+
+### Changed
+- `VISION.md` revised with author's original intent (fluid stations, carry chains, per-station views, scoop vs grapple)
+
 ### Planned
 - Asteroid fragmentation on destroy
 - Fuel system for afterburner

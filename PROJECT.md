@@ -2,7 +2,7 @@
 
 Browser-based 2D spaceflight prototype. Top-down semi-Newtonian physics, procedural infinite universe, HTML5 Canvas. **No build step** — ES modules served over HTTP.
 
-> **Not the game design doc.** See [`GDD.md`](GDD.md) for vision, mechanics, and roadmap. This file is for developers and AI agents resuming work.
+> **Not the game design doc.** See [`GDD.md`](GDD.md) for prototype mechanics. See [`VISION.md`](VISION.md) for long-term vision (*Hyperdrift Crewline*). See [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) for unresolved decisions. This file is for developers and AI agents resuming work.
 
 ## Run
 
@@ -106,5 +106,5 @@ src/
 ## Resuming in a new chat
 
 ```
-Continue Hyperdrift. Read PROJECT.md and GDD.md first.
+Continue Hyperdrift. Read PROJECT.md. For design work, also read VISION.md and OPEN_QUESTIONS.md.
 ```

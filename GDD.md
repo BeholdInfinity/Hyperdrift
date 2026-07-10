@@ -1,21 +1,30 @@
-# Hyperdrift — Game Design Document
+# Hyperdrift — Game Design Document (Prototype)
 
-**Living document.** Update when mechanics, scope, or priorities change. For repo layout and dev handoff, see [`PROJECT.md`](PROJECT.md).
+**Living document for the current browser prototype.** Update when mechanics, scope, or priorities change for *what we're building now*.
+
+| Doc | Scope |
+|-----|-------|
+| **[`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md)** | Unresolved design decisions — for conversation sessions |
+| **[`VISION.md`](VISION.md)** | Long-term north star — *Hyperdrift Crewline* (multiplayer crew game) |
+| **This file (`GDD.md`)** | Prototype v0.1 — solo flight, procedural space |
+| **[`PROJECT.md`](PROJECT.md)** | Dev handoff — architecture, run, status |
 
 | Field | Value |
 |-------|-------|
-| Title | Hyperdrift |
+| Title | Hyperdrift *(prototype)* / Hyperdrift Crewline *(working title, see VISION.md)* |
 | Genre | Top-down 2D spaceflight / exploration |
 | Platform | Web browser |
 | Status | Prototype v0.1 |
 
 ---
 
-## Vision
+## Vision (prototype scope)
 
 Hyperdrift is a browser-based spaceflight game set in a vast procedural universe. The player pilots a single spacecraft through asteroid fields, nebula regions, and open void, mastering inertia-based flight while exploring an effectively infinite cosmos. The first prototype prioritizes a **polished flight model** and **convincing depth** in the environment over feature breadth.
 
-**Pillars:** responsive inertia flight · readable thruster feedback · layered parallax depth · expandable modular architecture.
+This prototype is **Layer 1** of the long-term *Hyperdrift Crewline* vision — see [`VISION.md`](VISION.md).
+
+**Pillars (prototype):** responsive inertia flight · readable thruster feedback · layered parallax depth · expandable modular architecture.
 
 ---
 
@@ -130,7 +139,14 @@ Foreground particles moving **opposite** ship velocity — length, brightness, a
 
 ---
 
-## Future systems (designed for, not built)
+## Future systems
+
+Prototype backlog (near-term) and long-term crew-game systems are tracked separately:
+
+- **Prototype next steps** — see checklist below and [`PROJECT.md`](PROJECT.md)
+- **Crewline vision** — roles, logistics, PvPvE, MVP criteria — see [`VISION.md`](VISION.md)
+
+### Prototype backlog (not built)
 
 - [ ] Multiple ships
 - [ ] AI enemies
