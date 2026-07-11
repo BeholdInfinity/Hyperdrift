@@ -113,6 +113,7 @@ src/
 - Keep diffs minimal; don't add dependencies without discussion
 - Update `CHANGELOG.md` for user-visible changes
 - Update `GDD.md` when design intent changes; update this file when architecture or handoff facts change
+- On **commit and push**, the agent checks whether handoff docs need a sync and asks before including those updates (see `.cursor/rules/hyperdrift.mdc`)
 
 ## Known gaps / next steps
 
@@ -136,3 +137,5 @@ Continue Hyperdrift. Catch up from the docs.
 ```
 
 Project rules tell the agent to read `PROJECT.md`, recent `CHANGELOG.md`, and design docs as needed before coding. For design-only sessions, also mention VISION / OPEN_QUESTIONS.
+
+On **commit and push**, the agent checks whether handoff docs look stale and asks before updating them; then commits and pushes.

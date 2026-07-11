@@ -6,6 +6,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Changed
+- Cursor rule: on **commit and push**, check whether handoff docs need a sync and ask before including those updates
+
 ### Planned
 - Asteroid fragmentation on destroy
 - Fuel system for afterburner

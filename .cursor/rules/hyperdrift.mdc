@@ -27,6 +27,15 @@ Then give a short status summary and ask what to tackle next (unless they alread
 5. Update `CHANGELOG.md` for user-visible changes
 6. Update `GDD.md` for prototype design changes; `VISION.md` for long-term vision; `OPEN_QUESTIONS.md` when resolving or adding questions; `PROJECT.md` for structure or handoff facts
 
+## Commit and push
+
+When the user says **commit and push** (or equivalent: commit + push, ship it, etc.):
+
+1. **Check** whether handoff docs look stale relative to the work being committed (`CHANGELOG.md`, `PROJECT.md`, `GDD.md`, version stamp, and `VISION.md` / `OPEN_QUESTIONS.md` only if relevant).
+2. **If updates look advisable** — briefly say what you'd change and **ask** whether to include those doc updates before committing. Do not edit docs or commit until they answer.
+3. **If docs look current** — proceed straight to commit, then push.
+4. After they confirm (docs yes/no, or docs already current), commit then push.
+
 ## Code conventions
 
 - Vanilla JS modules under `src/` — no frameworks or bundler
