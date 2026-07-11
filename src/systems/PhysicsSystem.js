@@ -41,15 +41,15 @@ export class PhysicsSystem {
     const forward = Vec2.fromAngle(shipAngle);
     const right = Vec2.fromAngle(shipAngle + Math.PI / 2);
 
-    const dotForward = Vec2.dot(forward, desiredForce);
-    const dotRight = Vec2.dot(right, desiredForce);
+    // Projection of desired brake force onto ship axes
+    const forwardComponent = clamp(Vec2.dot(forward, desiredForce), -1, 1);
+    const starboardComponent = clamp(Vec2.dot(right, desiredForce), -1, 1);
 
-    const facingOpposite = dotForward < -0.7;
-
-    if (facingOpposite) {
+    // Nose into the velocity (facing anti-velocity) → main engine is a strong brake
+    if (forwardComponent > 0.7) {
       const retroMagnitude = PHYSICS.BRAKE_MAIN_THRUST * Math.min(1, speed / 200);
       return {
-        force: forward.clone().scale(-retroMagnitude),
+        force: forward.clone().scale(retroMagnitude),
         retroBurn: true,
         port: 0,
         starboard: 0,
@@ -58,20 +58,19 @@ export class PhysicsSystem {
       };
     }
 
-    const portComponent = clamp(dotRight, -1, 1);
-    const noseComponent = clamp(dotForward, -1, 1);
-
+    // Otherwise use maneuvering thrusters. Force along +forward comes from aft,
+    // +starboard from port (exhaust opposite the acceleration).
     const force = new Vec2();
-    force.add(right.clone().scale(portComponent * PHYSICS.BRAKE_MANEUVER_THRUST));
-    force.add(forward.clone().scale(noseComponent * PHYSICS.BRAKE_MANEUVER_THRUST));
+    force.add(right.clone().scale(starboardComponent * PHYSICS.BRAKE_MANEUVER_THRUST));
+    force.add(forward.clone().scale(forwardComponent * PHYSICS.BRAKE_MANEUVER_THRUST));
 
     return {
       force,
       retroBurn: false,
-      port: Math.max(0, portComponent),
-      starboard: Math.max(0, -portComponent),
-      nose: Math.max(0, noseComponent),
-      aft: Math.max(0, -noseComponent),
+      port: Math.max(0, starboardComponent),
+      starboard: Math.max(0, -starboardComponent),
+      aft: Math.max(0, forwardComponent),
+      nose: Math.max(0, -forwardComponent),
     };
   }
 

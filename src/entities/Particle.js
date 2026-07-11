@@ -1,5 +1,5 @@
 export class Particle {
-  constructor(x, y, vx, vy, life, color, size, type = 'default') {
+  constructor(x, y, vx, vy, life, color, size, type = 'default', space = 'world') {
     this.x = x;
     this.y = y;
     this.vx = vx;
@@ -9,6 +9,8 @@ export class Particle {
     this.color = color;
     this.size = size;
     this.type = type;
+    /** 'world' = map space; 'ship' = ship-local (moves/rotates with the hull) */
+    this.space = space;
     this.active = true;
   }
 
@@ -19,8 +21,8 @@ export class Particle {
     if (this.life <= 0) this.active = false;
 
     if (this.type === 'exhaust') {
-      this.vx *= 0.98;
-      this.vy *= 0.98;
+      this.vx *= 0.92;
+      this.vy *= 0.92;
     }
   }
 }
@@ -31,11 +33,11 @@ export class ParticleSystem {
     this.maxParticles = maxParticles;
   }
 
-  emit(x, y, vx, vy, life, color, size, type = 'default') {
+  emit(x, y, vx, vy, life, color, size, type = 'default', space = 'world') {
     if (this.particles.length >= this.maxParticles) {
       this.particles.shift();
     }
-    this.particles.push(new Particle(x, y, vx, vy, life, color, size, type));
+    this.particles.push(new Particle(x, y, vx, vy, life, color, size, type, space));
   }
 
   emitBurst(x, y, count, speed, life, color, size, spread = Math.PI * 2) {
@@ -49,25 +51,33 @@ export class ParticleSystem {
         life * (0.5 + Math.random() * 0.5),
         color,
         size * (0.5 + Math.random()),
-        'burst'
+        'burst',
+        'world'
       );
     }
   }
 
-  emitExhaust(x, y, dirX, dirY, intensity, color, spread = 0.4) {
+  /**
+   * Exhaust in ship-local space so plumes stay glued to nozzles
+   * (no world-space tentacle trails when translating/rotating).
+   */
+  emitExhaustLocal(localX, localY, exhaustAngle, intensity, color, spread = 0.4, options = {}) {
+    const speedScale = options.speedScale ?? 1;
+    const lifeScale = options.lifeScale ?? 1;
     const count = Math.ceil(intensity * 3);
     for (let i = 0; i < count; i++) {
-      const angle = Math.atan2(dirY, dirX) + (Math.random() - 0.5) * spread;
-      const spd = 80 + Math.random() * 120 * intensity;
+      const angle = exhaustAngle + (Math.random() - 0.5) * spread;
+      const spd = (75 + Math.random() * 105 * intensity) * speedScale;
       this.emit(
-        x + (Math.random() - 0.5) * 4,
-        y + (Math.random() - 0.5) * 4,
+        localX + (Math.random() - 0.5) * 3,
+        localY + (Math.random() - 0.5) * 3,
         Math.cos(angle) * spd,
         Math.sin(angle) * spd,
-        0.15 + Math.random() * 0.2,
+        (0.15 + Math.random() * 0.18) * lifeScale,
         color,
-        2 + intensity * 3,
-        'exhaust'
+        2.25 + intensity * 3.3,
+        'exhaust',
+        'ship'
       );
     }
   }

@@ -62,7 +62,15 @@ export class CameraSystem {
     };
   }
 
-  getShipScreenPosition(screenCenterX, screenCenterY) {
+  getShipScreenPosition(screenCenterX, screenCenterY, shipPosition = null) {
+    if (shipPosition) {
+      return this.worldToScreen(
+        shipPosition.x,
+        shipPosition.y,
+        screenCenterX,
+        screenCenterY
+      );
+    }
     return {
       x: screenCenterX + this.offset.x,
       y: screenCenterY + this.offset.y,

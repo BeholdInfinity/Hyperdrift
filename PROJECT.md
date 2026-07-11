@@ -50,7 +50,7 @@ src/
     AsteroidSystem.js     Chunk load/unload
     ProceduralGeneration.js  Seeded asteroids + nebulae
   entities/
-    Ship.js, ShipController.js, Projectile.js, Asteroid.js
+    Ship.js, ShipController.js, ShipHardpoints.js, Projectile.js, Asteroid.js
     Particle.js, Entity.js, EntityManager.js
   world/
     Starfield.js          7 parallax star layers (screen-fixed size, tiled when zoomed out)
@@ -64,7 +64,7 @@ src/
 
 - **Modular systems** wired by `GameEngine` — extend via new systems/entities, not monolith edits
 - **Chunk-based world** — deterministic seeds, load radius 3, unload radius 5 (`WORLD` in Constants)
-- **Thruster visuals driven by physics** — `ship.thrusters` state mirrors applied forces
+- **Thruster visuals driven by physics** — eight blue maneuvering thrusters + orange main engine; state mirrors applied forces / yaw
 - **Future-ready** for multiple ships, AI, trading, mining, missions, networking, save/load
 
 ## Current implementation status

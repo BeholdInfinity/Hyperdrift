@@ -12,9 +12,8 @@ export const PHYSICS = {
 };
 
 export const SHIP = {
-  WIDTH: 28,
-  HEIGHT: 36,
-  CANNON_OFFSET: 22,
+  WIDTH: 44,
+  HEIGHT: 28,
   CANNON_COOLDOWN: 0.08,
   PROJECTILE_SPEED: 1200,
   PROJECTILE_DAMAGE: 25,

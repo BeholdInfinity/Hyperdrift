@@ -6,7 +6,7 @@
 |-----|-------|
 | **[`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md)** | Unresolved design decisions — for conversation sessions |
 | **[`VISION.md`](VISION.md)** | Long-term north star — *Hyperdrift Crewline* (multiplayer crew game) |
-| **This file (`GDD.md`)** | Prototype v0.1.5 — solo flight, procedural space |
+| **This file (`GDD.md`)** | Prototype v0.1.12 — solo flight, procedural space |
 | **[`PROJECT.md`](PROJECT.md)** | Dev handoff — architecture, run, status |
 
 | Field | Value |
@@ -14,7 +14,7 @@
 | Title | Hyperdrift *(prototype)* / Hyperdrift Crewline *(working title, see VISION.md)* |
 | Genre | Top-down 2D spaceflight / exploration |
 | Platform | Web browser |
-| Status | Prototype v0.1.5 |
+| Status | Prototype v0.1.12 |
 
 ---
 
@@ -56,21 +56,32 @@ This prototype is **Layer 1** of the long-term *Hyperdrift Crewline* vision — 
 
 ### Translation
 
-| Input | Thrusters | Effect |
-|-------|-----------|--------|
-| W | Aft/rear | Accelerate forward (along nose) |
-| S | Forward/nose | Accelerate backward |
-| A | Starboard (right side) | Accelerate left |
-| D | Port (left side) | Accelerate right |
-| Space | Main engine (aft) | Strongest forward thrust |
-| Shift | Afterburner | Extra main-engine thrust + larger plume |
-| Ctrl | Space brakes | Auto-select thrusters (+ retro-burn when aligned) to kill velocity |
+Eight blue **maneuvering thrusters** (two per cardinal face, offset for torque) plus one orange **main engine**.
 
-All thrust sources must have **matching visual plumes and particles**.
+Ship silhouette is a filled multi-section hull (bridge, main body, aft engineering) with visible thruster cups, a shared engine bell, and a fore-center gun — all positions come from one `HARDPOINTS` table so plumes and hardware stay aligned.
+
+| Input | Thrusters / engine | Effect |
+|-------|-------------------|--------|
+| W | Both aft thrusters | Accelerate forward (along nose) |
+| S | Both nose thrusters | Accelerate backward |
+| A | Both starboard thrusters | Accelerate left |
+| D | Both port thrusters | Accelerate right |
+| Space | Main engine (aft) | Strongest forward thrust (orange plume) |
+| Shift | Afterburner | Extra main-engine thrust — longer, brighter, slightly narrower orange plume |
+| Ctrl | Space brakes | Soft brake via thruster face pairs; main-engine retro-burn when nose faces into velocity |
+
+Plume colors: **blue** = thrusters, **orange** = main engine (including afterburner and retro-burn). Intensity scales length/width with power (translation stronger than yaw).
+
+**Leading-side flatten (visual cheat):** when a nozzle fires into the ship’s velocity (or fights strong spin), its plume shortens and widens so the trail stays on that hull face instead of streaming under the ship. Exhaust **particles** live in ship-local space so they move and rotate with the hull (no long world-space trails when turning at speed).
 
 ### Rotation (RCS)
 
-When turning toward cursor, opposing maneuvering thrusters fire in pairs to show torque (clockwise and counter-clockwise sets).
+Yaw uses two **4-thruster** couples from the same eight nozzles:
+
+- Counter-clockwise: nosePort, portAft, aftStarboard, starboardFore
+- Clockwise: noseStarboard, starboardAft, aftPort, portFore
+
+Turning toward the cursor lights the matching group. Killing spin shows a short **opposite-group burst** (semi-Newtonian — not a full equal reverse burn).
 
 ---
 

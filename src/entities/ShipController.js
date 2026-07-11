@@ -2,6 +2,23 @@ import { Vec2, clamp } from '../utils/MathUtils.js';
 import { PHYSICS } from '../core/Constants.js';
 import { PhysicsSystem } from '../systems/PhysicsSystem.js';
 
+const TRANSLATION_INTENSITY = 1;
+const YAW_INTENSITY_MIN = 0.25;
+const YAW_INTENSITY_MAX = 0.45;
+const YAW_STOP_BURST = 0.5;
+
+/** Counter-clockwise yaw couple (4 of 8). */
+const YAW_CCW = ['nosePort', 'portAft', 'aftStarboard', 'starboardFore'];
+/** Clockwise yaw couple (the other 4). */
+const YAW_CW = ['noseStarboard', 'starboardAft', 'aftPort', 'portFore'];
+
+const FACE_PAIRS = {
+  aft: ['aftPort', 'aftStarboard'],
+  nose: ['nosePort', 'noseStarboard'],
+  port: ['portFore', 'portAft'],
+  starboard: ['starboardFore', 'starboardAft'],
+};
+
 export class ShipController {
   constructor() {
     this.physics = new PhysicsSystem();
@@ -17,7 +34,7 @@ export class ShipController {
     thrusters.retroBurn = false;
 
     const rotation = this.physics.rotateTowardAngle(ship, targetAngle, deltaTime);
-    this._applyRcsThrusters(thrusters, rotation);
+    this._applyYawThrusters(thrusters, ship, rotation);
 
     this.physics.dampRotation(ship, deltaTime);
 
@@ -37,27 +54,27 @@ export class ShipController {
         thrusters.retroBurn = true;
         thrusters.mainEngine = Math.min(1, ship.velocity.length() / 300);
       } else {
-        thrusters.brakeAft = brake.aft;
-        thrusters.brakeNose = brake.nose;
-        thrusters.brakeStarboard = brake.starboard;
-        thrusters.brakePort = brake.port;
+        this._lightFace(thrusters, 'aft', brake.aft);
+        this._lightFace(thrusters, 'nose', brake.nose);
+        this._lightFace(thrusters, 'starboard', brake.starboard);
+        this._lightFace(thrusters, 'port', brake.port);
       }
     } else {
       if (thrust.forward) {
         totalForce.add(forward.clone().scale(PHYSICS.MANEUVER_THRUST));
-        thrusters.aft = 1;
+        this._lightFace(thrusters, 'aft', TRANSLATION_INTENSITY);
       }
       if (thrust.reverse) {
         totalForce.add(forward.clone().scale(-PHYSICS.MANEUVER_THRUST));
-        thrusters.nose = 1;
+        this._lightFace(thrusters, 'nose', TRANSLATION_INTENSITY);
       }
       if (thrust.left) {
         totalForce.add(right.clone().scale(-PHYSICS.MANEUVER_THRUST));
-        thrusters.starboard = 1;
+        this._lightFace(thrusters, 'starboard', TRANSLATION_INTENSITY);
       }
       if (thrust.right) {
         totalForce.add(right.clone().scale(PHYSICS.MANEUVER_THRUST));
-        thrusters.port = 1;
+        this._lightFace(thrusters, 'port', TRANSLATION_INTENSITY);
       }
 
       if (thrust.mainEngine) {
@@ -72,26 +89,60 @@ export class ShipController {
     }
 
     this.physics.applyForce(ship, totalForce, deltaTime);
+
+    // Brakes stop applying force below VELOCITY_THRESHOLD; snap to rest so
+    // the ship does not coast forever at a few units/sec (HUD SPD ~4).
+    if (thrust.brake && ship.velocity.length() < PHYSICS.VELOCITY_THRESHOLD) {
+      ship.velocity.set(0, 0);
+    }
+
     this.physics.integrate(ship, deltaTime);
   }
 
-  _applyRcsThrusters(thrusters, rotation) {
+  _addThruster(thrusters, name, amount) {
+    if (!amount || amount <= 0) return;
+    thrusters[name] = clamp((thrusters[name] || 0) + amount, 0, 1.5);
+  }
+
+  _lightFace(thrusters, face, amount) {
+    if (!amount || amount <= 0) return;
+    for (const name of FACE_PAIRS[face]) {
+      this._addThruster(thrusters, name, amount);
+    }
+  }
+
+  _lightYawGroup(thrusters, group, amount) {
+    for (const name of group) {
+      this._addThruster(thrusters, name, amount);
+    }
+  }
+
+  _applyYawThrusters(thrusters, ship, rotation) {
     if (!rotation.isRotating) return;
 
-    const intensity = clamp(
-      Math.abs(rotation.rotationDemand) / PHYSICS.MAX_ROTATION_SPEED,
-      0.15,
-      1
-    );
+    const demand = Math.abs(rotation.rotationDemand) / PHYSICS.MAX_ROTATION_SPEED;
+    const turnIntensity = clamp(demand, YAW_INTENSITY_MIN, YAW_INTENSITY_MAX);
+    const angVel = ship.angularVelocity;
+    const velSign = Math.sign(angVel);
+    const diffSign = Math.sign(rotation.diff);
 
-    if (rotation.diff > 0.02) {
-      thrusters.rcsClockwise = intensity;
-    } else if (rotation.diff < -0.02) {
-      thrusters.rcsCounterClockwise = intensity;
-    } else if (rotation.angularAccel > 0.5) {
-      thrusters.rcsClockwise = intensity * 0.6;
-    } else if (rotation.angularAccel < -0.5) {
-      thrusters.rcsCounterClockwise = intensity * 0.6;
+    // Semi-Newtonian stop: opposite group when spinning against demand or settling on aim
+    const settling = Math.abs(rotation.diff) < 0.1 && Math.abs(angVel) > 0.08;
+    const opposingDemand = diffSign !== 0 && velSign !== 0 && diffSign !== velSign && Math.abs(angVel) > 0.05;
+    const accelOpposesSpin =
+      Math.abs(angVel) > 0.05 &&
+      Math.abs(rotation.angularAccel) > 0.4 &&
+      Math.sign(rotation.angularAccel) !== velSign;
+
+    if (opposingDemand || settling || accelOpposesSpin) {
+      const stopGroup = velSign > 0 ? YAW_CCW : YAW_CW;
+      this._lightYawGroup(thrusters, stopGroup, YAW_STOP_BURST);
+      return;
+    }
+
+    if (Math.abs(rotation.diff) > 0.02) {
+      const turnGroup = rotation.diff > 0 ? YAW_CW : YAW_CCW;
+      this._lightYawGroup(thrusters, turnGroup, turnIntensity);
     }
   }
 }

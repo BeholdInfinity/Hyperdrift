@@ -1,6 +1,6 @@
 import { Entity } from './Entity.js';
 import { Vec2 } from '../utils/MathUtils.js';
-import { SHIP } from '../core/Constants.js';
+import { HARDPOINTS } from './ShipHardpoints.js';
 
 export class Ship extends Entity {
   constructor(x = 0, y = 0) {
@@ -8,19 +8,17 @@ export class Ship extends Entity {
     this.mass = 1;
     this.momentOfInertia = 1;
     this.thrusters = {
-      aft: 0,
-      nose: 0,
-      starboard: 0,
-      port: 0,
+      aftPort: 0,
+      aftStarboard: 0,
+      nosePort: 0,
+      noseStarboard: 0,
+      portFore: 0,
+      portAft: 0,
+      starboardFore: 0,
+      starboardAft: 0,
       mainEngine: 0,
       afterburner: 0,
-      brakeAft: 0,
-      brakeNose: 0,
-      brakeStarboard: 0,
-      brakePort: 0,
       retroBurn: false,
-      rcsClockwise: 0,
-      rcsCounterClockwise: 0,
     };
     this.fireCooldown = 0;
     this.muzzleFlash = 0;
@@ -35,10 +33,12 @@ export class Ship extends Entity {
   }
 
   getCannonTip() {
-    const forward = this.getForward();
+    const gun = HARDPOINTS.gun;
+    const cos = Math.cos(this.angle);
+    const sin = Math.sin(this.angle);
     return {
-      x: this.position.x + forward.x * SHIP.CANNON_OFFSET,
-      y: this.position.y + forward.y * SHIP.CANNON_OFFSET,
+      x: this.position.x + gun.x * cos - gun.y * sin,
+      y: this.position.y + gun.x * sin + gun.y * cos,
     };
   }
 

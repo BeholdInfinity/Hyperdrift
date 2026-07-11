@@ -10,7 +10,6 @@ import { AsteroidSystem } from '../systems/AsteroidSystem.js';
 import { Starfield } from '../world/Starfield.js';
 import { NebulaField } from '../world/NebulaField.js';
 import { SpeedStreaks } from '../world/SpeedStreaks.js';
-import { Vec2 } from '../utils/MathUtils.js';
 import { PHYSICS } from '../core/Constants.js';
 
 /** Slow title-screen drift (world units / sec) */
@@ -176,11 +175,9 @@ export class GameEngine {
   update(deltaTime) {
     if (!this.ship) return;
 
-    const shipPos = new Vec2(this.ship.position.x, this.ship.position.y);
-    const shipVel = new Vec2(this.ship.velocity.x, this.ship.velocity.y);
     const zoomWheel = this.input.consumeZoomDelta();
 
-    this.asteroidSystem.update(shipPos.x, shipPos.y);
+    this.asteroidSystem.update(this.ship.position.x, this.ship.position.y);
 
     const aimWorld = this.camera.screenToWorld(
       this.input.mouseScreen.x,
@@ -188,7 +185,10 @@ export class GameEngine {
       this.renderer.centerX,
       this.renderer.centerY
     );
-    const targetAngle = Math.atan2(aimWorld.y - shipPos.y, aimWorld.x - shipPos.x);
+    const targetAngle = Math.atan2(
+      aimWorld.y - this.ship.position.y,
+      aimWorld.x - this.ship.position.x
+    );
 
     this.shipController.update(this.ship, this.input, targetAngle, deltaTime);
     this.ship.update(deltaTime);
@@ -199,15 +199,17 @@ export class GameEngine {
     this.entityManager.update(deltaTime);
     this.particleSystem.update(deltaTime);
 
+    // Camera must track post-physics ship pose; a stale position makes
+    // ship-local exhaust appear ahead of the hull under camera lead.
     this.camera.update(
-      shipPos,
-      shipVel,
+      this.ship.position,
+      this.ship.velocity,
       deltaTime,
       this.renderer.viewportRadius,
       zoomWheel
     );
 
-    const speed = shipVel.length();
+    const speed = this.ship.velocity.length();
     this.speedStreaks.update(
       { x: this.ship.velocity.x, y: this.ship.velocity.y },
       speed,
@@ -294,7 +296,8 @@ export class GameEngine {
 
     this.renderer.renderParticles(
       this.particleSystem.particles,
-      this.camera
+      this.camera,
+      this.ship
     );
 
     if (this.ship) {
