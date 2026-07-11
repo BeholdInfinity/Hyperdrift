@@ -36,6 +36,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 ### Fixed
 - Ctrl+QWEASD (and Ctrl+Space) no longer trigger browser chords during play (e.g. Ctrl+E search, Ctrl+W close tab)
 
+### Changed
+- Space brakes rebound from **Ctrl** to **Alt** (Ctrl+W cannot be blocked in Chromium; Alt is safer with WASD)
+
 ---
 
 ## [0.1.14] — 2026-07-10

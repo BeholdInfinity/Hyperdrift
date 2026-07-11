@@ -70,7 +70,7 @@ Ship silhouette is a filled multi-section hull (narrower bridge, main body, **wi
 | Q / E | Yaw couples | Rotate hull CCW / CW |
 | Space | Main engine (aft) | Strongest forward thrust (orange plume) |
 | Shift | Afterburner | Extra main-engine thrust — disabled in Precision |
-| Ctrl | Space brakes | Soft brake via thruster face pairs; main-engine retro-burn when nose faces into velocity. During play, Ctrl+QWEASD/Space are `preventDefault`’d so the browser does not steal chords (search, close tab, etc.) |
+| Alt | Space brakes | Soft brake via thruster face pairs; main-engine retro-burn when nose faces into velocity. During play, Alt and Alt+QWEASD/Space are `preventDefault`’d so browser menus / address-bar chords are less likely to steal focus |
 | Caps Lock | Precision desire | See Precision mode below |
 
 **Double-tap then hold** on **Q W E A S D** boosts that axis:

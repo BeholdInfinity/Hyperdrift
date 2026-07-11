@@ -270,8 +270,8 @@ export class Renderer {
     const localAim = ship.getTurretLocalAngle();
     const recoil = ship.turretRecoil * SHIP.TURRET_RECOIL_DIST;
 
-    // Concentric base rings (ship-fixed)
-    ctx.strokeStyle = '#1a2834';
+    // Concentric base rings (ship-fixed) — match hull blue outline
+    ctx.strokeStyle = '#5a8ab0';
     ctx.lineWidth = 1.2;
     ctx.fillStyle = 'rgba(20, 32, 42, 0.55)';
     ctx.beginPath();
@@ -308,8 +308,10 @@ export class Renderer {
     ctx.save();
     ctx.rotate(localAim);
 
-    // Grey housing
+    // Grey housing (outlined; black gun is fill-only)
     ctx.fillStyle = '#6a7278';
+    ctx.strokeStyle = '#5a8ab0';
+    ctx.lineWidth = 1.1;
     ctx.beginPath();
     const sleeveInner = inner + 0.4;
     const sleeveOuter = outer - 0.5;
@@ -320,6 +322,7 @@ export class Renderer {
     ctx.lineTo(sleeveInner, halfW);
     ctx.closePath();
     ctx.fill();
+    ctx.stroke();
     // Rounded against inner disc
     ctx.beginPath();
     ctx.arc(0, 0, sleeveInner, -Math.asin(halfW / sleeveInner), Math.asin(halfW / sleeveInner));
@@ -327,7 +330,7 @@ export class Renderer {
     ctx.closePath();
     ctx.fill();
 
-    // Black barrel + muzzle (recoil toward center)
+    // Black barrel + muzzle (recoil toward center) — no blue outline
     const barrelStart = sleeveInner + 0.5;
     const barrelEnd = SHIP.TURRET_BARREL_LENGTH - recoil;
     const muzzleLen = 3.4;

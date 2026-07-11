@@ -108,7 +108,7 @@ src/
 | Q / E | Yaw (double-tap hold = fast / Precision near-default) |
 | Space | Main engine (warm-up in Precision) |
 | Shift | Afterburner (disabled in Precision) |
-| Ctrl | Smart space brakes (Ctrl+QWEASD blocked from browser shortcuts while playing) |
+| Alt | Smart space brakes (Alt+QWEASD blocked from browser menu chords while playing) |
 | Caps Lock | Precision desire (engage when slow; active = speed-capped) |
 | LMB | Fire dorsal turret (pointer in circle; slews to aim) |
 | RMB | Mining laser (pointer in circle; slews within arc) |

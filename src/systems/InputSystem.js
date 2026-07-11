@@ -25,8 +25,11 @@ export class InputSystem {
   }
 
   _bindEvents() {
-    window.addEventListener('keydown', (e) => this._onKeyDown(e));
-    window.addEventListener('keyup', (e) => this._onKeyUp(e));
+    this._onKeyDown = this._onKeyDown.bind(this);
+    this._onKeyUp = this._onKeyUp.bind(this);
+    // Capture phase so Alt+letter browser menu chords are stopped early
+    window.addEventListener('keydown', this._onKeyDown, true);
+    window.addEventListener('keyup', this._onKeyUp, true);
     this.canvas.addEventListener('mousedown', (e) => this._onMouseDown(e));
     window.addEventListener('mouseup', (e) => this._onMouseUp(e));
     this.canvas.addEventListener('mousemove', (e) => this._onMouseMove(e));
@@ -66,12 +69,33 @@ export class InputSystem {
     }
   }
 
+  /** Flight letters by key or code (Ctrl chords can make e.key unreliable). */
+  _flightLetterKey(e) {
+    const key = e.key.toLowerCase();
+    if (BURST_KEYS.includes(key)) return key;
+    if (key === ' ' || key === 'spacebar') return ' ';
+    const fromCode = {
+      KeyQ: 'q', KeyW: 'w', KeyE: 'e', KeyA: 'a', KeyS: 's', KeyD: 'd', Space: ' ',
+    };
+    return fromCode[e.code] || null;
+  }
+
+  _blockBrowserChord(e) {
+    if (!this.enabled || this.paused) return false;
+    if (!(e.ctrlKey || e.altKey || e.metaKey)) return false;
+    if (!this._flightLetterKey(e)) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    return true;
+  }
+
   _onKeyDown(e) {
     if (!this.enabled) return;
 
     this._syncCapsLock(e);
 
     const key = e.key.toLowerCase();
+    const flightKey = this._flightLetterKey(e);
 
     if (key === 'escape') {
       e.preventDefault();
@@ -81,13 +105,13 @@ export class InputSystem {
 
     if (this.paused) return;
 
-    // Block browser chords that fight flight keys (Ctrl+E search, Ctrl+W close tab, etc.)
-    // Fullscreen gets a wider net; windowed play at least covers QWEASD.
-    if (e.ctrlKey || e.altKey || e.metaKey) {
-      if (BURST_KEYS.includes(key) || key === ' ') {
-        e.preventDefault();
-      }
+    // Alt alone can focus the browser menu bar — swallow while playing
+    if (key === 'alt') {
+      e.preventDefault();
     }
+
+    // Must run in capture (see _bindEvents) — Alt+letter menu chords, etc.
+    this._blockBrowserChord(e);
 
     if (this.isFullscreen) {
       if (this._blockedKeys.has(e.key)) {
@@ -101,21 +125,26 @@ export class InputSystem {
       }
     }
 
-    if (BURST_KEYS.includes(key) && !e.repeat) {
+    const trackKey = flightKey || key;
+    if (BURST_KEYS.includes(trackKey) && !e.repeat) {
       const now = performance.now() / 1000;
-      const state = this._burst[key];
+      const state = this._burst[trackKey];
       if (now - state.lastPress <= PHYSICS.DOUBLE_TAP_WINDOW) {
         state.armed = true;
       }
       state.lastPress = now;
     }
 
-    this.keys.add(key);
+    this.keys.add(trackKey);
   }
 
   _onKeyUp(e) {
     this._syncCapsLock(e);
-    const key = e.key.toLowerCase();
+    const flightKey = this._flightLetterKey(e);
+    const key = flightKey || e.key.toLowerCase();
+    if (key === 'alt') {
+      e.preventDefault();
+    }
     if (BURST_KEYS.includes(key)) {
       this._burst[key].armed = false;
     }
@@ -196,7 +225,7 @@ export class InputSystem {
       yawRightBurst: this._burstHeld('e'),
       mainEngine: this.isKeyDown(' '),
       afterburner: this.isKeyDown('shift'),
-      brake: this.isKeyDown('control'),
+      brake: this.isKeyDown('alt'),
       capsDesired: this.capsLockDesired,
       firePrimary: this.mouseDown,
       fireLaser: this.mouseRightDown,
