@@ -71,14 +71,14 @@ export const CAMERA = {
   SPEED_ZOOM_MIN: 0.55,
 };
 
-/** Temporary title-screen ship inspection bay */
+/** Home Base hangar (docked bay; new-game / between-mission hub seed) */
 export const HANGAR = {
   /** Ceiling stop — three pads + bay door still readable */
   ZOOM_MIN: 1.85,
   /** Close enough that the hull fills most of the play circle */
   ZOOM_MAX: 14,
   /** Enter wide enough to read door + neighbor pads */
-  ZOOM_DEFAULT: 2.2,
+  ZOOM_DEFAULT: 9,
   ZOOM_WHEEL_STEP: 0.35,
   /** Neighbor pad offset from center (B1 left / B3 right) */
   SIDE_PAD_X: 155,

@@ -111,7 +111,7 @@ export class GameEngine {
     this.asteroidSystem.update(x, y);
   }
 
-  /** Temporary docked ship inspection bay (from title). */
+  /** Home Base hangar (docked bay from title — launch/return not wired yet). */
   beginHangar() {
     // Keep the live title-space chunk drifting behind bay doors
     this._spaceCam.x = this.camera.position.x;
@@ -479,15 +479,20 @@ export class GameEngine {
     ctx.fillStyle = '#0a1018';
     ctx.fillRect(0, 0, this.renderer.width, this.renderer.height);
 
+    const space = {
+      starfield: this.starfield,
+      nebulaField: this.nebulaField,
+      spaceX: this._spaceCam.x,
+      spaceY: this._spaceCam.y,
+      time: this.gameTime,
+      nebulae: this.asteroidSystem.getNebulae(),
+    };
+
+    // Deck → crew (under hulls) → visitors → player ship → crane
     this.renderer.renderWorldLayer((worldCtx) => {
-      this.hangarBay.render(worldCtx, {
-        starfield: this.starfield,
-        nebulaField: this.nebulaField,
-        spaceX: this._spaceCam.x,
-        spaceY: this._spaceCam.y,
-        time: this.gameTime,
-        nebulae: this.asteroidSystem.getNebulae(),
-      });
+      this.hangarBay.renderDeck(worldCtx, space);
+      this.hangarBay.renderCrew(worldCtx);
+      this.hangarBay.renderVisitors(worldCtx);
     }, this.camera);
 
     this.renderer.renderProjectiles(
@@ -504,6 +509,10 @@ export class GameEngine {
     if (this.ship) {
       this.renderer.renderShip(this.ship, this.camera);
     }
+
+    this.renderer.renderWorldLayer((worldCtx) => {
+      this.hangarBay.renderOverhead(worldCtx);
+    }, this.camera);
   }
 
   _updateHUD(capsDesired = this.input?.capsLockDesired) {

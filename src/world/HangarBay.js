@@ -1,6 +1,7 @@
 /**
- * Temporary ship-inspection hangar: docked bay, logistics, and reacting NPCs.
- * +Y = south, −Y = north (bay doors to space). Player on B2 (center).
+ * Home Base hangar: docked bay, logistics, and reacting NPCs.
+ * Seed for new-game start + between-mission hub. Player on B2 (center).
+ * +Y = south, −Y = north (bay doors to space).
  *
  * Cargo hardpoints: 3×4 grid. Forklifts use the south row; crane has full-deck
  * bridge travel. Mechanics ferry mid-row piles ↔ assigned ships via stairs.
@@ -46,6 +47,11 @@ const HOIST_RAISED = 0;
 const HOIST_MAX = 42;
 /** Trolley parks this far north of the pile; hoist drops south to the cargo */
 const TROLLEY_NORTH = 52;
+/** Claw: 1 = open empty, ~0.35 = gripped around cargo */
+const CLAW_OPEN = 1;
+const CLAW_GRIP = 0.35;
+const CLAW_PALM = 5;
+const CLAW_FINGER = 11;
 
 const CARGO_MIN = 10;
 const CARGO_MAX = 26;
@@ -256,10 +262,19 @@ export class HangarBay {
       hoist: HOIST_RAISED,
       hookTargetY: null,
       carried: null,
+      claw: CLAW_OPEN,
+      levers: { travel: 0, hoist: 0, grip: 0 },
+      operator: {
+        suit: pick(['#3a6a8a', '#5a6a4a', '#6a5a48', '#4a5a6a']),
+        helmet: pick(['#c8d0d8', '#b0a890', '#d0c8b8']),
+      },
       phase: 'travelPickup',
       pickup: job.pickup,
       dropoff: job.dropoff,
       pause: 0.5,
+      _prevTX: job.pickup.x,
+      _prevBY: job.pickup.y - TROLLEY_NORTH,
+      _prevHoist: HOIST_RAISED,
     };
   }
 
@@ -294,14 +309,18 @@ export class HangarBay {
     if (this._spawnTimer <= 0 && this.npcs.length < 6) {
       const forks = this.npcs.filter((n) => n.kind === 'forklift').length;
       const mechs = this.npcs.filter((n) => n.kind === 'mechanic').length;
-      if (forks < 2 && (this._pressure !== 0 || Math.random() < 0.45)) {
+      // Mechanics first: cargo pressure used to starve pedestrians by always
+      // preferring forklifts whenever forks < 2 and pressure ≠ 0.
+      if (mechs < 2) {
+        this._spawnMechanic();
+      } else if (forks < 2 && (this._pressure !== 0 || Math.random() < 0.4)) {
         this._spawnForklift(Math.random() < 0.5 ? -1 : 1);
       } else if (mechs < 3) {
         this._spawnMechanic();
-      } else {
+      } else if (forks < 2) {
         this._spawnForklift(Math.random() < 0.5 ? -1 : 1);
       }
-      this._spawnTimer = rand(1.6, 3.5);
+      this._spawnTimer = mechs < 2 ? rand(0.8, 1.6) : rand(1.6, 3.5);
     }
 
     const hazardLevel =
@@ -398,7 +417,7 @@ export class HangarBay {
       });
     }
     if (this.crane?.carried) {
-      const hook = this._craneHookPos();
+      const hook = this._craneCargoDrawPos();
       out.push({
         cargo: this.crane.carried,
         x: hook.x,
@@ -533,12 +552,75 @@ export class HangarBay {
     };
   }
 
+  /** Top-center of a carried box (top edge just above fingertip line). */
+  _craneCargoDrawPos() {
+    const hook = this._craneHookPos();
+    const box = this.crane?.carried;
+    if (!box) return { ...hook, top: hook.y + CLAW_FINGER - 1 };
+    const top = hook.y + CLAW_FINGER - 1;
+    return {
+      x: hook.x,
+      y: top + box.h / 2,
+      top,
+    };
+  }
+
+  _updateCraneClaw(dt) {
+    const c = this.crane;
+    if (!c) return;
+    // Open while empty; partial close while holding cargo (including lower-to-drop)
+    const target = c.carried ? CLAW_GRIP : CLAW_OPEN;
+    const rate = c.carried ? 10 : 7;
+    c.claw += (target - (c.claw ?? CLAW_OPEN)) * Math.min(1, dt * rate);
+  }
+
+  /** Cab levers track travel / hoist / grip so the bay reads as manned, not automated. */
+  _updateCraneLevers(dt) {
+    const c = this.crane;
+    if (!c) return;
+    if (!c.levers) c.levers = { travel: 0, hoist: 0, grip: 0 };
+
+    const dx = c.trolleyX - (c._prevTX ?? c.trolleyX);
+    const dy = c.bridgeY - (c._prevBY ?? c.bridgeY);
+    const dh = c.hoist - (c._prevHoist ?? c.hoist);
+    c._prevTX = c.trolleyX;
+    c._prevBY = c.bridgeY;
+    c._prevHoist = c.hoist;
+
+    let travelT = 0;
+    let hoistT = 0;
+    if (Math.abs(dx) > 0.05 || Math.abs(dy) > 0.05) {
+      travelT = Math.max(-1, Math.min(1, (dx + dy) * 0.35));
+    } else if (
+      c.phase === 'travelPickup' ||
+      c.phase === 'travelDropoff'
+    ) {
+      travelT = Math.sin(this.time * 6) * 0.08;
+    }
+    if (Math.abs(dh) > 0.05) {
+      hoistT = Math.max(-1, Math.min(1, dh * 0.12));
+    } else if (c.phase === 'lowerPickup' || c.phase === 'lowerDropoff') {
+      hoistT = 0.85;
+    } else if (c.phase === 'raisePickup' || c.phase === 'raiseDropoff') {
+      hoistT = -0.85;
+    }
+
+    const gripT = 1 - (c.claw ?? CLAW_OPEN);
+    const k = Math.min(1, dt * 9);
+    c.levers.travel += (travelT - c.levers.travel) * k;
+    c.levers.hoist += (hoistT - c.levers.hoist) * k;
+    c.levers.grip += (gripT - c.levers.grip) * k;
+  }
+
   _updateCrane(dt) {
     const c = this.crane;
     if (!c) return;
     const moveSpeed = 88;
     const hoistSpeed = 50;
     const near = (a, b, eps = 2.5) => Math.abs(a - b) < eps;
+
+    this._updateCraneClaw(dt);
+    this._updateCraneLevers(dt);
 
     if (c.pause > 0) {
       c.pause -= dt;
@@ -688,25 +770,24 @@ export class HangarBay {
       .sort((a, b) => Math.abs(a.x - padX) - Math.abs(b.x - padX));
   }
 
-  /** Prefer stairs; occasional bulkhead door. */
+  /** Stairs only — bulkhead doors are forklift logistics. */
   _spawnMechanic() {
-    const useStairs = Math.random() < 0.85;
     const stair = pick(STAIRS);
     const side = Math.random() < 0.5 ? -1 : 1;
 
     const npc = {
       kind: 'mechanic',
       alive: true,
-      x: useStairs ? stair.x : this._doorX(side) + side * 40,
-      y: useStairs ? stair.y : BAY.PATH_Y + rand(-6, 6),
+      x: stair.x,
+      y: stair.y,
       vx: 0,
-      facing: useStairs ? (stair.x < 0 ? 1 : -1) : -side,
+      facing: stair.x < 0 ? 1 : -1,
       phase: Math.random() * Math.PI * 2,
-      state: useStairs ? 'emerge' : 'enterDoor',
-      stateT: useStairs ? 0.55 : 0,
+      state: 'emerge',
+      stateT: 0.55,
       side,
-      entry: useStairs ? 'stairs' : 'door',
-      exit: Math.random() < 0.8 ? 'stairs' : 'door',
+      entry: 'stairs',
+      exit: 'stairs',
       stair,
       exitStair: stair,
       cargo: null,
@@ -823,9 +904,9 @@ export class HangarBay {
   }
 
   _dockTargets() {
-    const pads = [{ x: 0, bayId: 'B2', occupied: true }];
+    const pads = [{ x: 0, y: 0, bayId: 'B2', occupied: true }];
     for (const p of this.sidePads) {
-      pads.push({ x: p.x, bayId: p.bayId, occupied: !!p.visitorId });
+      pads.push({ x: p.x, y: 0, bayId: p.bayId, occupied: !!p.visitorId });
     }
     return pads.filter((p) => p.occupied);
   }
@@ -981,15 +1062,16 @@ export class HangarBay {
       lx = -SHIP_EXTENT.LENGTH * 0.42;
       ly = rand(-7, 7);
     }
-    const onHull = this._shipLocalToWorld(pad.x, 0, lx, ly);
+    const padY = pad.y ?? 0;
+    const onHull = this._shipLocalToWorld(pad.x, padY, lx, ly);
     const dx = onHull.x - pad.x;
-    const dy = onHull.y - pad.y;
+    const dy = onHull.y - padY;
     const len = Math.hypot(dx, dy) || 1;
     // Stand just outside the skin
     const standR = len + 2.5;
     return {
       x: pad.x + (dx / len) * standR,
-      y: pad.y + (dy / len) * standR,
+      y: padY + (dy / len) * standR,
     };
   }
 
@@ -1037,14 +1119,17 @@ export class HangarBay {
       return;
     }
     if (npc.state === 'flee') {
+      // Retreat south of the nearest hatch, then resume work — do not arm exit
+      // (that made a later toExit despawn immediately on the hatch approach).
       const stair = npc.exitStair || this._nearestStair(npc.x);
       const safeX = stair.x;
       const safeY = stair.y + 22;
       if (this._moveToward(npc, safeX, safeY, 58, dt)) {
-        npc.state = npc.resumeState || 'toShip';
+        const resume = npc.resumeState || 'toShip';
+        npc.state = resume === 'toExit' || resume === 'descend' ? 'toShip' : resume;
         npc.hullTarget = null;
         npc.stateT = 0.2;
-        npc.exitArmed = true;
+        npc.exitArmed = false;
       }
       return;
     }
@@ -1232,11 +1317,16 @@ export class HangarBay {
           }
         } else {
           const stair = npc.exitStair || this._nearestStair(npc.x);
-          // Approach from south of hatch so we never "arrive" without walking
+          // From north of the hatch, detour via a south approach so we don't
+          // "arrive" on the hatch without walking. Once at/south of the hatch,
+          // walk straight in — the old approach↔stair band oscillated forever
+          // (~3px from approach while still >10 from the hatch).
           const approach = { x: stair.x, y: stair.y + 18 };
-          const atApproach =
-            Math.hypot(npc.x - approach.x, npc.y - approach.y) < 3;
-          if (!atApproach && Math.hypot(npc.x - stair.x, npc.y - stair.y) > 10) {
+          const northOfHatch = npc.y < stair.y - 2;
+          if (
+            northOfHatch &&
+            Math.hypot(npc.x - approach.x, npc.y - approach.y) > 2
+          ) {
             this._moveToward(npc, approach.x, approach.y, walk, dt);
             break;
           }
@@ -1271,10 +1361,17 @@ export class HangarBay {
     ) {
       return;
     }
+    // Soft pad keep-out — hard snap teleported anyone leaving the hull onto the apron
     const pushed = this._padKeepOut(npc.x, npc.y);
     if (pushed && npc.state !== 'flee') {
-      npc.x = pushed.x;
-      npc.y = pushed.y;
+      const dx = pushed.x - npc.x;
+      const dy = pushed.y - npc.y;
+      const dist = Math.hypot(dx, dy);
+      if (dist > 1e-6) {
+        const step = Math.min(dist, walk * dt);
+        npc.x += (dx / dist) * step;
+        npc.y += (dy / dist) * step;
+      }
     }
   }
 
@@ -1296,6 +1393,14 @@ export class HangarBay {
   }
 
   render(ctx, space = null) {
+    this.renderDeck(ctx, space);
+    this.renderCrew(ctx);
+    this.renderVisitors(ctx);
+    this.renderOverhead(ctx);
+  }
+
+  /** Pads, cargo, floor — below crew and ships. */
+  renderDeck(ctx, space = null) {
     this._drawBayShell(ctx);
     if (space) this._drawViewportSpace(ctx, space);
     this._drawViewportFrames(ctx);
@@ -1310,19 +1415,28 @@ export class HangarBay {
         occupied: !!pad.visitorId,
       });
     }
-    for (const pad of this.sidePads) {
-      if (pad.visitorId) this._drawVisitor(ctx, pad);
-    }
-    this._drawOverhead(ctx);
+  }
 
-    // NPCs under bulkheads so walls occlude them outside door openings
+  /** Crew on the deck — drawn under ships so hulls occlude them. */
+  renderCrew(ctx) {
     for (const npc of this.npcs) {
       if (!this._npcVisibleThroughBulkheads(npc)) continue;
       if (npc.kind === 'mechanic') this._drawMechanic(ctx, npc);
       else this._drawForklift(ctx, npc);
     }
     this._drawBulkheadDoors(ctx);
+  }
 
+  /** Visitor ships on B1/B3. */
+  renderVisitors(ctx) {
+    for (const pad of this.sidePads) {
+      if (pad.visitorId) this._drawVisitor(ctx, pad);
+    }
+  }
+
+  /** Overhead gantry + FX above deck actors. */
+  renderOverhead(ctx) {
+    this._drawOverhead(ctx);
     this._drawSparkles(ctx);
     this._drawDebris(ctx);
     this._drawHazardWash(ctx);
@@ -1729,6 +1843,91 @@ export class HangarBay {
     }
   }
 
+  /**
+   * Manned cab on the trolley — this universe has operators, not automation.
+   * Levers nudge with travel / hoist / claw grip.
+   */
+  _drawCraneCabin(ctx, c, tx, by) {
+    const op = c.operator || {
+      suit: '#3a6a8a',
+      helmet: '#c8d0d8',
+    };
+    const lev = c.levers || { travel: 0, hoist: 0, grip: 0 };
+    const cabX = tx + 13;
+    const cabY = by;
+    const w = 14;
+    const h = 12;
+
+    // Cab shell (offset east of hoist so cables stay clear)
+    ctx.fillStyle = '#3a4858';
+    ctx.strokeStyle = '#9aacbc';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.rect(cabX - w / 2, cabY - h / 2, w, h);
+    ctx.fill();
+    ctx.stroke();
+
+    // Roof lip
+    ctx.fillStyle = '#2a3848';
+    ctx.fillRect(cabX - w / 2 - 0.5, cabY - h / 2 - 1.5, w + 1, 2);
+
+    // Glass
+    ctx.fillStyle = 'rgba(70, 140, 180, 0.35)';
+    ctx.strokeStyle = 'rgba(160, 200, 220, 0.55)';
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.rect(cabX - 5.5, cabY - 4.5, 11, 6.5);
+    ctx.fill();
+    ctx.stroke();
+
+    // Operator (seated, facing roughly toward hoist / bay center)
+    const faceLeft = tx < 0 ? 1 : -1;
+    ctx.fillStyle = op.suit;
+    ctx.fillRect(cabX - 2.2, cabY - 1.5, 4.4, 4.2);
+    ctx.fillStyle = op.helmet;
+    ctx.beginPath();
+    ctx.arc(cabX, cabY - 3.2, 2.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = 'rgba(40, 80, 100, 0.45)';
+    ctx.fillRect(cabX - 1.4 * faceLeft - 0.6, cabY - 3.8, 2.2, 1.3);
+
+    // Console shelf
+    ctx.fillStyle = '#1e2a36';
+    ctx.fillRect(cabX - 5, cabY + 2.2, 10, 2.4);
+    ctx.strokeStyle = '#6a7a88';
+    ctx.lineWidth = 0.6;
+    ctx.strokeRect(cabX - 5, cabY + 2.2, 10, 2.4);
+
+    // Three levers: travel · hoist · grip
+    const baseY = cabY + 2.4;
+    const levers = [
+      { x: cabX - 3.2, t: lev.travel, color: '#c8a050' },
+      { x: cabX, t: lev.hoist, color: '#70b0d0' },
+      { x: cabX + 3.2, t: lev.grip, color: '#d08070' },
+    ];
+    for (const L of levers) {
+      const ang = (L.t || 0) * 0.55;
+      const tipX = L.x + Math.sin(ang) * 3.2;
+      const tipY = baseY - Math.cos(ang) * 3.2;
+      ctx.strokeStyle = '#b0b8c0';
+      ctx.lineWidth = 1.1;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(L.x, baseY);
+      ctx.lineTo(tipX, tipY);
+      ctx.stroke();
+      ctx.fillStyle = L.color;
+      ctx.beginPath();
+      ctx.arc(tipX, tipY, 1.15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#4a5560';
+      ctx.beginPath();
+      ctx.arc(L.x, baseY, 0.9, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.lineCap = 'butt';
+  }
+
   _drawOverhead(ctx) {
     const c = this.crane;
     const [rx0, rx1] = RUNWAY_X;
@@ -1800,6 +1999,8 @@ export class HangarBay {
     ctx.fillStyle = '#2a3848';
     ctx.fillRect(tx - 3.5, by - 3, 7, 6);
 
+    this._drawCraneCabin(ctx, c, tx, by);
+
     // Hoist cables — trolley (north) down to hook at cargo
     ctx.strokeStyle = 'rgba(200, 210, 220, 0.65)';
     ctx.lineWidth = 1;
@@ -1811,41 +2012,73 @@ export class HangarBay {
     ctx.stroke();
 
     const shadow = 4 + (hoist / HOIST_MAX) * 8;
+    const cargoPos = c.carried ? this._craneCargoDrawPos() : null;
+    const shadowY = cargoPos ? cargoPos.top + (c.carried.h || 8) : hook.y + CLAW_FINGER;
     ctx.fillStyle = `rgba(0, 0, 0, ${0.12 + (hoist / HOIST_MAX) * 0.25})`;
     ctx.beginPath();
-    ctx.ellipse(hook.x, hook.y + 2, shadow, shadow * 0.55, 0, 0, Math.PI * 2);
+    ctx.ellipse(hook.x, shadowY + 2, shadow, shadow * 0.55, 0, 0, Math.PI * 2);
     ctx.fill();
 
-    if (c.carried) {
-      const box = c.carried;
-      ctx.fillStyle = box.color;
-      ctx.strokeStyle = '#8a7860';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.rect(hook.x - box.w / 2, hook.y + 2, box.w, box.h);
-      ctx.fill();
-      ctx.stroke();
-    }
-
+    // Hand / palm
     ctx.fillStyle = '#6a7888';
     ctx.strokeStyle = '#c8d0d8';
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.moveTo(hook.x - 6, hook.y);
     ctx.lineTo(hook.x + 6, hook.y);
-    ctx.lineTo(hook.x + 4, hook.y + 5);
-    ctx.lineTo(hook.x - 4, hook.y + 5);
+    ctx.lineTo(hook.x + 4, hook.y + CLAW_PALM);
+    ctx.lineTo(hook.x - 4, hook.y + CLAW_PALM);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
+
+    // Carried box hangs from the fingers (top just above fingertip line)
+    if (c.carried && cargoPos) {
+      const box = c.carried;
+      ctx.fillStyle = box.color;
+      ctx.strokeStyle = '#8a7860';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.rect(hook.x - box.w / 2, cargoPos.top, box.w, box.h);
+      ctx.fill();
+      ctx.stroke();
+    }
+
+    // Fingers — open when empty, partial close around cargo
+    const open = c.claw ?? CLAW_OPEN;
+    const palmY = hook.y + CLAW_PALM;
+    const tipY = hook.y + CLAW_FINGER;
+    const leftBase = hook.x - 4;
+    const rightBase = hook.x + 4;
+    // Open spreads tips outward; grip tucks them in (not fully closed)
+    const leftTip = hook.x - (2.2 + open * 5.5);
+    const rightTip = hook.x + (2.2 + open * 5.5);
+    const midTip = hook.x + (open - 0.5) * 0.8;
+
+    ctx.strokeStyle = '#c8d0d8';
+    ctx.lineWidth = 1.35;
+    ctx.lineCap = 'round';
     ctx.beginPath();
-    ctx.moveTo(hook.x - 4, hook.y + 5);
-    ctx.lineTo(hook.x - 7, hook.y + 11);
-    ctx.moveTo(hook.x + 4, hook.y + 5);
-    ctx.lineTo(hook.x + 7, hook.y + 11);
-    ctx.moveTo(hook.x, hook.y + 5);
-    ctx.lineTo(hook.x, hook.y + 12);
+    ctx.moveTo(leftBase, palmY);
+    ctx.lineTo(leftTip, tipY);
+    ctx.moveTo(rightBase, palmY);
+    ctx.lineTo(rightTip, tipY);
+    ctx.moveTo(hook.x, palmY);
+    ctx.lineTo(midTip, tipY + 1);
     ctx.stroke();
+    ctx.lineCap = 'butt';
+
+    // Fingertip pads
+    ctx.fillStyle = '#a8b8c8';
+    for (const [fx, fy] of [
+      [leftTip, tipY],
+      [rightTip, tipY],
+      [midTip, tipY + 1],
+    ]) {
+      ctx.beginPath();
+      ctx.arc(fx, fy, 1.1, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
   _drawMechanic(ctx, npc) {

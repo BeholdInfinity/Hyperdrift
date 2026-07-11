@@ -286,6 +286,8 @@ If yes → expand. If no → redesign before complexity.
 
 The browser prototype (`GDD.md`) validates **Layer 1 flight feel** in isolation: semi-Newtonian movement, procedural space, readable thrusters. It does not yet test logistics, stations, or multiplayer.
 
-Path forward: nail flight → prototype one logistics chain on foot → add second player and station handoffs → PvE pressure → only then PvP and full interior.
+The prototype hangar is the early seed of **Home Base** — where a run starts and where the crew returns between missions (outfit, stash, depart, extract). That maps to the extraction / between-run persistence questions in [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) (§2). Launch-from-hangar and return are not wired yet. Neighbor-pad busywork stays ambient sim; player-pad load/unload/repair/upgrade is intended to run only on explicit requests (queued, animation-gated) — see [`GDD.md`](GDD.md) Home Base.
+
+Path forward: nail flight → grow Home Base into the real start/return surface → prototype one logistics chain on foot → add second player and station handoffs → PvE pressure → only then PvP and full interior.
 
 See [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) for unresolved decisions. See [`CHANGELOG.md`](CHANGELOG.md) for what has actually shipped.

@@ -56,7 +56,7 @@ src/
     Starfield.js          7 parallax star layers (screen-fixed size, tiled when zoomed out)
     NebulaField.js        3 depth layers + ambient procedural nebulae
     SpeedStreaks.js       Velocity-opposed foreground streaks (screen-space)
-    HangarBay.js          Temporary title-screen ship inspection hangar + cargo logistics NPCs
+    HangarBay.js          Home Base hangar (docked bay + cargo logistics NPCs)
     HangarVisitorShips.js Placeholder neighbor-pad ship silhouettes
   utils/
     MathUtils.js, SeededRandom.js
@@ -68,8 +68,8 @@ src/
 - **Chunk-based world** — deterministic seeds, load radius 3, unload radius 5 (`WORLD` in Constants)
 - **Thruster visuals driven by physics** — eight blue maneuvering thrusters + orange main engine; mounts from `ShipHardpoints.js`; exhaust is ship-local; camera pose must match post-physics ship
 - **Plume flow** (`Renderer._computePlumeFlow`) — leading cue/wash + crosswind lean from relative wind (`−velocity`) so plumes read AoA and speed; trailing stretch; ship-local particles
-- **Modes** — `title` (drifting backdrop), `playing` (flight), `hangar` (docked ship view from title; temporary inspection tool)
-- **Future-ready** for multiple ships, AI, trading, mining, missions, networking, save/load
+- **Modes** — `title` (drifting backdrop), `playing` (flight), `hangar` (Home Base docked bay; seed for new-game start + between-mission hub)
+- **Future-ready** for multiple ships, AI, trading, mining, missions, Home Base launch/extract, networking, save/load
 
 ## Current implementation status
 
@@ -86,7 +86,7 @@ src/
 | Dorsal 360° combat turret (LMB, 3/s) + nose mining laser (RMB) | Done |
 | Circular viewport + corner UI placeholders | Done |
 | Title screen (fullscreen backdrop drift, fade-in, version stamp) | Done |
-| Temporary View Ship hangar (full-frame; bridge crane; stairs; 3×4 cargo logistics) | Done |
+| Home Base hangar (full-frame; B1–B3; bridge crane; stairs; 3×4 cargo logistics) | Bay done; launch/return not wired |
 | Procedural asteroids + nebulae | Done |
 | 7-layer starfield, 3-layer nebulae | Done |
 | Speed streaks (velocity-opposed, screen-space) | Done |
@@ -101,7 +101,7 @@ src/
 - `PHYSICS.PRECISION_ENGAGE_SPEED` — 100 (engage gate + active speed cap)
 - `SHIP.TURRET_SLEW_RATE` / `MINING_LASER_SLEW_RATE` — 5.5 / 4.5
 - `SHIP.SPAWN_ANGLE` — north (−π/2)
-- `HANGAR.ZOOM_*` / `PLAYER_PAD_X` — hangar inspection camera + B2 dock
+- `HANGAR.ZOOM_*` / `PLAYER_PAD_X` — Home Base hangar camera + B2 dock
 - `CAMERA.ZOOM_MIN/MAX` — 0.4 / 2.0
 - `WORLD.CHUNK_SIZE` — 2000
 - `WORLD.LOAD_RADIUS` / `UNLOAD_RADIUS` — 3 / 5
@@ -132,7 +132,9 @@ src/
 
 ## Known gaps / next steps
 
-- Ship silhouette / hardpoint design pass (hangar View Ship is ready for close inspection)
+- Home Base: wire hangar as new-game start (launch from B2) and between-mission return/extract
+- Home Base: B2 logistics only on player request (queued; animation-gated); B1/B3 remain ambient sim (`GDD.md`)
+- Ship silhouette / hardpoint design pass (hangar is ready for close inspection)
 - Settings and Return to Main Menu are UI placeholders
 - Asteroids destroy but don't fragment into smaller pieces yet
 - No fuel consumption on afterburner

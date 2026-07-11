@@ -6,7 +6,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Changed
+- Hangar bay reframed as **Home Base**: seed for new-game start and between-mission hub (extraction / rogue-lite). Bay exists today via title → VIEW SHIP; launch/return loop not wired yet (see `GDD.md`)
+- Home Base design note: B1/B3 bay work stays ambient sim; **B2** load/unload/repair/upgrade only runs when the player requests it, with a queue that completes per finished animation (`GDD.md`)
+
 ### Planned
+- Home Base: launch from hangar into a run; extract/return to hangar
+- Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
 - Asteroid fragmentation on destroy
 - Fuel system for afterburner
 - Radar minimap in corner panel
@@ -14,6 +20,28 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 - Audio
 - Resource drops (guns vs mining laser yield tradeoff)
 - Precision power-pip allocation for laser / scanner
+
+---
+
+## [0.1.28] — 2026-07-11
+
+### Changed
+- Hangar default zoom is **9.0** (closer hull inspection on entry)
+- Hangar draw order: deck → crew → ships → crane (hulls occlude pedestrians; gantry stays overhead)
+- Hangar mechanics enter/exit via stair hatches only (bulkhead doors stay forklift-only)
+- Crane claw opens when empty, partially closes around cargo, and opens on drop; carried boxes hang at the fingertips
+- Crane trolley has a manned cabin (operator + travel/hoist/grip levers) — no automation fiction
+
+---
+
+## [0.1.27] — 2026-07-11
+
+### Fixed
+- Hangar mechanics no longer vanish after reaching cargo: hull approach used `pad.y` on dock targets that had no `y`, producing NaN positions (looked like a despawn; also blocked respawns because “ghost” mechs still counted)
+- Hangar mechanics no longer teleport after ship work: pad keep-out is a soft push instead of a hard snap onto the apron
+- Hangar mechanics no longer jam south of stair hatches when exiting (approach↔stair waypoint band oscillated in place)
+- Hangar spawn prefers a floor of 2 pedestrians before forklifts (cargo pressure was starving mechanic respawns)
+- Mechanic flee no longer arms stair exit (avoids popping out on the hatch after a hazard retreat)
 
 ---
 
