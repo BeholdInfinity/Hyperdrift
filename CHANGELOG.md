@@ -17,6 +17,60 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.26] — 2026-07-11
+
+### Fixed
+- Hangar mechanics no longer despawn at stair tops or on failed box jobs (clear hatch before work; weld fallback instead of instant exit)
+
+---
+
+## [0.1.25] — 2026-07-11
+
+### Fixed
+- Hangar mechanics no longer despawn when fleeing thruster/weapon hazard (retreat and resume)
+
+### Changed
+- Crane bridge and trolley drawn smaller; trolley parks farther north of cargo piles
+
+---
+
+## [0.1.24] — 2026-07-11
+
+### Changed
+- Hangar mechanics walk straight up to the ship hull (aft for cargo; hull stations for weld)
+- Crane trolley parks north of cargo; hoist drops the hook onto the pile
+- New mechanic job: empty-handed hull welding with torch sparks
+
+---
+
+## [0.1.23] — 2026-07-11
+
+### Changed
+- Hangar mechanics walk pile ↔ assigned ship without pad keep-out twitch; multi-trip load/unload loops
+- Four under-deck stair hatches (one per cargo column) between mid and south rows — primary human entry/exit
+- Overhead crane rebuilt as runway + bridge + trolley + hoist with full-deck 2D travel
+
+---
+
+## [0.1.22] — 2026-07-11
+
+### Changed
+- Hangar cargo is real objects on a 3×4 hardpoint grid; crane/forklift/mechanic transfers move boxes between piles
+- Crane + forklifts share the south row; mechanics load/unload mid-row piles ↔ docked ships
+- Forklifts enter/leave via L/R interior bulkhead doors (bring-in or take-out by bay inventory pressure)
+- Humans only use those doors; bulkheads occlude them except through the open doorway
+- Cargo boxes are destructible by turret and mining laser
+
+---
+
+## [0.1.21] — 2026-07-11
+
+### Changed
+- Hangar View Ship is full-frame (no circular play clip); flight mode keeps the circle
+- Hangar weapon aim works across the whole canvas
+
+---
+
 ## [0.1.20] — 2026-07-11
 
 ### Changed

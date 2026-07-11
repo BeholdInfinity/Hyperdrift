@@ -264,10 +264,8 @@ export class GameEngine {
     // Hangar: full thruster/engine authority (Precision off)
     this.precisionActive = false;
 
-    const dx = this.input.mouseScreen.x - this.renderer.centerX;
-    const dy = this.input.mouseScreen.y - this.renderer.centerY;
-    const pointerInViewport =
-      dx * dx + dy * dy <= this.renderer.viewportRadius * this.renderer.viewportRadius;
+    // Full-frame hangar: weapons aim anywhere on the canvas
+    const pointerInViewport = true;
 
     const aimWorld = this.camera.screenToWorld(
       this.input.mouseScreen.x,
@@ -299,6 +297,13 @@ export class GameEngine {
       firedTurret: this.ship.muzzleFlash > 0.02,
       laserOn: !!this.ship.miningLaserFiring,
     });
+
+    // Real hangar cargo is destructible (turret + mining laser)
+    this.hangarBay.applyWeaponHits(
+      this.ship,
+      [...this.entityManager.getByType('projectile')],
+      deltaTime
+    );
 
     this.camera.updateHangar(this.ship.position, deltaTime, zoomWheel);
     this.renderer.emitThrusterParticles(this.ship, this.particleSystem);
@@ -469,10 +474,10 @@ export class GameEngine {
   }
 
   _renderHangar() {
-    this.renderer.setupCircularClip();
-
-    // Same live space chunk as the title screen — visible through bay-door seams
-    this._renderSpaceThroughDoors();
+    // Full-frame station bulk; bay shell + viewport glass paint over this
+    const ctx = this.renderer.ctx;
+    ctx.fillStyle = '#0a1018';
+    ctx.fillRect(0, 0, this.renderer.width, this.renderer.height);
 
     this.renderer.renderWorldLayer((worldCtx) => {
       this.hangarBay.render(worldCtx, {
@@ -499,32 +504,6 @@ export class GameEngine {
     if (this.ship) {
       this.renderer.renderShip(this.ship, this.camera);
     }
-
-    this.renderer.endCircularClip();
-  }
-
-  /** Title-identical starfield + nebulae at the drifting space camera (not hangar zoom). */
-  _renderSpaceThroughDoors() {
-    const ctx = this.renderer.ctx;
-    const time = this.gameTime;
-    const coverRadius = this.renderer.viewportRadius + 200;
-    const sx = this._spaceCam.x;
-    const sy = this._spaceCam.y;
-
-    ctx.save();
-    ctx.translate(this.renderer.centerX, this.renderer.centerY);
-
-    this.nebulaField.renderProcedural(ctx, sx, sy, time, coverRadius, 1);
-    this.starfield.render(ctx, sx, sy, coverRadius, time, 1);
-
-    ctx.restore();
-
-    // World nebulae in space-camera frame (zoom 1, no hangar offset)
-    ctx.save();
-    ctx.translate(this.renderer.centerX, this.renderer.centerY);
-    ctx.translate(-sx, -sy);
-    this.nebulaField.renderWorldNebulae(ctx, this.asteroidSystem.getNebulae(), time);
-    ctx.restore();
   }
 
   _updateHUD(capsDesired = this.input?.capsLockDesired) {
