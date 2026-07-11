@@ -19,13 +19,21 @@ const FACE_PAIRS = {
   starboard: ['starboardFore', 'starboardAft'],
 };
 
+function axisPower(held, burst, precisionActive) {
+  if (!held) return 0;
+  if (precisionActive) {
+    return burst ? PHYSICS.PRECISION_BURST_MULT : PHYSICS.PRECISION_THRUST_MULT;
+  }
+  return burst ? PHYSICS.MANEUVER_BURST_MULT : 1;
+}
+
 export class ShipController {
   constructor() {
     this.physics = new PhysicsSystem();
   }
 
-  update(ship, input, targetAngle, deltaTime) {
-    const thrust = input.getThrustInput();
+  update(ship, input, precisionActive, deltaTime) {
+    const flight = input.getFlightInput();
     const thrusters = ship.thrusters;
 
     for (const key of Object.keys(thrusters)) {
@@ -33,70 +41,130 @@ export class ShipController {
     }
     thrusters.retroBurn = false;
 
-    const rotation = this.physics.rotateTowardAngle(ship, targetAngle, deltaTime);
-    this._applyYawThrusters(thrusters, ship, rotation);
+    let yawSign = 0;
+    if (flight.yawLeft && !flight.yawRight) yawSign = -1;
+    else if (flight.yawRight && !flight.yawLeft) yawSign = 1;
 
-    this.physics.dampRotation(ship, deltaTime);
+    let yawMult = 1;
+    if (precisionActive) {
+      yawMult = PHYSICS.PRECISION_THRUST_MULT;
+      if (
+        (yawSign < 0 && flight.yawLeftBurst) ||
+        (yawSign > 0 && flight.yawRightBurst)
+      ) {
+        yawMult = PHYSICS.PRECISION_BURST_MULT;
+      }
+    } else if (
+      (yawSign < 0 && flight.yawLeftBurst) ||
+      (yawSign > 0 && flight.yawRightBurst)
+    ) {
+      yawMult = PHYSICS.YAW_FAST_MULT;
+    }
+
+    const maxRate = PHYSICS.MAX_ROTATION_SPEED * yawMult;
+    const accel = PHYSICS.ROTATION_ACCEL * Math.max(yawMult, 0.35);
+    const rotation = this.physics.applyYawInput(
+      ship,
+      yawSign,
+      maxRate,
+      accel,
+      deltaTime
+    );
+    this._applyYawThrusters(thrusters, ship, rotation, yawSign, yawMult);
+
+    if (yawSign === 0) {
+      this.physics.dampRotation(ship, deltaTime);
+    }
 
     const forward = ship.getForward();
     const right = ship.getRight();
     const totalForce = new Vec2();
+    const precisionScale = precisionActive ? PHYSICS.PRECISION_THRUST_MULT : 1;
 
-    if (thrust.brake) {
+    if (flight.brake) {
       const brake = this.physics.computeBrakingThrust(
         new Vec2(ship.velocity.x, ship.velocity.y),
         ship.angle
       );
 
-      totalForce.add(brake.force);
+      totalForce.add(brake.force.clone().scale(precisionScale));
 
       if (brake.retroBurn) {
         thrusters.retroBurn = true;
-        thrusters.mainEngine = Math.min(1, ship.velocity.length() / 300);
+        thrusters.mainEngine =
+          Math.min(1, ship.velocity.length() / 300) * precisionScale;
       } else {
-        this._lightFace(thrusters, 'aft', brake.aft);
-        this._lightFace(thrusters, 'nose', brake.nose);
-        this._lightFace(thrusters, 'starboard', brake.starboard);
-        this._lightFace(thrusters, 'port', brake.port);
+        this._lightFace(thrusters, 'aft', brake.aft * precisionScale);
+        this._lightFace(thrusters, 'nose', brake.nose * precisionScale);
+        this._lightFace(thrusters, 'starboard', brake.starboard * precisionScale);
+        this._lightFace(thrusters, 'port', brake.port * precisionScale);
       }
     } else {
-      if (thrust.forward) {
-        totalForce.add(forward.clone().scale(PHYSICS.MANEUVER_THRUST));
-        this._lightFace(thrusters, 'aft', TRANSLATION_INTENSITY);
+      const fwdPow = axisPower(flight.forward, flight.forwardBurst, precisionActive);
+      const revPow = axisPower(flight.reverse, flight.reverseBurst, precisionActive);
+      const leftPow = axisPower(flight.left, flight.leftBurst, precisionActive);
+      const rightPow = axisPower(flight.right, flight.rightBurst, precisionActive);
+
+      if (fwdPow > 0) {
+        totalForce.add(forward.clone().scale(PHYSICS.MANEUVER_THRUST * fwdPow));
+        this._lightFace(thrusters, 'aft', TRANSLATION_INTENSITY * fwdPow);
       }
-      if (thrust.reverse) {
-        totalForce.add(forward.clone().scale(-PHYSICS.MANEUVER_THRUST));
-        this._lightFace(thrusters, 'nose', TRANSLATION_INTENSITY);
+      if (revPow > 0) {
+        totalForce.add(forward.clone().scale(-PHYSICS.MANEUVER_THRUST * revPow));
+        this._lightFace(thrusters, 'nose', TRANSLATION_INTENSITY * revPow);
       }
-      if (thrust.left) {
-        totalForce.add(right.clone().scale(-PHYSICS.MANEUVER_THRUST));
-        this._lightFace(thrusters, 'starboard', TRANSLATION_INTENSITY);
+      if (leftPow > 0) {
+        totalForce.add(right.clone().scale(-PHYSICS.MANEUVER_THRUST * leftPow));
+        this._lightFace(thrusters, 'starboard', TRANSLATION_INTENSITY * leftPow);
       }
-      if (thrust.right) {
-        totalForce.add(right.clone().scale(PHYSICS.MANEUVER_THRUST));
-        this._lightFace(thrusters, 'port', TRANSLATION_INTENSITY);
+      if (rightPow > 0) {
+        totalForce.add(right.clone().scale(PHYSICS.MANEUVER_THRUST * rightPow));
+        this._lightFace(thrusters, 'port', TRANSLATION_INTENSITY * rightPow);
       }
 
-      if (thrust.mainEngine) {
-        let enginePower = PHYSICS.MAIN_ENGINE_THRUST;
-        if (thrust.afterburner) {
-          enginePower *= PHYSICS.AFTERBURNER_MULT;
-          thrusters.afterburner = 1;
+      if (flight.mainEngine) {
+        if (precisionActive) {
+          ship.mainEngineWarmup += deltaTime;
+          const warm = Math.min(1, ship.mainEngineWarmup / PHYSICS.MAIN_ENGINE_WARMUP);
+          thrusters.mainEngine = warm * 0.35;
+          if (ship.mainEngineWarmup >= PHYSICS.MAIN_ENGINE_WARMUP) {
+            totalForce.add(
+              forward
+                .clone()
+                .scale(PHYSICS.MAIN_ENGINE_THRUST * PHYSICS.PRECISION_THRUST_MULT)
+            );
+            thrusters.mainEngine = PHYSICS.PRECISION_THRUST_MULT;
+          }
+        } else {
+          ship.mainEngineWarmup = 0;
+          let enginePower = PHYSICS.MAIN_ENGINE_THRUST;
+          if (flight.afterburner) {
+            enginePower *= PHYSICS.AFTERBURNER_MULT;
+            thrusters.afterburner = 1;
+          }
+          totalForce.add(forward.clone().scale(enginePower));
+          thrusters.mainEngine = flight.afterburner ? 1.5 : 1;
         }
-        totalForce.add(forward.clone().scale(enginePower));
-        thrusters.mainEngine = thrust.afterburner ? 1.5 : 1;
+      } else {
+        ship.mainEngineWarmup = 0;
       }
     }
 
     this.physics.applyForce(ship, totalForce, deltaTime);
 
-    // Brakes stop applying force below VELOCITY_THRESHOLD; snap to rest so
-    // the ship does not coast forever at a few units/sec (HUD SPD ~4).
-    if (thrust.brake && ship.velocity.length() < PHYSICS.VELOCITY_THRESHOLD) {
+    if (flight.brake && ship.velocity.length() < PHYSICS.VELOCITY_THRESHOLD) {
       ship.velocity.set(0, 0);
     }
 
     this.physics.integrate(ship, deltaTime);
+
+    // While Precision is active, engage speed is a hard velocity ceiling
+    if (precisionActive) {
+      const spd = ship.velocity.length();
+      if (spd > PHYSICS.PRECISION_ENGAGE_SPEED) {
+        ship.velocity.normalize().scale(PHYSICS.PRECISION_ENGAGE_SPEED);
+      }
+    }
   }
 
   _addThruster(thrusters, name, amount) {
@@ -117,18 +185,24 @@ export class ShipController {
     }
   }
 
-  _applyYawThrusters(thrusters, ship, rotation) {
+  _applyYawThrusters(thrusters, ship, rotation, yawSign, yawMult) {
     if (!rotation.isRotating) return;
 
-    const demand = Math.abs(rotation.rotationDemand) / PHYSICS.MAX_ROTATION_SPEED;
-    const turnIntensity = clamp(demand, YAW_INTENSITY_MIN, YAW_INTENSITY_MAX);
+    const demand = Math.min(1, Math.abs(rotation.rotationDemand) / PHYSICS.MAX_ROTATION_SPEED);
+    const turnIntensity = clamp(
+      Math.max(demand, YAW_INTENSITY_MIN) * Math.min(yawMult, 1.5),
+      YAW_INTENSITY_MIN,
+      YAW_INTENSITY_MAX * Math.min(1.2, yawMult)
+    );
     const angVel = ship.angularVelocity;
     const velSign = Math.sign(angVel);
-    const diffSign = Math.sign(rotation.diff);
 
-    // Semi-Newtonian stop: opposite group when spinning against demand or settling on aim
-    const settling = Math.abs(rotation.diff) < 0.1 && Math.abs(angVel) > 0.08;
-    const opposingDemand = diffSign !== 0 && velSign !== 0 && diffSign !== velSign && Math.abs(angVel) > 0.05;
+    const settling = yawSign === 0 && Math.abs(angVel) > 0.08;
+    const opposingDemand =
+      yawSign !== 0 &&
+      velSign !== 0 &&
+      yawSign !== velSign &&
+      Math.abs(angVel) > 0.05;
     const accelOpposesSpin =
       Math.abs(angVel) > 0.05 &&
       Math.abs(rotation.angularAccel) > 0.4 &&
@@ -140,8 +214,8 @@ export class ShipController {
       return;
     }
 
-    if (Math.abs(rotation.diff) > 0.02) {
-      const turnGroup = rotation.diff > 0 ? YAW_CW : YAW_CCW;
+    if (yawSign !== 0) {
+      const turnGroup = yawSign > 0 ? YAW_CW : YAW_CCW;
       this._lightYawGroup(thrusters, turnGroup, turnIntensity);
     }
   }

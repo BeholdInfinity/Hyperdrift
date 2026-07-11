@@ -99,6 +99,33 @@ export class PhysicsSystem {
       isRotating: Math.abs(diff) > 0.02 || Math.abs(entity.angularVelocity) > 0.05,
     };
   }
+
+  /**
+   * Keyboard yaw: yawSign -1 (Q) / 0 / +1 (E).
+   * When yawSign is 0, caller should damp; this only accelerates toward ±maxRate.
+   */
+  applyYawInput(entity, yawSign, maxRate, accel, deltaTime) {
+    const prevAngularVel = entity.angularVelocity;
+    const targetAngularVel = yawSign * maxRate;
+
+    if (yawSign !== 0) {
+      entity.angularVelocity = lerpAngular(
+        entity.angularVelocity,
+        targetAngularVel,
+        1 - Math.exp(-accel * deltaTime)
+      );
+    }
+
+    const angularAccel = (entity.angularVelocity - prevAngularVel) / Math.max(deltaTime, 0.001);
+    const rotationDemand = targetAngularVel;
+
+    return {
+      diff: yawSign !== 0 ? yawSign : Math.sign(entity.angularVelocity) || 0,
+      rotationDemand,
+      angularAccel,
+      isRotating: yawSign !== 0 || Math.abs(entity.angularVelocity) > 0.05,
+    };
+  }
 }
 
 function lerpAngular(a, b, t) {

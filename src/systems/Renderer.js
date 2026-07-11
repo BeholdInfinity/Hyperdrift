@@ -1,4 +1,5 @@
 import { HARDPOINTS, THRUSTER_KEYS } from '../entities/ShipHardpoints.js';
+import { SHIP } from '../core/Constants.js';
 
 export class Renderer {
   constructor(canvas) {
@@ -86,16 +87,13 @@ export class Renderer {
     ctx.scale(camera.effectiveZoom, camera.effectiveZoom);
 
     this._drawShipHull(ctx);
-    this._drawHardpointHardware(ctx);
+    this._drawHardpointHardware(ctx, ship);
     this._drawThrusterPlumes(ctx, ship);
+    this._drawDorsalTurret(ctx, ship);
+    this._drawMiningLaserBeam(ctx, ship);
 
-    const gun = HARDPOINTS.gun;
     if (ship.muzzleFlash > 0) {
-      const flashAlpha = ship.muzzleFlash / 0.05;
-      ctx.fillStyle = `rgba(150, 220, 255, ${flashAlpha})`;
-      ctx.beginPath();
-      ctx.arc(gun.x, gun.y, 7 * flashAlpha, 0, Math.PI * 2);
-      ctx.fill();
+      this._drawTurretMuzzleBloom(ctx, ship);
     }
 
     ctx.restore();
@@ -201,9 +199,9 @@ export class Renderer {
     ctx.fill();
   }
 
-  _drawHardpointHardware(ctx) {
+  _drawHardpointHardware(ctx, ship) {
     const eng = HARDPOINTS.mainEngine;
-    const gun = HARDPOINTS.gun;
+    const laser = HARDPOINTS.miningLaser;
 
     // Main engine bell (shared cruise / afterburner origin)
     ctx.fillStyle = '#121c24';
@@ -243,24 +241,155 @@ export class Renderer {
       ctx.restore();
     }
 
-    // Forward gun barrel
-    ctx.fillStyle = '#3a5060';
-    ctx.strokeStyle = '#9ec8e8';
+    // Mining laser head — aims within forward arc
+    ctx.save();
+    ctx.translate(laser.x, laser.y);
+    ctx.rotate(ship.miningLaserRelAngle);
+    ctx.fillStyle = '#2a4050';
+    ctx.strokeStyle = '#7ec8a0';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(gun.x - 5, -1.4);
-    ctx.lineTo(gun.x + 1.5, -1.1);
-    ctx.lineTo(gun.x + 1.5, 1.1);
-    ctx.lineTo(gun.x - 5, 1.4);
+    ctx.moveTo(-3.5, -2.1);
+    ctx.lineTo(3, -1.5);
+    ctx.lineTo(3, 1.5);
+    ctx.lineTo(-3.5, 2.1);
     ctx.closePath();
     ctx.fill();
     ctx.stroke();
-
-    ctx.fillStyle = '#1a2834';
+    ctx.fillStyle = '#1a3028';
     ctx.beginPath();
-    ctx.arc(gun.x + 0.5, 0, 1.3, 0, Math.PI * 2);
+    ctx.arc(3.2, 0, 1.4, 0, Math.PI * 2);
     ctx.fill();
+    ctx.restore();
   }
+
+  _drawDorsalTurret(ctx, ship) {
+    const outer = SHIP.TURRET_BASE_OUTER;
+    const mid = SHIP.TURRET_BASE_MID;
+    const inner = SHIP.TURRET_BASE_INNER;
+    const localAim = ship.getTurretLocalAngle();
+    const recoil = ship.turretRecoil * SHIP.TURRET_RECOIL_DIST;
+
+    // Concentric base rings (ship-fixed)
+    ctx.strokeStyle = '#1a2834';
+    ctx.lineWidth = 1.2;
+    ctx.fillStyle = 'rgba(20, 32, 42, 0.55)';
+    ctx.beginPath();
+    ctx.arc(0, 0, outer, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.arc(0, 0, mid, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Cardinal spokes outer→mid
+    ctx.beginPath();
+    for (let i = 0; i < 4; i++) {
+      const a = (i * Math.PI) / 2;
+      ctx.moveTo(Math.cos(a) * mid, Math.sin(a) * mid);
+      ctx.lineTo(Math.cos(a) * outer, Math.sin(a) * outer);
+    }
+    ctx.stroke();
+
+    // Inner pie wedges
+    ctx.beginPath();
+    ctx.arc(0, 0, inner, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.beginPath();
+    for (let i = 0; i < 8; i++) {
+      const a = (i * Math.PI) / 4;
+      ctx.moveTo(0, 0);
+      ctx.lineTo(Math.cos(a) * inner, Math.sin(a) * inner);
+    }
+    ctx.stroke();
+
+    // Rotating sleeve + recoiling barrel
+    ctx.save();
+    ctx.rotate(localAim);
+
+    // Grey housing
+    ctx.fillStyle = '#6a7278';
+    ctx.beginPath();
+    const sleeveInner = inner + 0.4;
+    const sleeveOuter = outer - 0.5;
+    const halfW = 2.4;
+    ctx.moveTo(sleeveInner, -halfW);
+    ctx.lineTo(sleeveOuter, -halfW);
+    ctx.lineTo(sleeveOuter, halfW);
+    ctx.lineTo(sleeveInner, halfW);
+    ctx.closePath();
+    ctx.fill();
+    // Rounded against inner disc
+    ctx.beginPath();
+    ctx.arc(0, 0, sleeveInner, -Math.asin(halfW / sleeveInner), Math.asin(halfW / sleeveInner));
+    ctx.lineTo(sleeveInner, -halfW);
+    ctx.closePath();
+    ctx.fill();
+
+    // Black barrel + muzzle (recoil toward center)
+    const barrelStart = sleeveInner + 0.5;
+    const barrelEnd = SHIP.TURRET_BARREL_LENGTH - recoil;
+    const muzzleLen = 3.4;
+    const muzzleEnd = barrelEnd + SHIP.TURRET_MUZZLE_EXTRA;
+    ctx.fillStyle = '#0a0c0e';
+    ctx.fillRect(barrelStart, -1.35, Math.max(0.5, barrelEnd - barrelStart), 2.7);
+    ctx.fillRect(muzzleEnd - muzzleLen, -2.1, muzzleLen, 4.2);
+
+    ctx.restore();
+  }
+
+  _drawTurretMuzzleBloom(ctx, ship) {
+    const localAim = ship.getTurretLocalAngle();
+    const recoil = ship.turretRecoil * SHIP.TURRET_RECOIL_DIST;
+    const tipX = SHIP.TURRET_BARREL_LENGTH + SHIP.TURRET_MUZZLE_EXTRA - recoil;
+    const flashAlpha = Math.min(1, ship.muzzleFlash / 0.06);
+
+    ctx.save();
+    ctx.rotate(localAim);
+    ctx.fillStyle = `rgba(150, 220, 255, ${flashAlpha})`;
+    ctx.beginPath();
+    ctx.arc(tipX + 1, 0, 5 * flashAlpha, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = `rgba(255, 240, 200, ${flashAlpha * 0.85})`;
+    ctx.beginPath();
+    ctx.arc(tipX + 2.5, 0, 2.5 * flashAlpha, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  _drawMiningLaserBeam(ctx, ship) {
+    if (!ship.miningLaserFiring) return;
+    const laser = HARDPOINTS.miningLaser;
+
+    ctx.save();
+    ctx.translate(laser.x, laser.y);
+    ctx.rotate(ship.miningLaserRelAngle);
+
+    const len = ship.miningLaserBeamLength || SHIP.MINING_LASER_RANGE;
+    const grad = ctx.createLinearGradient(0, 0, len, 0);
+    grad.addColorStop(0, 'rgba(120, 255, 180, 0.85)');
+    grad.addColorStop(0.4, 'rgba(80, 220, 140, 0.45)');
+    grad.addColorStop(1, 'rgba(40, 180, 100, 0)');
+
+    ctx.strokeStyle = grad;
+    ctx.lineWidth = 2.2;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(3, 0);
+    ctx.lineTo(len, 0);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(200, 255, 220, 0.5)';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(3, 0);
+    ctx.lineTo(len * 0.7, 0);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
 
   _drawPlume(ctx, x, y, exhaustAngle, intensity, len, color, width = 2, fadeRgba = 'rgba(50, 100, 150, 0)', lean = 0) {
     if (!intensity || intensity <= 0) return;

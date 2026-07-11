@@ -38,6 +38,7 @@ export class GameEngine {
     this.speedStreaks = new SpeedStreaks();
 
     this.ship = null;
+    this.precisionActive = false;
     this.gameTime = 0;
     this._titleHeading = Math.random() * Math.PI * 2;
     this._titleFade = 0;
@@ -48,6 +49,7 @@ export class GameEngine {
     this._hudSpeed = document.getElementById('speed-value');
     this._hudCoords = document.getElementById('coords-value');
     this._hudZoom = document.getElementById('zoom-value');
+    this._hudPrecision = document.getElementById('precision-value');
     this._pauseMenu = document.getElementById('pause-menu');
     this._fullscreenBtn = document.getElementById('fullscreen-btn');
     this._pauseFullscreenBtn = document.getElementById('pause-fullscreen-btn');
@@ -90,6 +92,8 @@ export class GameEngine {
     const x = this.camera.position.x;
     const y = this.camera.position.y;
     this.ship = new Ship(x, y);
+    this.ship.turretAngle = this.ship.angle;
+    this.precisionActive = false;
     this.entityManager.add(this.ship, 'ship');
     this.mode = 'playing';
     this.paused = false;
@@ -113,6 +117,7 @@ export class GameEngine {
     }
     if (this.paused) {
       this.input.mouseDown = false;
+      this.input.mouseRightDown = false;
     }
     this._updateFullscreenButtons(!!document.fullscreenElement);
   }
@@ -179,22 +184,42 @@ export class GameEngine {
 
     this.asteroidSystem.update(this.ship.position.x, this.ship.position.y);
 
+    const speed = this.ship.velocity.length();
+    const capsDesired = this.input.capsLockDesired;
+    if (!capsDesired) {
+      this.precisionActive = false;
+    } else if (this.precisionActive) {
+      // Stay active until Caps off; speed is capped while active
+    } else if (speed < PHYSICS.PRECISION_ENGAGE_SPEED) {
+      this.precisionActive = true;
+    }
+    // else: Caps on but too fast to engage → standby (HUD only)
+
+    const dx = this.input.mouseScreen.x - this.renderer.centerX;
+    const dy = this.input.mouseScreen.y - this.renderer.centerY;
+    const pointerInViewport =
+      dx * dx + dy * dy <= this.renderer.viewportRadius * this.renderer.viewportRadius;
+
     const aimWorld = this.camera.screenToWorld(
       this.input.mouseScreen.x,
       this.input.mouseScreen.y,
       this.renderer.centerX,
       this.renderer.centerY
     );
-    const targetAngle = Math.atan2(
-      aimWorld.y - this.ship.position.y,
-      aimWorld.x - this.ship.position.x
-    );
 
-    this.shipController.update(this.ship, this.input, targetAngle, deltaTime);
+    this.shipController.update(this.ship, this.input, this.precisionActive, deltaTime);
     this.ship.update(deltaTime);
 
-    this.weaponSystem.update(this.ship, this.input, deltaTime);
-    this.weaponSystem.checkCollisions(this.asteroidSystem.getActiveAsteroids());
+    const asteroids = this.asteroidSystem.getActiveAsteroids();
+    this.weaponSystem.update(
+      this.ship,
+      this.input,
+      aimWorld,
+      pointerInViewport,
+      asteroids,
+      deltaTime
+    );
+    this.weaponSystem.checkCollisions(asteroids);
 
     this.entityManager.update(deltaTime);
     this.particleSystem.update(deltaTime);
@@ -209,17 +234,17 @@ export class GameEngine {
       zoomWheel
     );
 
-    const speed = this.ship.velocity.length();
+    const speedAfter = this.ship.velocity.length();
     this.speedStreaks.update(
       { x: this.ship.velocity.x, y: this.ship.velocity.y },
-      speed,
+      speedAfter,
       PHYSICS.MAX_SPEED,
       deltaTime,
       this.renderer.viewportRadius
     );
 
     this.renderer.emitThrusterParticles(this.ship, this.particleSystem);
-    this._updateHUD();
+    this._updateHUD(capsDesired);
   }
 
   _renderBackground({ fullscreen = false, includeWorldNebulae = true } = {}) {
@@ -307,7 +332,7 @@ export class GameEngine {
     this.renderer.endCircularClip();
   }
 
-  _updateHUD() {
+  _updateHUD(capsDesired = this.input?.capsLockDesired) {
     if (!this._hudSpeed || !this.ship) return;
     const speed = Math.round(
       Math.hypot(this.ship.velocity.x, this.ship.velocity.y)
@@ -316,6 +341,18 @@ export class GameEngine {
     this._hudCoords.textContent = `${Math.round(this.ship.position.x)}, ${Math.round(this.ship.position.y)}`;
     if (this._hudZoom) {
       this._hudZoom.textContent = this.camera.effectiveZoom.toFixed(2);
+    }
+    if (this._hudPrecision) {
+      if (this.precisionActive) {
+        this._hudPrecision.textContent = 'PRECISION';
+        this._hudPrecision.className = 'precision-active';
+      } else if (capsDesired) {
+        this._hudPrecision.textContent = 'PRECISION STANDBY';
+        this._hudPrecision.className = 'precision-standby';
+      } else {
+        this._hudPrecision.textContent = '';
+        this._hudPrecision.className = '';
+      }
     }
   }
 }

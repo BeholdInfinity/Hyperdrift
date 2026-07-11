@@ -8,7 +8,10 @@ export const SHIP_EXTENT = {
 };
 
 export const HARDPOINTS = {
-  gun: { x: 21, y: 0, angle: 0 },
+  /** Dorsal combat turret pivot — ship rotation center */
+  dorsalTurret: { x: 0, y: 0, angle: 0 },
+  /** Forward mining laser mount */
+  miningLaser: { x: 21, y: 0, angle: 0 },
   mainEngine: { x: -19, y: 0, angle: Math.PI },
 
   nosePort: { x: 15, y: -6.5, angle: 0 },
@@ -21,7 +24,7 @@ export const HARDPOINTS = {
   starboardAft: { x: -8, y: 13, angle: Math.PI / 2 },
 };
 
-/** Maneuvering thruster keys (excludes gun / mainEngine). */
+/** Maneuvering thruster keys (excludes weapons / mainEngine). */
 export const THRUSTER_KEYS = [
   'aftPort',
   'aftStarboard',

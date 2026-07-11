@@ -32,9 +32,10 @@
         <p class="subtitle">Procedural Universe Prototype</p>
         <button id="start-btn">LAUNCH</button>
         <div class="controls-hint">
-          <p><kbd>WASD</kbd> Maneuvering thrusters</p>
-          <p><kbd>SPACE</kbd> Main engine &nbsp; <kbd>SHIFT</kbd> Afterburner</p>
-          <p><kbd>CTRL</kbd> Space brakes &nbsp; <kbd>MOUSE</kbd> Aim &amp; fire</p>
+          <p><kbd>WASD</kbd> Thrust · double-tap hold = burst</p>
+          <p><kbd>Q</kbd>/<kbd>E</kbd> Yaw · double-tap hold = fast</p>
+          <p><kbd>SPACE</kbd> Main engine &nbsp; <kbd>SHIFT</kbd> Afterburner &nbsp; <kbd>CTRL</kbd> Brakes</p>
+          <p><kbd>CAPS</kbd> Precision (slow speeds) &nbsp; <kbd>LMB</kbd> Turret &nbsp; <kbd>RMB</kbd> Mining laser</p>
           <p><kbd>SCROLL</kbd> Zoom &nbsp; <kbd>ESC</kbd> Pause</p>
         </div>
       </div>
@@ -54,13 +55,14 @@
         <div id="speed-readout">SPD: <span id="speed-value">0</span></div>
         <div id="coords-readout">POS: <span id="coords-value">0, 0</span></div>
         <div id="zoom-readout">ZOOM: <span id="zoom-value">1.0</span>x</div>
+        <div id="precision-readout"><span id="precision-value"></span></div>
     </div>
   </div>
 
   <!-- Inline so the stamp does not depend on cached ES modules -->
   <script>
     (function () {
-      var VERSION = '0.1.5';
+      var VERSION = '0.1.15';
       var el = document.getElementById('build-stamp');
       if (!el) return;
 

@@ -12,6 +12,29 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 - Radar minimap in corner panel
 - Settings and main-menu flows
 - Audio
+- Resource drops (guns vs mining laser yield tradeoff)
+- Precision power-pip allocation for laser / scanner
+
+---
+
+## [0.1.15] — 2026-07-11
+
+### Added
+- Dorsal 360° combat turret at hull center (mouse aim, LMB, 3 shots/sec, recoil + muzzle bloom)
+- Nose mining laser with limited forward arc (RMB continuous beam)
+- Q/E keyboard yaw; double-tap-hold burst on QWEASD
+- Caps Lock Precision mode: speed-gated engage, standby when too fast, no afterburner, main-engine warm-up
+- Weapon aim/fire only while pointer is inside the play circle (turret gyro vs laser hull-relative lock)
+
+### Changed
+- Mouse no longer rotates the ship; flight and combat controls separated
+- Controls hint + HUD Precision / Standby readout
+- Yaw rates slowed (cruise + fast); translation unchanged
+- Turret and mining laser **slew** toward the pointer (no snap on viewport re-entry)
+- While Precision is active, engage speed is a **velocity cap** (not a drop-to-standby threshold)
+
+### Fixed
+- Ctrl+QWEASD (and Ctrl+Space) no longer trigger browser chords during play (e.g. Ctrl+E search, Ctrl+W close tab)
 
 ---
 

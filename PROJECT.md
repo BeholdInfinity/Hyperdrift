@@ -46,11 +46,11 @@ src/
     PhysicsSystem.js      Forces, braking, rotation
     CameraSystem.js       Offset, zoom (manual + speed-based)
     Renderer.js           Circular viewport, multi-section ship, thrusters, entities
-    WeaponSystem.js       Energy cannon, collisions, impacts
+    WeaponSystem.js       Dorsal turret + mining laser, collisions, impacts
     AsteroidSystem.js     Chunk load/unload
     ProceduralGeneration.js  Seeded asteroids + nebulae
   entities/
-    Ship.js, ShipController.js, ShipHardpoints.js (gun/engine/8 thrusters)
+    Ship.js, ShipController.js, ShipHardpoints.js (turret/laser/engine/8 thrusters)
     Projectile.js, Asteroid.js, Particle.js, Entity.js, EntityManager.js
   world/
     Starfield.js          7 parallax star layers (screen-fixed size, tiled when zoomed out)
@@ -72,14 +72,15 @@ src/
 
 | Area | Status |
 |------|--------|
-| Semi-Newtonian flight (WASD, main engine, afterburner, brakes) | Done |
+| Semi-Newtonian flight (WASD, Q/E yaw, main engine, afterburner, brakes) | Done |
+| Double-tap-hold burst on QWEASD; Caps Lock Precision (engage gate + active speed cap) | Done |
 | Space brakes snap to rest below velocity threshold; retro-burn when nose-into-velocity | Done |
-| Mouse aim + visible cursor (no pointer lock) | Done |
+| Mouse aims weapons inside viewport circle (cursor always visible); turret/laser slew | Done |
 | 8 blue maneuver thrusters + orange main engine (hardpoint-driven plumes) | Done |
 | Plume flow: leading flatten + crosswind lean (AoA/speed readable in flames) | Done |
 | Multi-section filled ship silhouette (`ShipHardpoints.js`) | Done |
 | Ship-local exhaust particles; camera tracks post-physics pose | Done |
-| Energy cannon (hold fire) | Done |
+| Dorsal 360° combat turret (LMB, 3/s) + nose mining laser (RMB) | Done |
 | Circular viewport + corner UI placeholders | Done |
 | Title screen (fullscreen backdrop drift, fade-in, version stamp) | Done |
 | Procedural asteroids + nebulae | Done |
@@ -92,6 +93,9 @@ src/
 ## Key tuning (`src/core/Constants.js`)
 
 - `PHYSICS.MAX_SPEED` — 900
+- `PHYSICS.MAX_ROTATION_SPEED` — 2.6 (cruise yaw); `YAW_FAST_MULT` — 1.65
+- `PHYSICS.PRECISION_ENGAGE_SPEED` — 100 (engage gate + active speed cap)
+- `SHIP.TURRET_SLEW_RATE` / `MINING_LASER_SLEW_RATE` — 5.5 / 4.5
 - `CAMERA.ZOOM_MIN/MAX` — 0.4 / 2.0
 - `WORLD.CHUNK_SIZE` — 2000
 - `WORLD.LOAD_RADIUS` / `UNLOAD_RADIUS` — 3 / 5
@@ -100,11 +104,14 @@ src/
 
 | Input | Action |
 |-------|--------|
-| WASD | Maneuvering thrusters (aft/nose/port/starboard) |
-| Space | Main engine |
-| Shift | Afterburner |
-| Ctrl | Smart space brakes |
-| Mouse | Aim + fire |
+| WASD | Maneuvering thrusters (double-tap hold = burst) |
+| Q / E | Yaw (double-tap hold = fast / Precision near-default) |
+| Space | Main engine (warm-up in Precision) |
+| Shift | Afterburner (disabled in Precision) |
+| Ctrl | Smart space brakes (Ctrl+QWEASD blocked from browser shortcuts while playing) |
+| Caps Lock | Precision desire (engage when slow; active = speed-capped) |
+| LMB | Fire dorsal turret (pointer in circle; slews to aim) |
+| RMB | Mining laser (pointer in circle; slews within arc) |
 | Scroll | Zoom |
 | ESC | Pause / resume |
 | Fullscreen btn | Enter/exit fullscreen (Systems panel or pause menu) |

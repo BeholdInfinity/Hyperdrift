@@ -1,6 +1,7 @@
 import { Entity } from './Entity.js';
 import { Vec2 } from '../utils/MathUtils.js';
 import { HARDPOINTS } from './ShipHardpoints.js';
+import { SHIP } from '../core/Constants.js';
 
 export class Ship extends Entity {
   constructor(x = 0, y = 0) {
@@ -20,8 +21,18 @@ export class Ship extends Entity {
       afterburner: 0,
       retroBurn: false,
     };
+    /** World-space combat turret aim (gyro) */
+    this.turretAngle = 0;
+    /** Ship-relative mining laser aim (clamped to arc) */
+    this.miningLaserRelAngle = 0;
     this.fireCooldown = 0;
     this.muzzleFlash = 0;
+    /** 1 → 0 recoil amount for black barrel */
+    this.turretRecoil = 0;
+    this.miningLaserFiring = false;
+    this.miningLaserBeamLength = SHIP.MINING_LASER_RANGE;
+    /** Seconds Space has been held (Precision warm-up) */
+    this.mainEngineWarmup = 0;
   }
 
   getForward() {
@@ -32,18 +43,49 @@ export class Ship extends Entity {
     return Vec2.fromAngle(this.angle + Math.PI / 2);
   }
 
-  getCannonTip() {
-    const gun = HARDPOINTS.gun;
+  /** Local aim of dorsal turret relative to hull */
+  getTurretLocalAngle() {
+    return this.turretAngle - this.angle;
+  }
+
+  getMiningLaserWorldAngle() {
+    return this.angle + this.miningLaserRelAngle;
+  }
+
+  _localToWorld(lx, ly) {
     const cos = Math.cos(this.angle);
     const sin = Math.sin(this.angle);
     return {
-      x: this.position.x + gun.x * cos - gun.y * sin,
-      y: this.position.y + gun.x * sin + gun.y * cos,
+      x: this.position.x + lx * cos - ly * sin,
+      y: this.position.y + lx * sin + ly * cos,
     };
+  }
+
+  /** Muzzle tip in world space (accounts for recoil) */
+  getTurretMuzzle() {
+    const recoil = this.turretRecoil * SHIP.TURRET_RECOIL_DIST;
+    const tipDist =
+      SHIP.TURRET_BARREL_LENGTH + SHIP.TURRET_MUZZLE_EXTRA - recoil;
+    const dir = Vec2.fromAngle(this.turretAngle);
+    return {
+      x: this.position.x + dir.x * tipDist,
+      y: this.position.y + dir.y * tipDist,
+    };
+  }
+
+  getMiningLaserOrigin() {
+    const hp = HARDPOINTS.miningLaser;
+    return this._localToWorld(hp.x, hp.y);
   }
 
   update(deltaTime) {
     if (this.fireCooldown > 0) this.fireCooldown -= deltaTime;
     if (this.muzzleFlash > 0) this.muzzleFlash -= deltaTime;
+    if (this.turretRecoil > 0) {
+      this.turretRecoil = Math.max(
+        0,
+        this.turretRecoil - deltaTime / SHIP.TURRET_RECOIL_RECOVER
+      );
+    }
   }
 }
