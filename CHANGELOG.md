@@ -6,10 +6,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
-### Changed
-- Hangar bay reframed as **Home Base**: seed for new-game start and between-mission hub (extraction / rogue-lite). Bay exists today via title → VIEW SHIP; launch/return loop not wired yet (see `GDD.md`)
-- Home Base design note: B1/B3 bay work stays ambient sim; **B2** load/unload/repair/upgrade only runs when the player requests it, with a queue that completes per finished animation (`GDD.md`)
-
 ### Planned
 - Home Base: launch from hangar into a run; extract/return to hangar
 - Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
@@ -20,6 +16,71 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 - Audio
 - Resource drops (guns vs mining laser yield tradeoff)
 - Precision power-pip allocation for laser / scanner
+
+---
+
+## [0.1.34] — 2026-07-11
+
+### Changed
+- Forklifts prioritize outbound takeOut over inbound bringIn (anti-clog)
+- Empty forklifts leaving the bay peel off to grab outbound cargo instead of driving past it
+
+---
+
+## [0.1.33] — 2026-07-11
+
+### Fixed
+- Mechanics no longer walk up from stairs toward the ship only to turn around and despawn
+- Idle crew are not spawned onto the deck; welders only appear when chosen deliberately
+- Load/install jobs re-validate before walking to the hull (no empty-handed ship touch)
+
+---
+
+## [0.1.32] — 2026-07-11
+
+### Fixed
+- Forklifts no longer spawn cargo mid-bay after a drop — they exit to fetch the next inbound load
+- Install / uninstall ship mounts play continuous weld sparks like hull repairs
+- Station crew claim tasks (job+pile); claimed work is filtered out of other crew pick lists
+
+---
+
+## [0.1.31] — 2026-07-11
+
+### Fixed
+- Idle crew walking to despawn will reroute if new doable work appears
+- Mechanics no longer strip ship mounts without a staged replacement (UP·IN); unload only when bay is exporting
+- Forklifts no longer flood empty bays with inbound freight (per-bay inbound soft cap)
+- Crane hard-prioritizes clearing blocked destinations, then at-capacity piles
+
+---
+
+## [0.1.30] — 2026-07-11
+
+### Changed
+- Hold cargo draws as rectangles only; ship-mount upgrades keep complex silhouettes
+- Cargo hardpoints use a 2×2 slot grid (horizontal + vertical), max 4 items per area
+- Crane / mechanics / forklifts skip full destinations and pick the next doable task
+- If only blocked tasks remain, actors linger at the task start until the blockage clears
+- Clearing full piles is prioritized for whoever can help (forklifts: south row only)
+- With no doable or blocked work left, NPCs path to despawn
+
+---
+
+## [0.1.29] — 2026-07-11
+
+### Changed
+- Hangar cargo hardpoints are now **3×6** (two columns per bay: left=inbound, right=outbound)
+- Rows: north=ship upgrades, mid=hold cargo, south=forklift ↔ storage I/O
+- Crane / forklift / mechanic jobs follow in/out lanes (forklift south-in / south-out only)
+- Mechanics also install/remove upgrades (top-row pipeline) alongside mid-row cargo trips
+- Stair hatches are one per bay (between that bay’s columns)
+- Ship-mount upgrades draw as distinct parts (laser, turret, armor, thruster, engine, sensor), not crates
+- Hold cargo silhouettes expanded (ore, ammo crates, barrels, etc.)
+
+### Changed (docs)
+- Hangar bay reframed as **Home Base**: seed for new-game start and between-mission hub (extraction / rogue-lite). Bay exists today via title → VIEW SHIP; launch/return loop not wired yet (see `GDD.md`)
+- Home Base design note: B1/B3 bay work stays ambient sim; **B2** load/unload/repair/upgrade only runs when the player requests it, with a queue that completes per finished animation (`GDD.md`)
 
 ---
 

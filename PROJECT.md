@@ -56,7 +56,7 @@ src/
     Starfield.js          7 parallax star layers (screen-fixed size, tiled when zoomed out)
     NebulaField.js        3 depth layers + ambient procedural nebulae
     SpeedStreaks.js       Velocity-opposed foreground streaks (screen-space)
-    HangarBay.js          Home Base hangar (docked bay + cargo logistics NPCs)
+    HangarBay.js          Home Base hangar (3×6 cargo lanes + logistics NPCs)
     HangarVisitorShips.js Placeholder neighbor-pad ship silhouettes
   utils/
     MathUtils.js, SeededRandom.js
@@ -86,7 +86,7 @@ src/
 | Dorsal 360° combat turret (LMB, 3/s) + nose mining laser (RMB) | Done |
 | Circular viewport + corner UI placeholders | Done |
 | Title screen (fullscreen backdrop drift, fade-in, version stamp) | Done |
-| Home Base hangar (full-frame; B1–B3; bridge crane; stairs; 3×4 cargo logistics) | Bay done; launch/return not wired |
+| Home Base hangar (full-frame; B1–B3; bridge crane; stairs; 3×6 cargo logistics) | Bay done; launch/return not wired |
 | Procedural asteroids + nebulae | Done |
 | 7-layer starfield, 3-layer nebulae | Done |
 | Speed streaks (velocity-opposed, screen-space) | Done |

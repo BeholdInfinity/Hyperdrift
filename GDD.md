@@ -6,7 +6,7 @@
 |-----|-------|
 | **[`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md)** | Unresolved design decisions — for conversation sessions |
 | **[`VISION.md`](VISION.md)** | Long-term north star — *Hyperdrift Crewline* (multiplayer crew game) |
-| **This file (`GDD.md`)** | Prototype v0.1.28 — solo flight, procedural space |
+| **This file (`GDD.md`)** | Prototype v0.1.34 — solo flight, procedural space |
 | **[`PROJECT.md`](PROJECT.md)** | Dev handoff — architecture, run, status |
 
 | Field | Value |
@@ -14,7 +14,7 @@
 | Title | Hyperdrift *(prototype)* / Hyperdrift Crewline *(working title, see VISION.md)* |
 | Genre | Top-down 2D spaceflight / exploration |
 | Platform | Web browser |
-| Status | Prototype v0.1.28 |
+| Status | Prototype v0.1.34 |
 
 ---
 
@@ -49,11 +49,25 @@ The hangar bay is the prototype seed of **Home Base**: the place you start a new
 |-----|---------|
 | Full-frame docked bay (B1 · B2 · B3; player on B2) | Launch into space from the hangar |
 | Live thrusters / engine / weapons (translation locked) | Extract / return from a run into the same bay |
-| 3×4 cargo grid, manned bridge crane, stairs, bulkhead doors | Persistent inventory / loadout across sessions |
+| 3×6 cargo grid (2 cols/bay: left=in, right=out), manned crane, stairs, bulkheads | Persistent inventory / loadout across sessions |
 | Forklift + mechanic logistics (ambient on all pads today) | Player-request job queue for **B2 only** (see below) |
-| Destructible crates | Mission board, shop UI, upgrades, between-run meta |
+| Distinct upgrade parts + hold cargo; destructible | Mission board, shop UI, between-run meta |
 
 Entered today from the title screen (**VIEW SHIP**). Design intent: this mode becomes the real start-of-run and between-mission surface — not a throwaway inspection tool.
+
+### Cargo hardpoints (3×6)
+
+Each bay owns **two columns** flanking its pad: **left = inbound (load)**, **right = outbound (unload)**.
+
+| Row | Role | Pipeline |
+|-----|------|----------|
+| **North** | Ship mounts / upgrades | Install from top-left; removed mounts to top-right |
+| **Mid** | Hold cargo | Buy/load via mid-left; sell/unload via mid-right |
+| **South** | Storage I/O | Forklift drops inbound on south-left; picks outbound from south-right |
+
+Vertical flow (example upgrade install): forklift → south-left → crane → top-left → mechanic installs; old mount → top-right → crane → south-right → forklift off-screen (sim vanish today; later crew stash/sell).
+
+Each hardpoint holds up to **4** items in a 2×2 slot grid. Hold cargo is rectangular; ship mounts use distinct silhouettes. Actors skip full destinations, linger on blocked jobs until space opens, prioritize clearing blockages they can help with, and despawn when idle.
 
 ### Bay activity: ambient vs player-request (future)
 
@@ -209,7 +223,7 @@ Foreground particles moving **opposite** ship velocity — length, brightness, a
 | Region | Purpose | Status |
 |--------|---------|--------|
 | Title screen | Fullscreen live starfield + nebula (same vibrancy as play); soft edge vignette; UI fades in with backdrop | Done |
-| Home Base hangar (title → VIEW SHIP) | Docked Home Base bay (full-frame); B1/B2/B3; 3×4 cargo; bridge crane; stairs + bulkhead doors; forklift/mechanic logistics; destructible crates. Seed for between-mission hub + new-game start | In progress (bay done; launch/return not wired) |
+| Home Base hangar (title → VIEW SHIP) | Docked Home Base bay (full-frame); B1/B2/B3; 3×6 cargo (in/out per bay); bridge crane; stairs + bulkhead doors; forklift/mechanic logistics; upgrade + hold-cargo silhouettes. Seed for between-mission hub + new-game start | In progress (bay done; launch/return not wired) |
 | Top-left | Radar | Placeholder |
 | Top-right | Systems (+ fullscreen) | Partial |
 | Bottom-left | Weapons | Placeholder |
