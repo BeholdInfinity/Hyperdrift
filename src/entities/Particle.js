@@ -64,9 +64,10 @@ export class ParticleSystem {
   emitExhaustLocal(localX, localY, exhaustAngle, intensity, color, spread = 0.4, options = {}) {
     const speedScale = options.speedScale ?? 1;
     const lifeScale = options.lifeScale ?? 1;
+    const leanAngle = options.leanAngle ?? 0;
     const count = Math.ceil(intensity * 3);
     for (let i = 0; i < count; i++) {
-      const angle = exhaustAngle + (Math.random() - 0.5) * spread;
+      const angle = exhaustAngle + leanAngle + (Math.random() - 0.5) * spread;
       const spd = (75 + Math.random() * 105 * intensity) * speedScale;
       this.emit(
         localX + (Math.random() - 0.5) * 3,

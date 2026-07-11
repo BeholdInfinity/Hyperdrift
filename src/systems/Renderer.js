@@ -262,7 +262,7 @@ export class Renderer {
     ctx.fill();
   }
 
-  _drawPlume(ctx, x, y, exhaustAngle, intensity, len, color, width = 2, fadeRgba = 'rgba(50, 100, 150, 0)') {
+  _drawPlume(ctx, x, y, exhaustAngle, intensity, len, color, width = 2, fadeRgba = 'rgba(50, 100, 150, 0)', lean = 0) {
     if (!intensity || intensity <= 0) return;
 
     ctx.save();
@@ -271,7 +271,12 @@ export class Renderer {
     ctx.globalAlpha = 0.5 + Math.min(intensity, 1.5) * 0.35;
 
     const plumeLen = len * Math.min(intensity, 1.5);
-    const grad = ctx.createLinearGradient(0, 0, plumeLen, 0);
+    // lean: -1..1-ish, tip offset in exhaust-local +Y (CCW from exhaust)
+    const tipY = Math.max(-1.1, Math.min(1.1, lean)) * plumeLen * 0.52;
+    const midX = plumeLen * 0.42;
+    const midY = tipY * 0.28;
+
+    const grad = ctx.createLinearGradient(0, 0, plumeLen, tipY * 0.35);
     grad.addColorStop(0, color);
     grad.addColorStop(0.5, color.replace(/[\d.]+\)$/, '0.3)'));
     grad.addColorStop(1, fadeRgba);
@@ -279,45 +284,87 @@ export class Renderer {
     ctx.fillStyle = grad;
     ctx.beginPath();
     ctx.moveTo(0, -width);
-    ctx.lineTo(plumeLen, 0);
-    ctx.lineTo(0, width);
+    ctx.quadraticCurveTo(midX, midY - width * 0.25, plumeLen, tipY);
+    ctx.quadraticCurveTo(midX, midY + width * 0.25, 0, width);
     ctx.closePath();
     ctx.fill();
     ctx.restore();
   }
 
-  /**
-   * Visual cheat: when exhaust fires into ship motion (leading face),
-   * shorten/widen the plume so it does not stream under the hull.
-   */
-  _computeRamFactor(exhaustDirX, exhaustDirY, ship, localOx, localOy) {
-    const speed = Math.hypot(ship.velocity.x, ship.velocity.y);
-    let ram = 0;
+  /** Hermite smoothstep, t mapped from [edge0, edge1] → [0, 1]. */
+  _smoothstep(edge0, edge1, t) {
+    const x = Math.max(0, Math.min(1, (t - edge0) / (edge1 - edge0)));
+    return x * x * (3 - 2 * x);
+  }
 
-    if (speed > 30) {
+  /**
+   * Plume flow vs ship motion — readability + motion cue, not vacuum physics.
+   *   cone / spray — leading flatten (cue + into-flow wash + mild spin)
+   *   lean         — signed crosswind from relative wind (−velocity); bends
+   *                  plume with the flow (sideways thrusters curve “aft”)
+   *   lengthMul    — trailing stretch when wind blows along the exhaust
+   */
+  _computePlumeFlow(exhaustDirX, exhaustDirY, ship, localOx, localOy) {
+    const speed = Math.hypot(ship.velocity.x, ship.velocity.y);
+    let cue = 0;
+    let wash = 0;
+    let lean = 0;
+    let lengthMul = 1;
+
+    if (speed > 8) {
       const inv = 1 / speed;
       const align = (exhaustDirX * ship.velocity.x + exhaustDirY * ship.velocity.y) * inv;
-      const speedFactor = Math.min(1, (speed - 30) / 220);
-      ram = Math.max(0, Math.min(1, ((align - 0.15) / 0.85) * speedFactor));
+      const speedT = this._smoothstep(15, 380, speed);
+      const lead = Math.max(0, align);
+      cue = lead * speedT * 0.32;
+      wash = this._smoothstep(0.4, 0.98, align) * speedT;
+
+      // Relative wind W = −velocity (blows the plume downwind)
+      const wx = -ship.velocity.x;
+      const wy = -ship.velocity.y;
+      const parallel = (wx * exhaustDirX + wy * exhaustDirY) * inv; // −1..1 along exhaust
+      const perpX = wx * inv - parallel * exhaustDirX;
+      const perpY = wy * inv - parallel * exhaustDirY;
+      // Exhaust-local +Y = rotate exhaust 90° CCW
+      const side = perpX * (-exhaustDirY) + perpY * exhaustDirX;
+      lean = Math.max(-1, Math.min(1, side)) * speedT * 0.85;
+
+      // Trailing: wind along exhaust → slightly longer proud plume
+      const trail = Math.max(0, parallel);
+      lengthMul = 1 + 0.22 * trail * speedT;
     }
 
+    let spin = 0;
     const omega = ship.angularVelocity;
-    if (Math.abs(omega) > 0.4) {
+    if (Math.abs(omega) > 0.45) {
       const cos = Math.cos(ship.angle);
       const sin = Math.sin(ship.angle);
-      const wx = localOx * cos - localOy * sin;
-      const wy = localOx * sin + localOy * cos;
-      const tx = -omega * wy;
-      const ty = omega * wx;
+      const rx = localOx * cos - localOy * sin;
+      const ry = localOx * sin + localOy * cos;
+      const tx = -omega * ry;
+      const ty = omega * rx;
       const tLen = Math.hypot(tx, ty);
       if (tLen > 8) {
         const tAlign = (exhaustDirX * tx + exhaustDirY * ty) / tLen;
-        const spinRam = Math.max(0, Math.min(1, ((tAlign - 0.2) / 0.8) * Math.min(1, (Math.abs(omega) - 0.4) / 3)));
-        ram = Math.max(ram, spinRam * 0.7);
+        const spinT = this._smoothstep(0.45, 3.2, Math.abs(omega));
+        spin = this._smoothstep(0.15, 0.9, tAlign) * spinT * 0.55;
+
+        // Mild extra lean from spin “crosswind” at the nozzle
+        const tInv = 1 / tLen;
+        const twx = -tx;
+        const twy = -ty;
+        const tPar = (twx * exhaustDirX + twy * exhaustDirY) * tInv;
+        const tPerpX = twx * tInv - tPar * exhaustDirX;
+        const tPerpY = twy * tInv - tPar * exhaustDirY;
+        const tSide = tPerpX * (-exhaustDirY) + tPerpY * exhaustDirX;
+        lean += Math.max(-1, Math.min(1, tSide)) * spinT * 0.25;
       }
     }
 
-    return ram;
+    lean = Math.max(-1.15, Math.min(1.15, lean));
+    const cone = Math.max(0, Math.min(1, cue * 0.55 + wash * 0.5 + spin * 0.35));
+    const spray = Math.max(0, Math.min(1, cue * 0.2 + wash * 0.9 + spin));
+    return { cone, spray, lean, lengthMul };
   }
 
   _thrusterMounts() {
@@ -343,11 +390,11 @@ export class Renderer {
       const color = isAfterburner ? ENGINE_ORANGE_AB : ENGINE_ORANGE;
 
       const exhaustDir = forward.clone().scale(-1);
-      const ram = this._computeRamFactor(exhaustDir.x, exhaustDir.y, ship, eng.x, eng.y);
-      len *= 1 - 0.72 * ram;
-      width *= 1 + 0.85 * ram;
+      const flow = this._computePlumeFlow(exhaustDir.x, exhaustDir.y, ship, eng.x, eng.y);
+      len *= flow.lengthMul * (1 - 0.48 * flow.cone);
+      width *= 1 + 0.65 * flow.cone;
 
-      this._drawPlume(ctx, eng.x, eng.y, eng.angle, intensity, len, color, width, ENGINE_FADE);
+      this._drawPlume(ctx, eng.x, eng.y, eng.angle, intensity, len, color, width, ENGINE_FADE, flow.lean);
     }
 
     for (const m of this._thrusterMounts()) {
@@ -356,14 +403,14 @@ export class Renderer {
 
       const dirX = Math.cos(ship.angle + m.angle);
       const dirY = Math.sin(ship.angle + m.angle);
-      const ram = this._computeRamFactor(dirX, dirY, ship, m.x, m.y);
+      const flow = this._computePlumeFlow(dirX, dirY, ship, m.x, m.y);
 
       let len = 15 + intensity * 6;
       let width = 2 + intensity * 1.65;
-      len *= 1 - 0.72 * ram;
-      width *= 1 + 0.9 * ram;
+      len *= flow.lengthMul * (1 - 0.48 * flow.cone);
+      width *= 1 + 0.7 * flow.cone;
 
-      this._drawPlume(ctx, m.x, m.y, m.angle, intensity, len, THRUSTER_BLUE, width, THRUSTER_FADE);
+      this._drawPlume(ctx, m.x, m.y, m.angle, intensity, len, THRUSTER_BLUE, width, THRUSTER_FADE, flow.lean);
     }
   }
 
@@ -461,15 +508,16 @@ export class Renderer {
       const isAfterburner = t.afterburner > 0;
       const exhaustDir = forward.clone().scale(-1);
       const color = isAfterburner ? 'rgba(255, 200, 100, 0.85)' : 'rgba(255, 150, 70, 0.7)';
-      const ram = this._computeRamFactor(exhaustDir.x, exhaustDir.y, ship, eng.x, eng.y);
+      const flow = this._computePlumeFlow(exhaustDir.x, exhaustDir.y, ship, eng.x, eng.y);
       particleSystem.emitExhaustLocal(
         eng.x, eng.y, eng.angle,
-        intensity * (isAfterburner ? 1.4 : 1) * (1 - 0.35 * ram),
+        intensity * (isAfterburner ? 1.4 : 1) * (1 - 0.22 * flow.spray),
         color,
-        isAfterburner ? 0.28 : 0.4 + 0.35 * ram,
+        isAfterburner ? 0.28 : 0.4 + 0.42 * flow.spray,
         {
-          speedScale: 1 - 0.65 * ram,
-          lifeScale: 1 - 0.55 * ram,
+          speedScale: flow.lengthMul * (1 - 0.78 * flow.spray),
+          lifeScale: flow.lengthMul * (1 - 0.68 * flow.spray),
+          leanAngle: flow.lean * 0.55,
         }
       );
     }
@@ -480,16 +528,17 @@ export class Renderer {
 
       const dirX = Math.cos(ship.angle + m.angle);
       const dirY = Math.sin(ship.angle + m.angle);
-      const ram = this._computeRamFactor(dirX, dirY, ship, m.x, m.y);
+      const flow = this._computePlumeFlow(dirX, dirY, ship, m.x, m.y);
 
       particleSystem.emitExhaustLocal(
         m.x, m.y, m.angle,
-        intensity * 0.55 * (1 - 0.3 * ram),
+        intensity * 0.55 * (1 - 0.18 * flow.spray),
         'rgba(100, 180, 255, 0.55)',
-        0.4 + 0.4 * ram,
+        0.4 + 0.45 * flow.spray,
         {
-          speedScale: 1 - 0.7 * ram,
-          lifeScale: 1 - 0.6 * ram,
+          speedScale: flow.lengthMul * (1 - 0.8 * flow.spray),
+          lifeScale: flow.lengthMul * (1 - 0.7 * flow.spray),
+          leanAngle: flow.lean * 0.55,
         }
       );
     }

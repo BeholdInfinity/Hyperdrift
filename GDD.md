@@ -6,7 +6,7 @@
 |-----|-------|
 | **[`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md)** | Unresolved design decisions — for conversation sessions |
 | **[`VISION.md`](VISION.md)** | Long-term north star — *Hyperdrift Crewline* (multiplayer crew game) |
-| **This file (`GDD.md`)** | Prototype v0.1.13 — solo flight, procedural space |
+| **This file (`GDD.md`)** | Prototype v0.1.14 — solo flight, procedural space |
 | **[`PROJECT.md`](PROJECT.md)** | Dev handoff — architecture, run, status |
 
 | Field | Value |
@@ -14,7 +14,7 @@
 | Title | Hyperdrift *(prototype)* / Hyperdrift Crewline *(working title, see VISION.md)* |
 | Genre | Top-down 2D spaceflight / exploration |
 | Platform | Web browser |
-| Status | Prototype v0.1.13 |
+| Status | Prototype v0.1.14 |
 
 ---
 
@@ -72,7 +72,14 @@ Ship silhouette is a filled multi-section hull (narrower bridge, main body, **wi
 
 Plume colors: **blue** = thrusters, **orange** = main engine (including afterburner and retro-burn). Intensity scales length/width with power (translation stronger than yaw).
 
-**Leading-side flatten (visual cheat):** when a nozzle fires into the ship’s velocity (or fights strong spin), its plume shortens and widens so the trail stays on that hull face instead of streaming under the ship. Exhaust **particles** live in ship-local space so they move and rotate with the hull (no long world-space trails when turning at speed).
+**Leading-side flatten / plume flow:** not vacuum plume-impingement (outward nozzles on a convex hull do not hit the body). It exists for **2D readability** and a light **motion cue**:
+
+- **Cue** — slight shorten/widen when a nozzle is on the leading hemisphere of velocity (scales with speed) so travel direction reads in the plumes
+- **Wash** — stronger clamp on **particles** when exhaust fires into the flow, scaled by **angle of attack** (glancing into-flow = milder; head-on = strongest) so spray does not stream under the silhouette; **cones** stay milder so thrust remains obvious
+- **Lean** — all nozzles, all AoA: plume tip bends with relative wind (`−velocity`) so sideways burns curve “aft” and glancing burns read direction; trailing burns get a slight **length** boost
+- Mild spin contribution when a nozzle fights hard yaw
+
+Exhaust **particles** live in ship-local space so they move and rotate with the hull (no long world-space trails when turning at speed).
 
 ### Rotation (RCS)
 

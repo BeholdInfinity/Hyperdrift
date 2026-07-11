@@ -65,6 +65,7 @@ src/
 - **Modular systems** wired by `GameEngine` — extend via new systems/entities, not monolith edits
 - **Chunk-based world** — deterministic seeds, load radius 3, unload radius 5 (`WORLD` in Constants)
 - **Thruster visuals driven by physics** — eight blue maneuvering thrusters + orange main engine; mounts from `ShipHardpoints.js`; exhaust is ship-local; camera pose must match post-physics ship
+- **Plume flow** (`Renderer._computePlumeFlow`) — leading cue/wash + crosswind lean from relative wind (`−velocity`) so plumes read AoA and speed; trailing stretch; ship-local particles
 - **Future-ready** for multiple ships, AI, trading, mining, missions, networking, save/load
 
 ## Current implementation status
@@ -75,6 +76,7 @@ src/
 | Space brakes snap to rest below velocity threshold; retro-burn when nose-into-velocity | Done |
 | Mouse aim + visible cursor (no pointer lock) | Done |
 | 8 blue maneuver thrusters + orange main engine (hardpoint-driven plumes) | Done |
+| Plume flow: leading flatten + crosswind lean (AoA/speed readable in flames) | Done |
 | Multi-section filled ship silhouette (`ShipHardpoints.js`) | Done |
 | Ship-local exhaust particles; camera tracks post-physics pose | Done |
 | Energy cannon (hold fire) | Done |

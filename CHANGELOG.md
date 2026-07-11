@@ -6,15 +6,21 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
-### Changed
-- Cursor rule: on **commit and push**, check whether handoff docs need a sync and ask before including those updates
-
 ### Planned
 - Asteroid fragmentation on destroy
 - Fuel system for afterburner
 - Radar minimap in corner panel
 - Settings and main-menu flows
 - Audio
+
+---
+
+## [0.1.14] — 2026-07-10
+
+### Changed
+- Leading-side flatten retuned: mild velocity **cue** on cones for motion readability; stronger **spray wash** on particles to stop under-hull streaming (not treated as vacuum hull impingement)
+- Wash curve tracks angle of attack more clearly (glancing into-flow / edge-of-retro milder than head-on)
+- Plume **crosswind lean** on all nozzles (relative wind `−velocity`); trailing plumes slightly longer; cones use a soft curve tip — flames read both AoA and speed
 
 ---
 
