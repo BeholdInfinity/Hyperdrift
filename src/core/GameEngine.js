@@ -10,7 +10,8 @@ import { AsteroidSystem } from '../systems/AsteroidSystem.js';
 import { Starfield } from '../world/Starfield.js';
 import { NebulaField } from '../world/NebulaField.js';
 import { SpeedStreaks } from '../world/SpeedStreaks.js';
-import { PHYSICS } from '../core/Constants.js';
+import { HangarBay } from '../world/HangarBay.js';
+import { PHYSICS, HANGAR } from '../core/Constants.js';
 
 /** Slow title-screen drift (world units / sec) */
 const TITLE_DRIFT_SPEED = 52;
@@ -22,7 +23,7 @@ export class GameEngine {
     this.canvas = canvas;
     this.running = false;
     this.paused = false;
-    this.mode = 'title'; // 'title' | 'playing'
+    this.mode = 'title'; // 'title' | 'playing' | 'hangar'
     this.lastTime = 0;
 
     this.renderer = new Renderer(canvas);
@@ -36,6 +37,7 @@ export class GameEngine {
     this.starfield = new Starfield();
     this.nebulaField = new NebulaField();
     this.speedStreaks = new SpeedStreaks();
+    this.hangarBay = new HangarBay();
 
     this.ship = null;
     this.precisionActive = false;
@@ -43,13 +45,19 @@ export class GameEngine {
     this._titleHeading = Math.random() * Math.PI * 2;
     this._titleFade = 0;
     this._titleHasDrawn = false;
+    this._dockPos = { x: 0, y: 0 };
+    /** Continues title-screen space drift; shown through hangar bay doors */
+    this._spaceCam = { x: 0, y: 0 };
     this._startScreen = document.getElementById('start-screen');
     this._buildStamp = document.getElementById('build-stamp');
+    this._hangarHud = document.getElementById('hangar-hud');
+    this._overlay = document.getElementById('overlay');
 
     this._hudSpeed = document.getElementById('speed-value');
     this._hudCoords = document.getElementById('coords-value');
     this._hudZoom = document.getElementById('zoom-value');
     this._hudPrecision = document.getElementById('precision-value');
+    this._hudHangarZoom = document.getElementById('hangar-zoom-value');
     this._pauseMenu = document.getElementById('pause-menu');
     this._fullscreenBtn = document.getElementById('fullscreen-btn');
     this._pauseFullscreenBtn = document.getElementById('pause-fullscreen-btn');
@@ -92,7 +100,6 @@ export class GameEngine {
     const x = this.camera.position.x;
     const y = this.camera.position.y;
     this.ship = new Ship(x, y);
-    this.ship.turretAngle = this.ship.angle;
     this.precisionActive = false;
     this.entityManager.add(this.ship, 'ship');
     this.mode = 'playing';
@@ -102,6 +109,64 @@ export class GameEngine {
     this.input.enable();
     this.input.paused = false;
     this.asteroidSystem.update(x, y);
+  }
+
+  /** Temporary docked ship inspection bay (from title). */
+  beginHangar() {
+    // Keep the live title-space chunk drifting behind bay doors
+    this._spaceCam.x = this.camera.position.x;
+    this._spaceCam.y = this.camera.position.y;
+
+    this.entityManager.clear();
+    this.particleSystem.clear();
+    this._dockPos.x = HANGAR.PLAYER_PAD_X;
+    this._dockPos.y = 0;
+    this.ship = new Ship(this._dockPos.x, this._dockPos.y);
+    this.precisionActive = false;
+    this.entityManager.add(this.ship, 'ship');
+    this.hangarBay.reset();
+
+    this.camera.position.set(this._dockPos.x, this._dockPos.y);
+    this.camera.offset.set(0, 0);
+    this.camera.userZoom = HANGAR.ZOOM_DEFAULT;
+    this.camera.targetUserZoom = HANGAR.ZOOM_DEFAULT;
+    this.camera.speedZoom = 1;
+    this.camera.effectiveZoom = HANGAR.ZOOM_DEFAULT;
+
+    this.mode = 'hangar';
+    this.paused = false;
+    this._setTitleFade(1);
+    this.canvas.style.opacity = '1';
+    this.input.enable();
+    this.input.paused = false;
+
+    if (this._hangarHud) this._hangarHud.classList.remove('hidden');
+    if (this._buildStamp) this._buildStamp.classList.add('hidden');
+  }
+
+  /** Leave hangar and restore the title screen loop. */
+  exitHangar() {
+    if (this.mode !== 'hangar') return;
+    this.input.disable();
+    this.entityManager.clear();
+    this.particleSystem.clear();
+    this.ship = null;
+    this.precisionActive = false;
+    this.mode = 'title';
+    this.paused = false;
+    this._titleHasDrawn = true;
+    this._setTitleFade(1);
+    // Resume title drift from the same space chunk shown through the doors
+    this.camera.position.set(this._spaceCam.x, this._spaceCam.y);
+    this.camera.offset.set(0, 0);
+    this.camera.effectiveZoom = 1;
+    this.camera.userZoom = 1;
+    this.camera.targetUserZoom = 1;
+    this.camera.speedZoom = 1;
+    this.asteroidSystem.update(this._spaceCam.x, this._spaceCam.y);
+
+    if (this._hangarHud) this._hangarHud.classList.add('hidden');
+    if (this._buildStamp) this._buildStamp.classList.remove('hidden');
   }
 
   stop() {
@@ -141,12 +206,18 @@ export class GameEngine {
 
     if (this.mode === 'playing' && this.input.consumePauseToggle()) {
       this.togglePause();
+    } else if (this.mode === 'hangar' && this.input.consumePauseToggle()) {
+      this.exitHangar();
+      // Caller (main.js) restores title UI via onHangarExit if set
+      if (typeof this.onHangarExit === 'function') this.onHangarExit();
     }
 
     if (!this.paused) {
       this.gameTime += deltaTime;
       if (this.mode === 'title') {
         this._updateTitle(deltaTime);
+      } else if (this.mode === 'hangar') {
+        this._updateHangar(deltaTime);
       } else {
         this.update(deltaTime);
       }
@@ -164,6 +235,8 @@ export class GameEngine {
     this.camera.position.y += Math.sin(this._titleHeading) * TITLE_DRIFT_SPEED * deltaTime;
     this.camera.offset.set(0, 0);
     this.camera.effectiveZoom = 1;
+    this._spaceCam.x = this.camera.position.x;
+    this._spaceCam.y = this.camera.position.y;
 
     this.asteroidSystem.update(this.camera.position.x, this.camera.position.y);
 
@@ -175,6 +248,64 @@ export class GameEngine {
   /** Screen-corner cover radius so stars/nebulae fill the full window (not just the play circle). */
   _coverRadius() {
     return Math.hypot(this.renderer.centerX, this.renderer.centerY) + 40;
+  }
+
+  _updateHangar(deltaTime) {
+    if (!this.ship) return;
+
+    // Keep title-space chunk drifting (same systems as the title backdrop)
+    this._titleHeading += TITLE_TURN_RATE * deltaTime;
+    this._spaceCam.x += Math.cos(this._titleHeading) * TITLE_DRIFT_SPEED * deltaTime;
+    this._spaceCam.y += Math.sin(this._titleHeading) * TITLE_DRIFT_SPEED * deltaTime;
+    this.asteroidSystem.update(this._spaceCam.x, this._spaceCam.y);
+
+    const zoomWheel = this.input.consumeZoomDelta();
+
+    // Hangar: full thruster/engine authority (Precision off)
+    this.precisionActive = false;
+
+    const dx = this.input.mouseScreen.x - this.renderer.centerX;
+    const dy = this.input.mouseScreen.y - this.renderer.centerY;
+    const pointerInViewport =
+      dx * dx + dy * dy <= this.renderer.viewportRadius * this.renderer.viewportRadius;
+
+    const aimWorld = this.camera.screenToWorld(
+      this.input.mouseScreen.x,
+      this.input.mouseScreen.y,
+      this.renderer.centerX,
+      this.renderer.centerY
+    );
+
+    this.shipController.update(this.ship, this.input, false, deltaTime);
+
+    // Anchored: thrusters/yaw light and spin for inspection, but no translation
+    this.ship.position.x = this._dockPos.x;
+    this.ship.position.y = this._dockPos.y;
+    this.ship.velocity.set(0, 0);
+
+    this.weaponSystem.update(
+      this.ship,
+      this.input,
+      aimWorld,
+      pointerInViewport,
+      [],
+      deltaTime
+    );
+
+    this.entityManager.update(deltaTime);
+    this.particleSystem.update(deltaTime);
+
+    this.hangarBay.update(deltaTime, this.ship, {
+      firedTurret: this.ship.muzzleFlash > 0.02,
+      laserOn: !!this.ship.miningLaserFiring,
+    });
+
+    this.camera.updateHangar(this.ship.position, deltaTime, zoomWheel);
+    this.renderer.emitThrusterParticles(this.ship, this.particleSystem);
+
+    if (this._hudHangarZoom) {
+      this._hudHangarZoom.textContent = this.camera.effectiveZoom.toFixed(1);
+    }
   }
 
   update(deltaTime) {
@@ -298,6 +429,11 @@ export class GameEngine {
       return;
     }
 
+    if (this.mode === 'hangar') {
+      this._renderHangar();
+      return;
+    }
+
     this.renderer.setupCircularClip();
     this._renderBackground({ fullscreen: false, includeWorldNebulae: true });
 
@@ -330,6 +466,65 @@ export class GameEngine {
     }
 
     this.renderer.endCircularClip();
+  }
+
+  _renderHangar() {
+    this.renderer.setupCircularClip();
+
+    // Same live space chunk as the title screen — visible through bay-door seams
+    this._renderSpaceThroughDoors();
+
+    this.renderer.renderWorldLayer((worldCtx) => {
+      this.hangarBay.render(worldCtx, {
+        starfield: this.starfield,
+        nebulaField: this.nebulaField,
+        spaceX: this._spaceCam.x,
+        spaceY: this._spaceCam.y,
+        time: this.gameTime,
+        nebulae: this.asteroidSystem.getNebulae(),
+      });
+    }, this.camera);
+
+    this.renderer.renderProjectiles(
+      [...this.entityManager.getByType('projectile')],
+      this.camera
+    );
+
+    this.renderer.renderParticles(
+      this.particleSystem.particles,
+      this.camera,
+      this.ship
+    );
+
+    if (this.ship) {
+      this.renderer.renderShip(this.ship, this.camera);
+    }
+
+    this.renderer.endCircularClip();
+  }
+
+  /** Title-identical starfield + nebulae at the drifting space camera (not hangar zoom). */
+  _renderSpaceThroughDoors() {
+    const ctx = this.renderer.ctx;
+    const time = this.gameTime;
+    const coverRadius = this.renderer.viewportRadius + 200;
+    const sx = this._spaceCam.x;
+    const sy = this._spaceCam.y;
+
+    ctx.save();
+    ctx.translate(this.renderer.centerX, this.renderer.centerY);
+
+    this.nebulaField.renderProcedural(ctx, sx, sy, time, coverRadius, 1);
+    this.starfield.render(ctx, sx, sy, coverRadius, time, 1);
+
+    ctx.restore();
+
+    // World nebulae in space-camera frame (zoom 1, no hangar offset)
+    ctx.save();
+    ctx.translate(this.renderer.centerX, this.renderer.centerY);
+    ctx.translate(-sx, -sy);
+    this.nebulaField.renderWorldNebulae(ctx, this.asteroidSystem.getNebulae(), time);
+    ctx.restore();
   }
 
   _updateHUD(capsDesired = this.input?.capsLockDesired) {

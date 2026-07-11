@@ -17,6 +17,55 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.20] — 2026-07-11
+
+### Changed
+- Hangar viewports widened to match bay-door width; live title-space chunk drawn into each glass (fixes black windows)
+- Crate stacks: up to 5 random slots (far sides + between-pad lanes); crane picks random pickup/dropoff piles each job
+
+---
+
+## [0.1.19] — 2026-07-11
+
+### Changed
+- Hangar bay doors closed by default; title-space peeks through small bordered viewports above each door
+- Bay order **B1 · B2 · B3** (left→right); player docks on **B2** (center); visitors on B1/B3
+- Overhead gantry crane ferries crates between left/right piles (travel, lower, grab, raise, cross, drop)
+
+---
+
+## [0.1.18] — 2026-07-11
+
+### Changed
+- Hangar bay doors show the live title-screen starfield/nebula chunk (same drifting space, no extra load)
+- Three bay doors aligned with pads B2 / B1 / B3; side pads shifted outward to match
+- Overhead gantry crane: short cable with claw (no longer hangs through pads)
+- Visitor ships now have thruster cups + orange engine bells; combat/patrol/scout types carry visible weapons
+
+---
+
+## [0.1.17] — 2026-07-11
+
+### Changed
+- Player ship spawns facing **north** (screen-up) in flight and hangar
+- Hangar dock pads simplified to flat matte discs (no clamp chevrons) so hull reads clear of the pad
+- Hangar oriented with a **bay door to space** north of the player pad; zoom-out shows left/right neighbor pads
+- Hangar default zoom widened so door + neighbor pads are visible on entry
+
+### Added
+- Neighbor hangar pads randomly empty or occupied by placeholder visitor ships (scout, interceptor, patrol, gunship, freighter, tanker, hauler)
+
+---
+
+## [0.1.16] — 2026-07-11
+
+### Added
+- Temporary **View Ship** hangar from the title screen: docked inspection bay with live thrusters, engine, yaw, turret, and mining laser (ship translation locked)
+- Hangar backdrop (deck plates, clamps, crates, windows, overhead crane/lights) plus mechanics and forklifts that flinch/flee when thrusters, engine, or weapons fire
+- Hangar scroll zoom range (~2.6 ceiling → ~14 hull-fill); ESC or Back returns to title
+
+---
+
 ## [0.1.15] — 2026-07-11
 
 ### Added

@@ -6,7 +6,7 @@
 |-----|-------|
 | **[`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md)** | Unresolved design decisions — for conversation sessions |
 | **[`VISION.md`](VISION.md)** | Long-term north star — *Hyperdrift Crewline* (multiplayer crew game) |
-| **This file (`GDD.md`)** | Prototype v0.1.15 — solo flight, procedural space |
+| **This file (`GDD.md`)** | Prototype v0.1.20 — solo flight, procedural space |
 | **[`PROJECT.md`](PROJECT.md)** | Dev handoff — architecture, run, status |
 
 | Field | Value |
@@ -14,7 +14,7 @@
 | Title | Hyperdrift *(prototype)* / Hyperdrift Crewline *(working title, see VISION.md)* |
 | Genre | Top-down 2D spaceflight / exploration |
 | Platform | Web browser |
-| Status | Prototype v0.1.15 |
+| Status | Prototype v0.1.20 |
 
 ---
 
@@ -177,6 +177,7 @@ Foreground particles moving **opposite** ship velocity — length, brightness, a
 | Region | Purpose | Status |
 |--------|---------|--------|
 | Title screen | Fullscreen live starfield + nebula (same vibrancy as play); soft edge vignette; UI fades in with backdrop | Done |
+| View Ship (title) | Temporary docked hangar; B1/B2/B3 pads (player on B2); closed bay doors + space viewports; crane crate ferry; visitor ships | Done (temporary) |
 | Top-left | Radar | Placeholder |
 | Top-right | Systems (+ fullscreen) | Partial |
 | Bottom-left | Weapons | Placeholder |

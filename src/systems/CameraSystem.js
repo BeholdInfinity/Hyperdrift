@@ -1,5 +1,5 @@
 import { Vec2, lerp, clamp } from '../utils/MathUtils.js';
-import { CAMERA, PHYSICS } from '../core/Constants.js';
+import { CAMERA, HANGAR, PHYSICS } from '../core/Constants.js';
 
 export class CameraSystem {
   constructor() {
@@ -46,6 +46,26 @@ export class CameraSystem {
     const t = 1 - Math.exp(-CAMERA.OFFSET_SMOOTHING * deltaTime);
     this.offset.x = lerp(this.offset.x, this.targetOffset.x, t);
     this.offset.y = lerp(this.offset.y, this.targetOffset.y, t);
+  }
+
+  /** Docked hangar view: no lead offset / speed zoom; wider zoom range. */
+  updateHangar(shipPosition, deltaTime, zoomWheelDelta = 0) {
+    this.position.copy(shipPosition);
+    this.offset.set(0, 0);
+    this.targetOffset.set(0, 0);
+    this.speedZoom = 1;
+
+    if (zoomWheelDelta !== 0) {
+      this.targetUserZoom = clamp(
+        this.targetUserZoom + zoomWheelDelta * HANGAR.ZOOM_WHEEL_STEP,
+        HANGAR.ZOOM_MIN,
+        HANGAR.ZOOM_MAX
+      );
+    }
+
+    const zoomT = 1 - Math.exp(-CAMERA.ZOOM_SMOOTHING * deltaTime);
+    this.userZoom = lerp(this.userZoom, this.targetUserZoom, zoomT);
+    this.effectiveZoom = this.userZoom;
   }
 
   worldToScreen(worldX, worldY, screenCenterX, screenCenterY) {

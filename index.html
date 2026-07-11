@@ -31,6 +31,7 @@
         <h1>HYPERDRIFT</h1>
         <p class="subtitle">Procedural Universe Prototype</p>
         <button id="start-btn">LAUNCH</button>
+        <button id="view-ship-btn" class="secondary-btn">VIEW SHIP</button>
         <div class="controls-hint">
           <p><kbd>WASD</kbd> Thrust · double-tap hold = burst</p>
           <p><kbd>Q</kbd>/<kbd>E</kbd> Yaw · double-tap hold = fast</p>
@@ -40,6 +41,15 @@
         </div>
       </div>
       <p id="build-stamp" class="build-stamp">v0.1.5 · Last edit: loading…</p>
+    </div>
+
+    <div id="hangar-hud" class="hidden">
+      <div class="hangar-banner">
+        <span class="hangar-title">HANGAR · SHIP VIEW</span>
+        <span class="hangar-zoom">ZOOM <span id="hangar-zoom-value">2.2</span>x</span>
+      </div>
+      <p class="hangar-hint">Thrusters, engine &amp; weapons live · ship docked · scroll to zoom · <kbd>ESC</kbd> or Back</p>
+      <button id="hangar-back-btn" class="menu-btn">Back to Title</button>
     </div>
 
     <div id="pause-menu" class="hidden">
@@ -62,7 +72,7 @@
   <!-- Inline so the stamp does not depend on cached ES modules -->
   <script>
     (function () {
-      var VERSION = '0.1.15';
+      var VERSION = '0.1.20';
       var el = document.getElementById('build-stamp');
       if (!el) return;
 

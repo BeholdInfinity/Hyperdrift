@@ -13,6 +13,7 @@ export class InputSystem {
     this.enabled = false;
     this.paused = false;
     this.zoomDelta = 0;
+    this.pauseToggle = false;
     this.capsLockDesired = false;
 
     this._burst = Object.fromEntries(
@@ -49,6 +50,17 @@ export class InputSystem {
   enable() {
     this.enabled = true;
     this._syncCapsLock();
+  }
+
+  disable() {
+    this.enabled = false;
+    this.paused = false;
+    this.keys.clear();
+    this.mouseDown = false;
+    this.mouseRightDown = false;
+    this.zoomDelta = 0;
+    this.pauseToggle = false;
+    this._clearBurstArms();
   }
 
   _syncCapsLock(e) {

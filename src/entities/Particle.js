@@ -91,4 +91,8 @@ export class ParticleSystem {
       }
     }
   }
+
+  clear() {
+    this.particles.length = 0;
+  }
 }

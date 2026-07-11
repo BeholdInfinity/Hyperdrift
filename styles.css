@@ -168,6 +168,85 @@ html, body {
   box-shadow: 0 0 20px rgba(100, 180, 255, 0.3);
 }
 
+.secondary-btn {
+  padding: 10px 36px;
+  font-size: 0.85rem;
+  letter-spacing: 4px;
+  background: transparent;
+  border: 1px solid rgba(100, 180, 255, 0.35);
+  color: rgba(200, 214, 229, 0.75);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.secondary-btn:hover {
+  background: rgba(100, 180, 255, 0.1);
+  border-color: #64b4ff;
+  color: #64b4ff;
+}
+
+#hangar-hud {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+#hangar-hud.hidden {
+  display: none;
+}
+
+.hangar-banner {
+  margin-top: 28px;
+  display: flex;
+  gap: 28px;
+  align-items: baseline;
+  pointer-events: none;
+}
+
+.hangar-title {
+  font-size: 0.85rem;
+  letter-spacing: 5px;
+  color: rgba(100, 180, 255, 0.85);
+  text-shadow: 0 1px 10px rgba(0, 0, 0, 0.85);
+}
+
+.hangar-zoom {
+  font-size: 0.75rem;
+  letter-spacing: 2px;
+  color: rgba(200, 214, 229, 0.55);
+  font-variant-numeric: tabular-nums;
+}
+
+.hangar-hint {
+  margin-top: 10px;
+  font-size: 0.72rem;
+  letter-spacing: 1px;
+  color: rgba(200, 214, 229, 0.45);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.85);
+}
+
+.hangar-hint kbd {
+  display: inline-block;
+  padding: 1px 5px;
+  border: 1px solid rgba(100, 180, 255, 0.3);
+  border-radius: 3px;
+  font-size: 0.68rem;
+  color: rgba(100, 180, 255, 0.7);
+}
+
+#hangar-back-btn {
+  pointer-events: auto;
+  position: absolute;
+  bottom: 28px;
+  min-width: 200px;
+  padding: 10px 28px;
+  font-size: 0.8rem;
+}
+
 .controls-hint {
   margin-top: 32px;
   text-align: center;

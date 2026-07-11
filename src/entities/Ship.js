@@ -6,6 +6,7 @@ import { SHIP } from '../core/Constants.js';
 export class Ship extends Entity {
   constructor(x = 0, y = 0) {
     super(x, y);
+    this.angle = SHIP.SPAWN_ANGLE;
     this.mass = 1;
     this.momentOfInertia = 1;
     this.thrusters = {
@@ -22,7 +23,7 @@ export class Ship extends Entity {
       retroBurn: false,
     };
     /** World-space combat turret aim (gyro) */
-    this.turretAngle = 0;
+    this.turretAngle = SHIP.SPAWN_ANGLE;
     /** Ship-relative mining laser aim (clamped to arc) */
     this.miningLaserRelAngle = 0;
     this.fireCooldown = 0;

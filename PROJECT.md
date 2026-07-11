@@ -56,6 +56,8 @@ src/
     Starfield.js          7 parallax star layers (screen-fixed size, tiled when zoomed out)
     NebulaField.js        3 depth layers + ambient procedural nebulae
     SpeedStreaks.js       Velocity-opposed foreground streaks (screen-space)
+    HangarBay.js          Temporary title-screen ship inspection hangar + NPCs
+    HangarVisitorShips.js Placeholder neighbor-pad ship silhouettes
   utils/
     MathUtils.js, SeededRandom.js
 ```
@@ -66,6 +68,7 @@ src/
 - **Chunk-based world** — deterministic seeds, load radius 3, unload radius 5 (`WORLD` in Constants)
 - **Thruster visuals driven by physics** — eight blue maneuvering thrusters + orange main engine; mounts from `ShipHardpoints.js`; exhaust is ship-local; camera pose must match post-physics ship
 - **Plume flow** (`Renderer._computePlumeFlow`) — leading cue/wash + crosswind lean from relative wind (`−velocity`) so plumes read AoA and speed; trailing stretch; ship-local particles
+- **Modes** — `title` (drifting backdrop), `playing` (flight), `hangar` (docked ship view from title; temporary inspection tool)
 - **Future-ready** for multiple ships, AI, trading, mining, missions, networking, save/load
 
 ## Current implementation status
@@ -83,6 +86,7 @@ src/
 | Dorsal 360° combat turret (LMB, 3/s) + nose mining laser (RMB) | Done |
 | Circular viewport + corner UI placeholders | Done |
 | Title screen (fullscreen backdrop drift, fade-in, version stamp) | Done |
+| Temporary View Ship hangar (B1/B2/B3 pads, player on B2; closed doors + space viewports; crane; visitors) | Done |
 | Procedural asteroids + nebulae | Done |
 | 7-layer starfield, 3-layer nebulae | Done |
 | Speed streaks (velocity-opposed, screen-space) | Done |
@@ -96,6 +100,8 @@ src/
 - `PHYSICS.MAX_ROTATION_SPEED` — 2.6 (cruise yaw); `YAW_FAST_MULT` — 1.65
 - `PHYSICS.PRECISION_ENGAGE_SPEED` — 100 (engage gate + active speed cap)
 - `SHIP.TURRET_SLEW_RATE` / `MINING_LASER_SLEW_RATE` — 5.5 / 4.5
+- `SHIP.SPAWN_ANGLE` — north (−π/2)
+- `HANGAR.ZOOM_*` / `PLAYER_PAD_X` — hangar inspection camera + B2 dock
 - `CAMERA.ZOOM_MIN/MAX` — 0.4 / 2.0
 - `WORLD.CHUNK_SIZE` — 2000
 - `WORLD.LOAD_RADIUS` / `UNLOAD_RADIUS` — 3 / 5
@@ -126,6 +132,7 @@ src/
 
 ## Known gaps / next steps
 
+- Ship silhouette / hardpoint design pass (hangar View Ship is ready for close inspection)
 - Settings and Return to Main Menu are UI placeholders
 - Asteroids destroy but don't fragment into smaller pieces yet
 - No fuel consumption on afterburner
