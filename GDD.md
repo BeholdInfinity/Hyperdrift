@@ -6,7 +6,7 @@
 |-----|-------|
 | **[`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md)** | Unresolved design decisions — for conversation sessions |
 | **[`VISION.md`](VISION.md)** | Long-term north star — *Hyperdrift Crewline* (multiplayer crew game) |
-| **This file (`GDD.md`)** | Prototype v0.1.12 — solo flight, procedural space |
+| **This file (`GDD.md`)** | Prototype v0.1.13 — solo flight, procedural space |
 | **[`PROJECT.md`](PROJECT.md)** | Dev handoff — architecture, run, status |
 
 | Field | Value |
@@ -14,7 +14,7 @@
 | Title | Hyperdrift *(prototype)* / Hyperdrift Crewline *(working title, see VISION.md)* |
 | Genre | Top-down 2D spaceflight / exploration |
 | Platform | Web browser |
-| Status | Prototype v0.1.12 |
+| Status | Prototype v0.1.13 |
 
 ---
 
@@ -58,7 +58,7 @@ This prototype is **Layer 1** of the long-term *Hyperdrift Crewline* vision — 
 
 Eight blue **maneuvering thrusters** (two per cardinal face, offset for torque) plus one orange **main engine**.
 
-Ship silhouette is a filled multi-section hull (bridge, main body, aft engineering) with visible thruster cups, a shared engine bell, and a fore-center gun — all positions come from one `HARDPOINTS` table so plumes and hardware stay aligned.
+Ship silhouette is a filled multi-section hull (narrower bridge, main body, **wider aft** engineering) with visible thruster cups, a shared engine bell, and a fore-center gun — all positions come from one `HARDPOINTS` table (`src/entities/ShipHardpoints.js`) so plumes and hardware stay aligned.
 
 | Input | Thrusters / engine | Effect |
 |-------|-------------------|--------|
@@ -91,6 +91,7 @@ Turning toward the cursor lights the matching group. Killing spin shows a short 
 - **Manual zoom:** scroll wheel (clamped range)
 - **Speed zoom:** automatic zoom-out at high speed, blended with manual zoom
 - **Viewport:** circular play area; corners reserved for HUD
+- **Pose sync:** camera must track the ship **after** physics each frame so ship-local exhaust stays on hardpoints under lead offset
 
 ---
 
@@ -181,6 +182,7 @@ Prototype backlog (near-term) and long-term crew-game systems are tracked separa
 
 - [x] Flight model feels inertial but controllable
 - [x] Every thruster type visible when active
+- [x] Plumes originate from shared hardpoints (aligned with hull hardware)
 - [x] Depth conveyed through parallax layers
 - [x] Speed readable via streaks + camera zoom
 - [x] Pause without losing session

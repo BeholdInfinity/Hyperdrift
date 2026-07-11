@@ -31,7 +31,7 @@ Then give a short status summary and ask what to tackle next (unless they alread
 
 - Vanilla JS modules under `src/` — no frameworks or bundler
 - One primary class per file; wire through `GameEngine`
-- Thruster visuals must reflect `ship.thrusters` physics state
+- Thruster visuals must reflect `ship.thrusters` physics state; plume mounts come from `ShipHardpoints.js`
 - Keep diffs focused; no new dependencies without explicit request
 
 ## Run

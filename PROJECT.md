@@ -45,13 +45,13 @@ src/
     InputSystem.js        Keyboard, mouse, wheel, fullscreen, ESC pause
     PhysicsSystem.js      Forces, braking, rotation
     CameraSystem.js       Offset, zoom (manual + speed-based)
-    Renderer.js           Circular viewport, ship, thrusters, entities
+    Renderer.js           Circular viewport, multi-section ship, thrusters, entities
     WeaponSystem.js       Energy cannon, collisions, impacts
     AsteroidSystem.js     Chunk load/unload
     ProceduralGeneration.js  Seeded asteroids + nebulae
   entities/
-    Ship.js, ShipController.js, ShipHardpoints.js, Projectile.js, Asteroid.js
-    Particle.js, Entity.js, EntityManager.js
+    Ship.js, ShipController.js, ShipHardpoints.js (gun/engine/8 thrusters)
+    Projectile.js, Asteroid.js, Particle.js, Entity.js, EntityManager.js
   world/
     Starfield.js          7 parallax star layers (screen-fixed size, tiled when zoomed out)
     NebulaField.js        3 depth layers + ambient procedural nebulae
@@ -64,7 +64,7 @@ src/
 
 - **Modular systems** wired by `GameEngine` — extend via new systems/entities, not monolith edits
 - **Chunk-based world** — deterministic seeds, load radius 3, unload radius 5 (`WORLD` in Constants)
-- **Thruster visuals driven by physics** — eight blue maneuvering thrusters + orange main engine; state mirrors applied forces / yaw
+- **Thruster visuals driven by physics** — eight blue maneuvering thrusters + orange main engine; mounts from `ShipHardpoints.js`; exhaust is ship-local; camera pose must match post-physics ship
 - **Future-ready** for multiple ships, AI, trading, mining, missions, networking, save/load
 
 ## Current implementation status
@@ -72,8 +72,11 @@ src/
 | Area | Status |
 |------|--------|
 | Semi-Newtonian flight (WASD, main engine, afterburner, brakes) | Done |
+| Space brakes snap to rest below velocity threshold; retro-burn when nose-into-velocity | Done |
 | Mouse aim + visible cursor (no pointer lock) | Done |
-| RCS rotation thruster visuals | Done |
+| 8 blue maneuver thrusters + orange main engine (hardpoint-driven plumes) | Done |
+| Multi-section filled ship silhouette (`ShipHardpoints.js`) | Done |
+| Ship-local exhaust particles; camera tracks post-physics pose | Done |
 | Energy cannon (hold fire) | Done |
 | Circular viewport + corner UI placeholders | Done |
 | Title screen (fullscreen backdrop drift, fade-in, version stamp) | Done |

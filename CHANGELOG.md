@@ -19,6 +19,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ### Changed
 - Thruster and engine plumes ~50% larger (cones and exhaust particles)
+- Handoff docs (`PROJECT.md`, `GDD.md`, Cursor rules) synced to hardpoint ship, ship-local exhaust, and post-physics camera tracking
 
 ---
 
