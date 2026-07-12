@@ -154,6 +154,19 @@ Deciding what you **won't** do is as valuable as what you will.
 
 ---
 
+## 12. Ship component Mk variants (prototype stub)
+
+Hangar pad status boards show **Mk** labels for hull / fuel / bullets / shells (random 1–3) and a size-driven **cargo hold Mk** ladder. These are **display stubs only** — no capacity, damage, regen, or shop effects yet.
+
+| # | Question | Why it matters |
+|---|----------|----------------|
+| 12.1 | **Which components get real Mk tiers?** Hull, fuel tank, cargo bay, turret, laser, shields, engines…? | Progression + hangar service UX |
+| 12.2 | **What does each Mk change?** HP, capacity, fire rate, mass, power draw, price? | Combat / logistics balance |
+| 12.3 | **Player cargo bay ceiling** — locked at 3×3 (Mk.5) for player-size ships; large visitors only go higher. Keep? | Board readability + ship fantasy |
+| 12.4 | **When do Mk upgrades happen?** Shop only, hangar install jobs, loot drops? | Home Base loop |
+
+---
+
 ## Resolved (move answers here when decided)
 
 | # | Question | Decision | Date |
@@ -173,4 +186,4 @@ Deciding what you **won't** do is as valuable as what you will.
 
 ---
 
-*Last updated: 2026-07-10*
+*Last updated: 2026-07-12*

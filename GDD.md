@@ -47,7 +47,7 @@ The hangar bay is the prototype seed of **Home Base**: the place you start a new
 
 | Now | Not yet |
 |-----|---------|
-| Full-frame docked bay (B1 · B2 · B3; player on B2); lived-in industrial set dressing; per-bay service displays; danger-lane floor lights | Persistent inventory / loadout across sessions |
+| Full-frame docked bay (B1 · B2 · B3; player on B2); lived-in industrial set dressing; three-column pad status boards; danger-lane floor lights | Persistent inventory / loadout across sessions |
 | Live thrusters / engine / weapons (translation locked until launch) | Mission board, shop UI, between-run meta |
 | 3×6 cargo grid (2 cols/bay: left=in, right=out), manned crane, bulkheads; forklift hub south wall | Player-request job queue for **B2 only** (see below) |
 | Fixed station crew (4 forklifts + 6 bay mechs + crane); checklist-driven logistics | |
@@ -82,7 +82,7 @@ Each hardpoint holds up to **4** items in a 2×2 slot grid. Hold cargo is rectan
 
 ### Pilot readouts (door strip) vs crew board
 
-- **Bay service display** (crew): occupies the south apron display footprint behind each pad. Checklist rows with colors — green done, blue assigned, yellow ready, grey gated; header light off / yellow / green / flash red for bay service mood.
+- **Bay service display** (crew): three-column pad status board south of each pad (fixed northern lip; taller face grows into the apron). Left: ship stats with display-only Mk labels. Middle: cargo hold grid by ship size (or `NO CARGO BAY`). Right: service checklist + header light; footer shows bay id. Checklist row colors — green done, blue assigned, yellow ready, grey gated; header light off / yellow / green / flash red for bay service mood.
 - **Door beacons + door-header ticker** (pilot / player): same rules on B1–B3 (player is the pilot on B2). Off (empty + pad rest) → amber steady (work not done) → green blink (work done, doors closed) → red flash (door moving) → green steady (doors open). Amber flash when elevator / pad turn / pad not seated. Ticker sits above the door / below the window / between door lights; shows 1–2 activity lines (`SHIP ARRIVING`, `CLEAR TO DEPART`, `REPAIRING HULL`, …).
 
 ### Bay activity: captain checklists (B1–B3) vs player-request (future B2)

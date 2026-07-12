@@ -17,6 +17,23 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.60] — 2026-07-12
+
+### Added
+- Pad status boards: three-column layout (ship stats, cargo grid, service) + bay footer
+- Size-scaled cargo hold Mk ladder (0×0 … 5×5); visitor type maps Mk; player caps at 3×3
+- Display-only component Mk labels (hull/fuel/bullets/shells randomized 1–3)
+
+### Fixed
+- Crane returns to top-left gantry park when idle (no more one-frame crawl / jam camping)
+- Pilot door tickers only marquee when a line is too wide to fit
+
+### Changed
+- Service work animates board meters live (hull/fuel/ammo → 100%; cargo grid add/remove on load/unload)
+- Bay hardpoint piles use stable 2×2 item slots (no visual reshuffle when crates move)
+
+---
+
 ## [0.1.59] — 2026-07-12
 
 ### Fixed
@@ -24,6 +41,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 - Crane / mechanic dumps no longer park fuel·ammo on UP pads or upgrades on CG pads
 - Misshelved UP/CG freight is high-priority crane work (unsticks install loops)
 - Mechanic idle fluff stays north of the forklift road (wing linger only)
+- Service displays occlude mechs walking on their north side (2.5D draw order)
 
 ### Changed
 - Blast-wall visual removed — service display boards use that exact footprint

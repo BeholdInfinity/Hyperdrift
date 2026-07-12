@@ -15,6 +15,7 @@ import {
   pickVisitorId,
   makeVisitorThrusters,
   getVisitorPropulsion,
+  VISITOR_CATALOG,
 } from './HangarVisitorShips.js';
 
 const FACE_SOUTH = Math.PI / 2;
@@ -53,21 +54,25 @@ const ROW_Y = [-78, 8, 118];
  * Floor running-lights end here; stairs moved further south past the backsplash.
  */
 const DANGER_ZONE_SOUTH = (ROW_Y[1] + ROW_Y[2]) / 2;
-/** Service display boards behind each pad (pathing obstacle; engines face south) */
-const BACKSPLASH_Y = DANGER_ZONE_SOUTH + 14;
-const BACKSPLASH_HALF_W = 50;
-/** Display board face height (north of BACKSPLASH_Y midline) */
-const SERVICE_BOARD_H = 28;
-/** Y half-thickness treated as blocked for crew pathing around the board */
-const BACKSPLASH_BAND = 11;
+/**
+ * Service display boards behind each pad.
+ * Northern lip is fixed (must not grow into the pad); extra height lowers the bottom.
+ */
+const SERVICE_BOARD_TOP = DANGER_ZONE_SOUTH + 14 - 28; // was BACKSPLASH_Y - old H
+const BACKSPLASH_HALF_W = 62;
+const SERVICE_BOARD_H = 48;
+const SERVICE_BOARD_BOTTOM = SERVICE_BOARD_TOP + SERVICE_BOARD_H;
+/** Pathing slab midline / half-band covering the full board footprint */
+const BACKSPLASH_Y = (SERVICE_BOARD_TOP + SERVICE_BOARD_BOTTOM) / 2;
+const BACKSPLASH_BAND = (SERVICE_BOARD_BOTTOM - SERVICE_BOARD_TOP) / 2 + 2;
 /** Clearance past board end when bypassing (hug edges; slight clip OK) */
 const BACKSPLASH_BYPASS = 2;
 /** Match danger lights; small pad for body radius */
 const DANGER_ZONE_PAD = 4;
 /** Crane reclaims unclaimed floor drops after this many seconds */
 const FLOOR_DROP_CRANE_AGE = 5;
-/** Safe-side apron south of service boards (was stair hatch Y — stairs removed) */
-const APRON_SAFE_Y = BACKSPLASH_Y + 28;
+/** Safe-side apron south of service boards */
+const APRON_SAFE_Y = SERVICE_BOARD_BOTTOM + 14;
 /** Bay computer / service board stand points (south face of each display) */
 const BAY_COMPUTERS = [-BAY.SIDE_PAD_X, 0, BAY.SIDE_PAD_X].map((x, bay) => ({
   id: `bayComputer${bay}`,
@@ -216,6 +221,179 @@ function padCenters() {
 
 function bayLabels() {
   return ['B1', 'B2', 'B3'];
+}
+
+/** Cargo hold Mk ladder — capacity = cols×rows. Player ships cap at Mk.5 (3×3). */
+const CARGO_BAY_SPECS = [
+  { mk: 0, cols: 0, rows: 0, slots: 0 },
+  { mk: 1, cols: 1, rows: 1, slots: 1 },
+  { mk: 2, cols: 2, rows: 1, slots: 2 },
+  { mk: 3, cols: 2, rows: 2, slots: 4 },
+  { mk: 4, cols: 3, rows: 2, slots: 6 },
+  { mk: 5, cols: 3, rows: 3, slots: 9 },
+  { mk: 6, cols: 4, rows: 3, slots: 12 },
+  { mk: 7, cols: 4, rows: 4, slots: 16 },
+  { mk: 8, cols: 5, rows: 4, slots: 20 },
+  { mk: 9, cols: 5, rows: 5, slots: 25 },
+];
+
+/** Visitor / player → cargoMk (large freighter/tanker only above player ceiling). */
+const VISITOR_CARGO_MK = {
+  scout: 0,
+  interceptor: 2,
+  patrol: 3,
+  gunship: 4,
+  hauler: 5,
+  freighter: 7,
+  tanker: 9,
+  player: 5,
+};
+
+const CARGO_BLOCK_COLORS = ['#58b0ff', '#3ce070', '#e09050', '#c9a020', '#a878c8', '#50a0a8'];
+
+function randInt(lo, hi) {
+  return lo + ((Math.random() * (hi - lo + 1)) | 0);
+}
+
+function cargoBaySpec(mk) {
+  const m = Math.max(0, Math.min(9, mk | 0));
+  return CARGO_BAY_SPECS[m];
+}
+
+function cargoMkForVisitor(visitorId) {
+  if (visitorId && VISITOR_CARGO_MK[visitorId] != null) return VISITOR_CARGO_MK[visitorId];
+  if (visitorId && VISITOR_CATALOG[visitorId]) {
+    const sc = VISITOR_CATALOG[visitorId].scale;
+    if (sc < 0.65) return 0;
+    if (sc < 0.85) return 2;
+    if (sc < 1.05) return 3;
+    if (sc < 1.2) return 4;
+    if (sc < 1.3) return 5;
+    if (sc < 1.4) return 7;
+    return 9;
+  }
+  return 5;
+}
+
+/**
+ * Pack colored blocks into a cargo grid from free-space fraction (cargoSpace).
+ * Higher cargoSpace = emptier hold.
+ */
+function packCargoHold(mk, cargoSpace) {
+  const spec = cargoBaySpec(mk);
+  if (!spec.slots) {
+    return { mk: 0, slots: 0, cols: 0, rows: 0, cells: [] };
+  }
+  const occupied = Math.max(0, Math.min(1, 1 - cargoSpace));
+  let fill = Math.round(spec.slots * occupied);
+  fill = Math.max(0, Math.min(spec.slots, fill));
+  const grid = Array.from({ length: spec.rows }, () => Array(spec.cols).fill(false));
+  const cells = [];
+  const tryPlace = (c, r, w, h, color) => {
+    if (c + w > spec.cols || r + h > spec.rows) return false;
+    for (let yy = r; yy < r + h; yy++) {
+      for (let xx = c; xx < c + w; xx++) {
+        if (grid[yy][xx]) return false;
+      }
+    }
+    for (let yy = r; yy < r + h; yy++) {
+      for (let xx = c; xx < c + w; xx++) grid[yy][xx] = true;
+    }
+    cells.push({ c, r, w, h, color });
+    return true;
+  };
+  let left = fill;
+  // Prefer a couple of larger blocks when the hold is big enough
+  while (left >= 4 && spec.cols >= 2 && spec.rows >= 2 && Math.random() < 0.45) {
+    let placed = false;
+    for (let attempt = 0; attempt < 12 && !placed; attempt++) {
+      const c = (Math.random() * (spec.cols - 1)) | 0;
+      const r = (Math.random() * (spec.rows - 1)) | 0;
+      if (tryPlace(c, r, 2, 2, pick(CARGO_BLOCK_COLORS))) {
+        left -= 4;
+        placed = true;
+      }
+    }
+    if (!placed) break;
+  }
+  for (let r = 0; r < spec.rows && left > 0; r++) {
+    for (let c = 0; c < spec.cols && left > 0; c++) {
+      if (!grid[r][c] && tryPlace(c, r, 1, 1, pick(CARGO_BLOCK_COLORS))) left -= 1;
+    }
+  }
+  return {
+    mk: spec.mk,
+    slots: spec.slots,
+    cols: spec.cols,
+    rows: spec.rows,
+    cells,
+  };
+}
+
+function statColorForPct(pct01) {
+  if (pct01 >= 0.7) return 'green';
+  if (pct01 >= 0.4) return 'yellow';
+  return 'red';
+}
+
+function cargoSpaceFromHold(hold) {
+  if (!hold?.slots) return 1;
+  let used = 0;
+  for (const c of hold.cells || []) used += (c.w || 1) * (c.h || 1);
+  return Math.max(0, Math.min(1, 1 - used / hold.slots));
+}
+
+function syncCargoSpace(st) {
+  if (!st?.cargoHold) return;
+  st.cargoSpace = cargoSpaceFromHold(st.cargoHold);
+}
+
+/** Place one free 1×1 (or 2×2 if room) block into the hold. Returns true if placed. */
+function addCargoHoldBlock(hold) {
+  if (!hold?.slots || !hold.cols || !hold.rows) return false;
+  const grid = Array.from({ length: hold.rows }, () => Array(hold.cols).fill(false));
+  for (const b of hold.cells || []) {
+    for (let yy = b.r; yy < b.r + b.h; yy++) {
+      for (let xx = b.c; xx < b.c + b.w; xx++) {
+        if (yy < hold.rows && xx < hold.cols) grid[yy][xx] = true;
+      }
+    }
+  }
+  let free = 0;
+  for (let r = 0; r < hold.rows; r++) {
+    for (let c = 0; c < hold.cols; c++) if (!grid[r][c]) free++;
+  }
+  if (free <= 0) return false;
+  const color = pick(CARGO_BLOCK_COLORS);
+  if (free >= 4 && hold.cols >= 2 && hold.rows >= 2 && Math.random() < 0.35) {
+    for (let r = 0; r < hold.rows - 1; r++) {
+      for (let c = 0; c < hold.cols - 1; c++) {
+        if (!grid[r][c] && !grid[r][c + 1] && !grid[r + 1][c] && !grid[r + 1][c + 1]) {
+          hold.cells.push({ c, r, w: 2, h: 2, color });
+          return true;
+        }
+      }
+    }
+  }
+  for (let r = 0; r < hold.rows; r++) {
+    for (let c = 0; c < hold.cols; c++) {
+      if (!grid[r][c]) {
+        hold.cells.push({ c, r, w: 1, h: 1, color });
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+/** Remove one cargo block (prefers small). Returns true if removed. */
+function removeCargoHoldBlock(hold) {
+  if (!hold?.cells?.length) return false;
+  // Prefer removing a 1×1
+  let idx = hold.cells.findIndex((b) => (b.w || 1) * (b.h || 1) === 1);
+  if (idx < 0) idx = hold.cells.length - 1;
+  hold.cells.splice(idx, 1);
+  return true;
 }
 
 function bayIndexFromX(x) {
@@ -1299,11 +1477,23 @@ export class HangarBay {
   /** Roll need meters + captain checklist (visitors + interim B2 ambient). */
   _beginCaptainService(pad) {
     if (!pad?.visitorId) return;
+    const cargoMk = cargoMkForVisitor(pad.visitorId);
+    const ammo = rand(0.05, 1);
+    const cargoSpace = rand(0.05, 1);
     const shipState = {
       fuel: rand(0.05, 1),
       hull: rand(0.05, 1),
-      ammo: rand(0.05, 1),
-      cargoSpace: rand(0.05, 1),
+      ammo,
+      bullets: Math.max(0.05, Math.min(1, ammo + rand(-0.12, 0.12))),
+      shells: Math.max(0.05, Math.min(1, ammo + rand(-0.12, 0.12))),
+      cargoSpace,
+      // Display-only Mk stubs (1–3); real component tiers TBD later
+      hullMk: randInt(1, 3),
+      fuelMk: randInt(1, 3),
+      bulletsMk: randInt(1, 3),
+      shellsMk: randInt(1, 3),
+      cargoMk,
+      cargoHold: packCargoHold(cargoMk, cargoSpace),
     };
     pad.shipState = shipState;
     const items = [];
@@ -1327,14 +1517,17 @@ export class HangarBay {
     if (Math.random() < needRequestChance(1 - shipState.ammo)) {
       push('reload', { kindLabel: 'AMMO', priority: 2 });
     }
-    if (Math.random() < needRequestChance(shipState.cargoSpace)) {
-      push('loadCargo', {
-        kindLabel: pick(['CRATE', 'ORE', 'INGOT', 'BARREL', 'COIL', 'TANK']),
-        priority: 2,
-      });
-    }
-    if (Math.random() < needRequestChance(1 - shipState.cargoSpace)) {
-      push('unloadCargo', { priority: 1 });
+    // No cargo bay → never request load/unload
+    if (cargoMk > 0) {
+      if (Math.random() < needRequestChance(shipState.cargoSpace)) {
+        push('loadCargo', {
+          kindLabel: pick(['CRATE', 'ORE', 'INGOT', 'BARREL', 'COIL', 'TANK']),
+          priority: 2,
+        });
+      }
+      if (Math.random() < needRequestChance(1 - shipState.cargoSpace)) {
+        push('unloadCargo', { priority: 1 });
+      }
     }
     const upgradeCount = (Math.random() * 4) | 0; // 0–3
     for (let i = 0; i < upgradeCount; i++) {
@@ -1450,7 +1643,7 @@ export class HangarBay {
     if (!pile?.items?.length) return null;
     const svc = this._servicePad(bay)?.service;
     if (!svc || svc.phase !== 'active') {
-      return pile.items.pop();
+      return this._pilePop(pile);
     }
     const wantTypes =
       job === 'installUpgrade'
@@ -1465,7 +1658,7 @@ export class HangarBay {
       return pending.some((it) => it.kindLabel && c.label === it.kindLabel);
     });
     if (idx < 0) return null;
-    return pile.items.splice(idx, 1)[0];
+    return this._pileTakeAt(pile, idx);
   }
 
   _completeLoadService(bay, cargo, job) {
@@ -1486,6 +1679,102 @@ export class HangarBay {
     if (!item || item.status === 'done') return;
     item.status = 'done';
     item.cargoId = null;
+    this._applyServiceToShipState(pad, item.type);
+  }
+
+  /** Nudge / finalize board readouts when a checklist line finishes. */
+  _applyServiceToShipState(pad, type) {
+    const st = pad?.shipState;
+    if (!st) return;
+    if (type === 'refuel') {
+      st.fuel = 1;
+    } else if (type === 'repair') {
+      st.hull = 1;
+    } else if (type === 'reload') {
+      st.ammo = 1;
+      st.bullets = 1;
+      st.shells = 1;
+    } else if (type === 'loadCargo' && st.cargoMk > 0) {
+      if (!st.cargoHold) st.cargoHold = packCargoHold(st.cargoMk, st.cargoSpace ?? 1);
+      addCargoHoldBlock(st.cargoHold);
+      syncCargoSpace(st);
+    } else if (type === 'unloadCargo' && st.cargoMk > 0) {
+      if (!st.cargoHold) st.cargoHold = packCargoHold(st.cargoMk, st.cargoSpace ?? 0.5);
+      removeCargoHoldBlock(st.cargoHold);
+      syncCargoSpace(st);
+    }
+  }
+
+  /**
+   * Start lerping a board meter while a mechanic works the hull.
+   * @param {'repair'|'refuel'|'reload'|'loadCargo'|'unloadCargo'} type
+   */
+  _beginBoardProgress(npc, type) {
+    const bay = npc.bay ?? bayIndexFromX(npc.targetPad?.x ?? npc.x);
+    const pad = this._servicePad(bay);
+    const st = pad?.shipState;
+    if (!st || !type) {
+      npc._boardProg = null;
+      return;
+    }
+    let from = 0;
+    let to = 1;
+    if (type === 'repair') from = st.hull ?? 0;
+    else if (type === 'refuel') from = st.fuel ?? 0;
+    else if (type === 'reload') from = Math.min(st.bullets ?? 1, st.shells ?? 1, st.ammo ?? 1);
+    else if (type === 'loadCargo') {
+      from = st.cargoSpace ?? 1;
+      to = Math.max(0, from - 1 / Math.max(1, st.cargoHold?.slots || 6));
+    } else if (type === 'unloadCargo') {
+      from = st.cargoSpace ?? 0;
+      to = Math.min(1, from + 1 / Math.max(1, st.cargoHold?.slots || 6));
+    } else {
+      npc._boardProg = null;
+      return;
+    }
+    npc._boardProg = {
+      type,
+      from,
+      to,
+      dur: Math.max(0.25, npc.stateT || 1),
+      bay,
+    };
+  }
+
+  /** Drive board meters toward completion while work animates. */
+  _tickBoardProgress(npc) {
+    const prog = npc._boardProg;
+    if (!prog) return;
+    const pad = this._servicePad(prog.bay);
+    const st = pad?.shipState;
+    if (!st) return;
+    const u = Math.min(1, Math.max(0, 1 - npc.stateT / prog.dur));
+    const v = prog.from + (prog.to - prog.from) * u;
+    if (prog.type === 'repair') st.hull = v;
+    else if (prog.type === 'refuel') st.fuel = v;
+    else if (prog.type === 'reload') {
+      st.ammo = v;
+      st.bullets = v;
+      st.shells = v;
+    } else if (prog.type === 'loadCargo' || prog.type === 'unloadCargo') {
+      st.cargoSpace = v;
+    }
+  }
+
+  _clearBoardProgress(npc) {
+    npc._boardProg = null;
+  }
+
+  /** Infer which board meter a ship-side job should animate. */
+  _boardProgressTypeForJob(npc) {
+    if (npc.job === 'weld') return 'repair';
+    if (npc.job === 'loadShip' && npc.cargo) {
+      if (npc.cargo.label === 'FUEL') return 'refuel';
+      if (npc.cargo.label === 'AMMO') return 'reload';
+      if (npc.cargo.family !== 'upgrade') return 'loadCargo';
+    }
+    if (npc.job === 'unloadShip') return 'unloadCargo';
+    return null;
   }
 
   _completeServiceKey(serviceKey) {
@@ -2124,6 +2413,62 @@ export class HangarBay {
     return this.piles.find((p) => p.id === id) || null;
   }
 
+  /** First free 2×2 slot index on a pile, or -1 if full. */
+  _pileFreeSlot(pile) {
+    if (!pile) return -1;
+    const used = new Set(
+      pile.items.map((it) => it.pileSlot).filter((s) => s != null && s >= 0)
+    );
+    for (let s = 0; s < PILE_SLOTS.length; s++) {
+      if (!used.has(s)) return s;
+    }
+    return -1;
+  }
+
+  /** Place cargo into a stable 2×2 slot (does not reshuffle neighbors). */
+  _pilePush(pile, cargo) {
+    if (!pile || !cargo) return false;
+    if (pile.items.length >= PILE_CAP) return false;
+    let slot = cargo.pileSlot;
+    if (slot == null || slot < 0 || slot >= PILE_SLOTS.length) {
+      slot = this._pileFreeSlot(pile);
+    } else {
+      // Slot claimed by something else — reassign
+      const taken = pile.items.some((it) => it !== cargo && it.pileSlot === slot);
+      if (taken) slot = this._pileFreeSlot(pile);
+    }
+    if (slot < 0) return false;
+    cargo.pileSlot = slot;
+    pile.items.push(cargo);
+    return true;
+  }
+
+  /** Remove last item (crane/forklift default), clearing its slot. */
+  _pilePop(pile) {
+    if (!pile?.items?.length) return null;
+    const cargo = pile.items.pop();
+    if (cargo) cargo.pileSlot = null;
+    return cargo;
+  }
+
+  /** Remove a specific cargo piece without moving others' slots. */
+  _pileRemove(pile, cargo) {
+    if (!pile || !cargo) return null;
+    const idx = pile.items.indexOf(cargo);
+    if (idx < 0) return null;
+    pile.items.splice(idx, 1);
+    cargo.pileSlot = null;
+    return cargo;
+  }
+
+  /** Remove by index (service pickup); keep remaining slots stable. */
+  _pileTakeAt(pile, idx) {
+    if (!pile || idx < 0 || idx >= pile.items.length) return null;
+    const cargo = pile.items.splice(idx, 1)[0];
+    if (cargo) cargo.pileSlot = null;
+    return cargo;
+  }
+
   _pileAt(row, col) {
     return this.piles.find((p) => p.row === row && p.col === col) || null;
   }
@@ -2376,12 +2721,7 @@ export class HangarBay {
       return { mode: 'work', pickup: chosen.pickup, dropoff: chosen.dropoff };
     }
 
-    // 4) Linger on blocked task start
-    const wait = this._pickWeighted(blocked);
-    if (wait) {
-      return { mode: 'linger', pickup: wait.pickup, dropoff: wait.dropoff };
-    }
-
+    // 4) Nothing doable — park at home (recheck soon); don't camp blocked piles
     return { mode: 'idle', pickup: null, dropoff: null };
   }
 
@@ -2446,8 +2786,7 @@ export class HangarBay {
   _depositCargoSafe(cargo, preferBay = null) {
     const dest = this._findSafePileForCargo(cargo, preferBay);
     if (!dest) return false;
-    dest.items.push(cargo);
-    return true;
+    return this._pilePush(dest, cargo);
   }
 
   _makeFloorPickupProxy(drop) {
@@ -2467,10 +2806,11 @@ export class HangarBay {
 
   _applyCraneJob(c, job) {
     if (!job || job.mode === 'idle') {
-      c.pickup = { x: CRANE_HOME.x, y: CRANE_HOME.y + TROLLEY_NORTH, id: 'craneHome' };
+      const home = this._craneHomeXY();
+      c.pickup = { x: home.x, y: home.y + TROLLEY_NORTH, id: 'craneHome' };
       c.dropoff = c.pickup;
       c.phase = 'idle';
-      c.pause = 0.6;
+      c.pause = 0;
       c.lingerFor = null;
       return;
     }
@@ -2488,10 +2828,13 @@ export class HangarBay {
 
   _resetCrane() {
     const job = this._pickCraneJob();
-    const start = job.pickup || this._bayPile(1, 'in', ROW.M);
+    const home = this._craneHomeXY();
+    const start = job.mode === 'idle' || !job.pickup
+      ? { x: home.x, y: home.y + TROLLEY_NORTH, id: 'craneHome' }
+      : job.pickup;
     this.crane = {
-      trolleyX: start.x,
-      bridgeY: start.y - TROLLEY_NORTH,
+      trolleyX: job.mode === 'idle' || !job.pickup ? home.x : start.x,
+      bridgeY: job.mode === 'idle' || !job.pickup ? home.y : start.y - TROLLEY_NORTH,
       hoist: HOIST_RAISED,
       hookTargetY: null,
       carried: null,
@@ -2501,13 +2844,13 @@ export class HangarBay {
         suit: pick(['#3a6a8a', '#5a6a4a', '#6a5a48', '#4a5a6a']),
         helmet: pick(['#c8d0d8', '#b0a890', '#d0c8b8']),
       },
-      phase: 'travelPickup',
+      phase: 'idle',
       pickup: start,
       dropoff: job.dropoff || start,
       lingerFor: null,
-      pause: 0.5,
-      _prevTX: start.x,
-      _prevBY: start.y - TROLLEY_NORTH,
+      pause: 0.2,
+      _prevTX: job.mode === 'idle' || !job.pickup ? home.x : start.x,
+      _prevBY: job.mode === 'idle' || !job.pickup ? home.y : start.y - TROLLEY_NORTH,
       _prevHoist: HOIST_RAISED,
     };
     this._applyCraneJob(this.crane, job);
@@ -2691,9 +3034,9 @@ export class HangarBay {
   _cargoHitTargets() {
     const out = [];
     for (const pile of this.piles) {
-      pile.items.forEach((cargo, i) => {
-        const pos = this._itemWorldPos(pile, i);
-        out.push({ cargo, pile, index: i, x: pos.x, y: pos.y, kind: 'pile' });
+      pile.items.forEach((cargo) => {
+        const pos = this._itemWorldPos(pile, cargo);
+        out.push({ cargo, pile, x: pos.x, y: pos.y, kind: 'pile' });
       });
     }
     if (this.crane?.carried) {
@@ -2727,9 +3070,21 @@ export class HangarBay {
     return out;
   }
 
-  _itemWorldPos(pile, index) {
-    // 2×2 slot grid — horizontal + vertical fill (max PILE_CAP)
-    const slot = PILE_SLOTS[Math.min(index, PILE_SLOTS.length - 1)];
+  _itemWorldPos(pile, itemOrIndex) {
+    // Stable 2×2 slot per item — never remap by array index (that caused shuffling)
+    let slotIdx = 0;
+    if (itemOrIndex && typeof itemOrIndex === 'object') {
+      slotIdx = itemOrIndex.pileSlot;
+      if (slotIdx == null || slotIdx < 0 || slotIdx >= PILE_SLOTS.length) {
+        // Legacy / missing slot — assign by current free map without moving others
+        slotIdx = this._pileFreeSlot(pile);
+        if (slotIdx < 0) slotIdx = 0;
+        itemOrIndex.pileSlot = slotIdx;
+      }
+    } else {
+      slotIdx = Math.min(itemOrIndex | 0, PILE_SLOTS.length - 1);
+    }
+    const slot = PILE_SLOTS[slotIdx];
     return {
       x: pile.x + slot.ox,
       y: pile.y + slot.oy,
@@ -2749,8 +3104,7 @@ export class HangarBay {
     this._burstCargo(x, y, target.cargo.color);
 
     if (target.kind === 'pile' && target.pile) {
-      const idx = target.pile.items.indexOf(target.cargo);
-      if (idx >= 0) target.pile.items.splice(idx, 1);
+      this._pileRemove(target.pile, target.cargo);
       this._restageServiceCargo(target.cargo);
     } else if (target.kind === 'crane' && this.crane) {
       this._restageServiceCargo(this.crane.carried);
@@ -2963,10 +3317,22 @@ export class HangarBay {
           c.hoist = Math.max(HOIST_RAISED, c.hoist - hoistSpeed * dt);
           break;
         }
+        c.hoist = HOIST_RAISED;
+        c.hookTargetY = null;
+
+        // Only leave home for doable work — don't camp blocked jams mid-bay
+        const next = this._pickCraneJob();
+        if (next && next.mode === 'work') {
+          this._applyCraneJob(c, next);
+          break;
+        }
+
+        // No doable work — return to top-left and wait there
         const park = this._craneHomeXY();
-        this._moveCraneXY(c, park.x, park.y, moveSpeed * 0.6, dt);
-        c.pause = 0.5;
-        this._applyCraneJob(c, this._pickCraneJob());
+        if (!this._moveCraneXY(c, park.x, park.y, moveSpeed * 0.75, dt)) {
+          break;
+        }
+        c.pause = 0.85;
         break;
       }
       case 'linger': {
@@ -2975,9 +3341,6 @@ export class HangarBay {
           break;
         }
         c.hookTargetY = null;
-        // Wait near the start of the blocked task (pickup)
-        const t = this._craneParkXY(c.pickup);
-        this._moveCraneXY(c, t.x, t.y, moveSpeed * 0.7, dt);
         // Dest freed?
         if (c.dropoff && c.dropoff.items.length < PILE_CAP && c.pickup?.items?.length) {
           c.lingerFor = null;
@@ -2985,8 +3348,14 @@ export class HangarBay {
           c.pause = 0.15;
           break;
         }
-        c.pause = 0.45;
-        this._applyCraneJob(c, this._pickCraneJob());
+        // Re-evaluate: take doable work, else go home instead of camping the jam
+        const retry = this._pickCraneJob();
+        if (retry && retry.mode === 'work') {
+          this._applyCraneJob(c, retry);
+          break;
+        }
+        c.lingerFor = null;
+        this._applyCraneJob(c, { mode: 'idle' });
         break;
       }
       case 'travelPickup': {
@@ -3018,7 +3387,7 @@ export class HangarBay {
         if (near(c.hoist, HOIST_MAX, 2)) {
           c.hoist = HOIST_MAX;
           if (c.pickup.items.length > 0) {
-            c.carried = c.pickup.items.pop();
+            c.carried = this._pilePop(c.pickup);
             if (c.pickup.isFloorDrop && c.pickup.floorDropId) {
               this.floorDrops = this.floorDrops.filter((d) => d.id !== c.pickup.floorDropId);
             }
@@ -3131,7 +3500,7 @@ export class HangarBay {
             c.dropoff.items.length < PILE_CAP &&
             this._pileAcceptsFamily(c.dropoff, c.carried);
           if (canDrop) {
-            c.dropoff.items.push(c.carried);
+            this._pilePush(c.dropoff, c.carried);
             c.carried = null;
             c.pause = 0.3;
             c.phase = 'raiseDropoff';
@@ -3950,7 +4319,7 @@ export class HangarBay {
             npc.cargo.serviceKey = null;
             npc.cargo.serviceBay = null;
           }
-          p.items.push(npc.cargo);
+          this._pilePush(p, npc.cargo);
           npc.cargo = null;
           this._clearTaskClaim(npc);
           // Exit to fetch next inbound (fake offscreen cargo)
@@ -3963,7 +4332,7 @@ export class HangarBay {
           npc.stateT = 0.4;
           break;
         } else if (npc.job === 'takeOut' && !npc.cargo && p && p.items.length > 0) {
-          npc.cargo = p.items.pop();
+          npc.cargo = this._pilePop(p);
           if (npc.cargo?.serviceKey && p.lane === 'in') {
             this._restageServiceCargo(npc.cargo);
             npc.cargo.serviceKey = null;
@@ -4790,9 +5159,19 @@ export class HangarBay {
           npc.state = 'toShip';
         } else if (unloading && npc.cargo && p && p.items.length < PILE_CAP) {
           if (npc.cargo.unloadServiceBay != null) {
-            this._completeServiceType(npc.cargo.unloadServiceBay, 'unloadCargo');
+            const ubay = npc.cargo.unloadServiceBay;
+            const already = !!npc.cargo._boardUnloadApplied;
+            const pad = this._servicePad(ubay);
+            const item = pad?.service?.items?.find(
+              (it) => it.type === 'unloadCargo' && it.status !== 'done'
+            );
+            if (item) {
+              item.status = 'done';
+              item.cargoId = null;
+              if (!already) this._applyServiceToShipState(pad, 'unloadCargo');
+            }
           }
-          p.items.push(npc.cargo);
+          this._pilePush(p, npc.cargo);
           npc.cargo = null;
           npc.tripsLeft -= 1;
           if (npc.tripsLeft <= 0) {
@@ -4850,11 +5229,13 @@ export class HangarBay {
           if (npc.job === 'weld') {
             npc.state = 'workWeld';
             npc.stateT = rand(1.1, 1.9);
+            this._beginBoardProgress(npc, 'repair');
           } else {
             npc.state = 'workShip';
             npc.stateT = npc.job === 'installUpgrade' || npc.job === 'removeUpgrade'
               ? rand(1.2, 1.9)
               : rand(0.7, 1.1);
+            this._beginBoardProgress(npc, this._boardProgressTypeForJob(npc));
           }
         }
         break;
@@ -4862,9 +5243,11 @@ export class HangarBay {
       case 'workWeld': {
         if (!this._padWorkable(npc.targetPad)) {
           npc.hullTarget = null;
+          this._clearBoardProgress(npc);
           this._beginNextMechanicTrip(npc);
           break;
         }
+        this._tickBoardProgress(npc);
         if (Math.random() < 0.55) {
           this._sparkle.push({
             x: npc.x + rand(-4, 4),
@@ -4879,6 +5262,7 @@ export class HangarBay {
         this._clearTaskClaim(npc);
         const weldBay = npc.bay ?? bayIndexFromX(npc.targetPad?.x ?? npc.x);
         this._completeServiceType(weldBay, 'repair');
+        this._clearBoardProgress(npc);
         this._noteBayTaskComplete(npc);
         npc.tripsLeft -= 1;
         npc.hullTarget = null;
@@ -4891,9 +5275,11 @@ export class HangarBay {
       case 'workShip': {
         if (!this._padWorkable(npc.targetPad)) {
           npc.hullTarget = null;
+          this._clearBoardProgress(npc);
           this._beginNextMechanicTrip(npc);
           break;
         }
+        this._tickBoardProgress(npc);
         const upgrading =
           npc.job === 'installUpgrade' || npc.job === 'removeUpgrade';
         if (upgrading && Math.random() < 0.6) {
@@ -4911,6 +5297,7 @@ export class HangarBay {
 
         if ((npc.job === 'loadShip' || npc.job === 'installUpgrade') && npc.cargo) {
           this._completeLoadService(bay, npc.cargo, npc.job);
+          this._clearBoardProgress(npc);
           this._noteBayTaskComplete(npc);
           npc.cargo = null;
           npc.tripsLeft -= 1;
@@ -4920,23 +5307,40 @@ export class HangarBay {
             this._beginIdleFluff(npc);
           } else this._beginNextMechanicTrip(npc);
         } else if ((npc.job === 'loadShip' || npc.job === 'installUpgrade') && !npc.cargo) {
+          this._clearBoardProgress(npc);
           this._beginNextMechanicTrip(npc);
         } else if (npc.job === 'unloadShip' && !npc.cargo) {
           const dest = this._bayPile(bay, 'out', ROW.M);
           if (!dest || dest.items.length >= PILE_CAP) {
+            this._clearBoardProgress(npc);
             this._beginNextMechanicTrip(npc);
             break;
+          }
+          // Reflect unload on the board as soon as the crate leaves the ship
+          const pad = this._servicePad(bay);
+          if (pad?.shipState?.cargoMk > 0) {
+            if (!pad.shipState.cargoHold) {
+              pad.shipState.cargoHold = packCargoHold(
+                pad.shipState.cargoMk,
+                pad.shipState.cargoSpace ?? 0.4
+              );
+            }
+            removeCargoHoldBlock(pad.shipState.cargoHold);
+            syncCargoSpace(pad.shipState);
           }
           const kinds = HOLD_CARGO.filter(
             (k) => k.label === 'ORE' || k.label === 'INGOT' || k.label === 'AMMO' || k.label === 'CRATE'
           );
           npc.cargo = makeCargo(pick(kinds));
           npc.cargo.unloadServiceBay = bay;
+          npc.cargo._boardUnloadApplied = true;
           npc.targetPile = dest;
           npc.hullTarget = null;
+          this._clearBoardProgress(npc);
           this._applyTaskClaim(npc, 'unloadShip', npc.targetPile, bay);
           npc.state = 'toPile';
         } else if (npc.job === 'removeUpgrade' && !npc.cargo) {
+          this._clearBoardProgress(npc);
           const dest = this._bayPile(bay, 'out', ROW.N);
           if (!dest || dest.items.length >= PILE_CAP) {
             this._beginNextMechanicTrip(npc);
@@ -4948,6 +5352,7 @@ export class HangarBay {
           this._applyTaskClaim(npc, 'removeUpgrade', npc.targetPile, bay);
           npc.state = 'toPile';
         } else {
+          this._clearBoardProgress(npc);
           this._beginNextMechanicTrip(npc);
         }
         break;
@@ -5137,13 +5542,36 @@ export class HangarBay {
     }
   }
 
+  /**
+   * True when an NPC stands north of a service display (should be drawn under it).
+   */
+  _npcBehindServiceBoard(npc) {
+    if (npc.y >= SERVICE_BOARD_BOTTOM - 2) return false;
+    if (npc.y < SERVICE_BOARD_TOP - 14) return false;
+    for (const cx of padCenters()) {
+      if (Math.abs(npc.x - cx) <= BACKSPLASH_HALF_W + 6) return true;
+    }
+    return false;
+  }
+
+  _drawNpc(ctx, npc) {
+    if (npc.kind === 'mechanic') this._drawMechanic(ctx, npc);
+    else this._drawForklift(ctx, npc);
+  }
+
   /** Crew on the deck — drawn under ships so hulls occlude them. */
   renderCrew(ctx) {
+    const behind = [];
+    const front = [];
     for (const npc of this.npcs) {
       if (!this._npcVisibleThroughBulkheads(npc)) continue;
-      if (npc.kind === 'mechanic') this._drawMechanic(ctx, npc);
-      else this._drawForklift(ctx, npc);
+      if (this._npcBehindServiceBoard(npc)) behind.push(npc);
+      else front.push(npc);
     }
+    for (const npc of behind) this._drawNpc(ctx, npc);
+    // Redraw displays so their 2.5D height occludes northern crew
+    this._drawServiceDisplayBoards(ctx);
+    for (const npc of front) this._drawNpc(ctx, npc);
     this._drawBulkheadDoors(ctx);
   }
 
@@ -6065,16 +6493,23 @@ export class HangarBay {
       ctx.rect(cx - w / 2 + 1, y + 1, w - 2, h - 2);
       ctx.clip();
       const texts = lines.length ? lines : [{ text: 'STANDBY', color: 'dim' }];
+      const innerW = w - 4;
       texts.forEach((line, li) => {
         const raw = line.text || 'STANDBY';
-        const scroll =
-          raw.length > 14 ? Math.sin(this.time * 0.7 + i) * (raw.length - 12) * 2.2 : 0;
         ctx.fillStyle = colorMap[line.color] || colorMap.dim;
         ctx.font = '4.2px monospace';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         const ty = y + h / 2 + (texts.length > 1 ? (li === 0 ? -2.2 : 2.2) : 0);
-        ctx.fillText(raw, cx - scroll, ty);
+        const textW = ctx.measureText(raw).width;
+        let drawX = cx;
+        if (textW > innerW) {
+          // Marquee only when the line doesn't fit the ticker box
+          const overflow = textW - innerW;
+          const scroll = Math.sin(this.time * 0.7 + i + li) * (overflow * 0.5);
+          drawX = cx - scroll;
+        }
+        ctx.fillText(raw, drawX, ty);
       });
       ctx.restore();
     });
@@ -6487,8 +6922,8 @@ export class HangarBay {
             : (pile.lane === 'in' ? 'ST·IN' : 'ST·OUT');
       ctx.fillText(tag, pile.x, pile.y + 15);
 
-      pile.items.forEach((item, i) => {
-        const pos = this._itemWorldPos(pile, i);
+      pile.items.forEach((item) => {
+        const pos = this._itemWorldPos(pile, item);
         this._drawCargoItem(ctx, item, pos.x, pos.y, 1);
       });
     }
@@ -6929,51 +7364,160 @@ export class HangarBay {
   }
 
   /**
-   * Per-bay crew service displays — occupy the former blast-wall footprint
-   * (pathing still treats BACKSPLASH_* as solid).
+   * Per-bay pad status boards — fixed northern lip; height grows south into apron.
+   * Columns: ship stats | cargo grid | service checklist + bay footer.
    */
   _drawServiceDisplayBoards(ctx) {
-    const y = BACKSPLASH_Y;
+    const top = SERVICE_BOARD_TOP;
     const hw = BACKSPLASH_HALF_W;
     const wallH = SERVICE_BOARD_H;
+    const bottom = SERVICE_BOARD_BOTTOM;
     const colorMap = {
       green: '#3ce070',
       blue: '#4aa8ff',
       yellow: '#e8c040',
+      red: '#ff5048',
       grey: '#8a9098',
       dim: '#6a7888',
+      white: '#d0dce8',
     };
 
     padCenters().forEach((cx, bay) => {
       const x0 = cx - hw;
       const w = hw * 2;
-      const faceY = y - wallH;
+      const faceY = top;
+      const pad = this._servicePad(bay);
+      const hasShip = this._bayHasShip(bay);
+      const st = hasShip ? pad?.shipState : null;
 
       ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-      ctx.fillRect(x0 - 1, y + 4, w + 2, 5);
+      ctx.fillRect(x0 - 1, bottom + 2, w + 2, 5);
 
-      // Frame / bezel (same footprint as old blast wall)
       ctx.fillStyle = '#1a2228';
-      ctx.fillRect(x0, y - 2, w, 10);
+      ctx.fillRect(x0, bottom - 4, w, 8);
       ctx.fillStyle = '#0a1014';
       ctx.fillRect(x0, faceY, w, wallH - 2);
       ctx.fillStyle = 'rgba(120, 150, 170, 0.25)';
       ctx.fillRect(x0, faceY, w, 2);
       ctx.fillStyle = 'rgba(40, 50, 60, 0.5)';
-      ctx.fillRect(x0, y - 2, w, 2);
+      ctx.fillRect(x0, bottom - 4, w, 2);
       ctx.strokeStyle = '#5a7080';
       ctx.lineWidth = 1;
-      ctx.strokeRect(x0, faceY, w, wallH + 3);
+      ctx.strokeRect(x0, faceY, w, wallH + 2);
 
-      // Side posts
       ctx.fillStyle = '#2a3848';
-      ctx.fillRect(x0 - 2, faceY - 1, 4, wallH + 8);
-      ctx.fillRect(x0 + w - 2, faceY - 1, 4, wallH + 8);
+      ctx.fillRect(x0 - 2, faceY - 1, 4, wallH + 6);
+      ctx.fillRect(x0 + w - 2, faceY - 1, 4, wallH + 6);
       ctx.fillStyle = '#c9a020';
       ctx.fillRect(x0 - 2, faceY - 1, 4, 2);
       ctx.fillRect(x0 + w - 2, faceY - 1, 4, 2);
 
-      // Header light + title
+      const padInner = 3;
+      const contentX = x0 + padInner;
+      const contentW = w - padInner * 2;
+      const colGap = 2;
+      const colW = (contentW - colGap * 2) / 3;
+      const footerH = 7;
+      const bodyTop = faceY + 3;
+      const bodyBot = bottom - footerH - 2;
+      const bodyH = bodyBot - bodyTop;
+
+      const col0 = contentX;
+      const col1 = contentX + colW + colGap;
+      const col2 = contentX + (colW + colGap) * 2;
+
+      ctx.strokeStyle = 'rgba(80, 120, 150, 0.45)';
+      ctx.lineWidth = 0.6;
+      ctx.beginPath();
+      ctx.moveTo(col1 - colGap / 2, bodyTop);
+      ctx.lineTo(col1 - colGap / 2, bodyBot);
+      ctx.moveTo(col2 - colGap / 2, bodyTop);
+      ctx.lineTo(col2 - colGap / 2, bodyBot);
+      ctx.stroke();
+
+      ctx.fillStyle = colorMap.white;
+      ctx.font = '3.2px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText('SHIP STATS', col0 + 1, bodyTop + 4);
+
+      const statRows = hasShip && st
+        ? [
+            { label: `Hull (Mk.${st.hullMk ?? 1})`, v: st.hull },
+            { label: `Fuel (Mk.${st.fuelMk ?? 1})`, v: st.fuel },
+            { label: `Bullets (Mk.${st.bulletsMk ?? 1})`, v: st.bullets ?? st.ammo },
+            { label: `Shells (Mk.${st.shellsMk ?? 1})`, v: st.shells ?? st.ammo },
+          ]
+        : [
+            { label: 'Hull', v: null },
+            { label: 'Fuel', v: null },
+            { label: 'Bullets', v: null },
+            { label: 'Shells', v: null },
+          ];
+      statRows.forEach((row, ri) => {
+        const ty = bodyTop + 10 + ri * 5.5;
+        if (row.v == null) {
+          ctx.fillStyle = colorMap.dim;
+          ctx.font = '3.1px monospace';
+          ctx.fillText(`${row.label}: --`, col0 + 1, ty);
+        } else {
+          const pct = Math.round(row.v * 100);
+          ctx.fillStyle = colorMap[statColorForPct(row.v)] || colorMap.dim;
+          ctx.font = '3.1px monospace';
+          ctx.fillText(`${row.label}: ${pct}%`, col0 + 1, ty);
+        }
+      });
+
+      const hold = st?.cargoHold;
+      const cargoMk = st?.cargoMk ?? 0;
+      if (!hasShip || !st) {
+        ctx.fillStyle = colorMap.dim;
+        ctx.font = '3.2px monospace';
+        ctx.fillText('CARGO', col1 + 1, bodyTop + 4);
+        ctx.fillText('--', col1 + 1, bodyTop + 12);
+      } else if (!cargoMk || !hold?.slots) {
+        ctx.fillStyle = colorMap.white;
+        ctx.font = '3.2px monospace';
+        ctx.fillText('CARGO', col1 + 1, bodyTop + 4);
+        ctx.fillStyle = colorMap.dim;
+        ctx.font = '3px monospace';
+        ctx.fillText('NO CARGO BAY', col1 + 1, bodyTop + 14);
+      } else {
+        const freePct = Math.round((st.cargoSpace ?? 0) * 100);
+        ctx.fillStyle = colorMap.white;
+        ctx.font = '3.2px monospace';
+        ctx.fillText(`CARGO (Mk.${cargoMk})`, col1 + 1, bodyTop + 4);
+        ctx.font = '2.8px monospace';
+        ctx.fillStyle = '#a8b8c8';
+        ctx.fillText(`Room: ${freePct}% (${hold.slots} Slots)`, col1 + 1, bodyTop + 9);
+
+        const gridTop = bodyTop + 12;
+        const gridBot = bodyBot - 1;
+        const gridH = Math.max(8, gridBot - gridTop);
+        const gridW = colW - 2;
+        const cell = Math.min(gridW / hold.cols, gridH / hold.rows);
+        const gw = cell * hold.cols;
+        const gh = cell * hold.rows;
+        const gx = col1 + (colW - gw) / 2;
+        const gy = gridTop + (gridH - gh) / 2;
+
+        ctx.strokeStyle = 'rgba(100, 120, 140, 0.55)';
+        ctx.lineWidth = 0.5;
+        for (let r = 0; r < hold.rows; r++) {
+          for (let c = 0; c < hold.cols; c++) {
+            ctx.strokeRect(gx + c * cell, gy + r * cell, cell - 0.4, cell - 0.4);
+          }
+        }
+        for (const block of hold.cells || []) {
+          ctx.fillStyle = block.color || '#58b0ff';
+          ctx.fillRect(
+            gx + block.c * cell + 0.3,
+            gy + block.r * cell + 0.3,
+            block.w * cell - 0.8,
+            block.h * cell - 0.8
+          );
+        }
+      }
+
       const hl = this._boardHeaderLight(bay);
       let hc = '80,90,100';
       let hg = 0.15;
@@ -6989,21 +7533,26 @@ export class HangarBay {
       }
       ctx.fillStyle = `rgba(${hc}, ${hg})`;
       ctx.beginPath();
-      ctx.arc(x0 + 8, faceY + 7, 2.4, 0, Math.PI * 2);
+      ctx.arc(col2 + 4, bodyTop + 3.5, 2.2, 0, Math.PI * 2);
       ctx.fill();
-
-      ctx.fillStyle = '#8aa0b0';
-      ctx.font = '4px monospace';
+      ctx.fillStyle = colorMap.white;
+      ctx.font = '3.2px monospace';
       ctx.textAlign = 'left';
-      ctx.fillText(`${bayLabels()[bay]} SVC`, x0 + 13, faceY + 8.5);
+      ctx.fillText('Service', col2 + 8, bodyTop + 4.5);
 
       const rows = this._boardTaskRows(bay);
-      rows.slice(0, 4).forEach((row, ri) => {
+      const maxRows = Math.max(1, Math.floor((bodyH - 10) / 4.5));
+      rows.slice(0, maxRows).forEach((row, ri) => {
         ctx.fillStyle = colorMap[row.color] || colorMap.dim;
-        ctx.font = '3.8px monospace';
+        ctx.font = '3.3px monospace';
         const mark = row.color === 'green' ? '✓' : row.color === 'blue' ? '●' : '○';
-        ctx.fillText(`${mark} ${row.label}`, x0 + 6, faceY + 15 + ri * 4.2);
+        ctx.fillText(`${mark} ${row.label}`, col2 + 2, bodyTop + 11 + ri * 4.5);
       });
+
+      ctx.fillStyle = '#c98020';
+      ctx.font = 'bold 5.5px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText(bayLabels()[bay], cx, bottom - 2);
     });
   }
 
