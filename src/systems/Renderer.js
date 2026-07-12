@@ -87,6 +87,26 @@ export class Renderer {
     ctx.rotate(ship.angle);
     ctx.scale(camera.effectiveZoom * visualScale, camera.effectiveZoom * visualScale);
 
+    this._drawShipBody(ctx, ship);
+
+    ctx.restore();
+  }
+
+  /**
+   * Draw ship in a world-space canvas (already camera-transformed).
+   * Used by hangar occlusion so the hull can sit behind the north wall.
+   */
+  drawShipInWorld(ctx, ship) {
+    const visualScale = ship.visualScale ?? 1;
+    ctx.save();
+    ctx.translate(ship.position.x, ship.position.y);
+    ctx.rotate(ship.angle);
+    ctx.scale(visualScale, visualScale);
+    this._drawShipBody(ctx, ship);
+    ctx.restore();
+  }
+
+  _drawShipBody(ctx, ship) {
     this._drawShipHull(ctx);
     this._drawHardpointHardware(ctx, ship);
     this._drawThrusterPlumes(ctx, ship);
@@ -96,8 +116,6 @@ export class Renderer {
     if (ship.muzzleFlash > 0) {
       this._drawTurretMuzzleBloom(ctx, ship);
     }
-
-    ctx.restore();
   }
 
   _drawShipHull(ctx) {

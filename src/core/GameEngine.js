@@ -1130,12 +1130,27 @@ export class GameEngine {
       nebulae: this.asteroidSystem.getNebulae(),
     };
 
+    const doorLip = this.hangarBay.getDoorLipY();
+    const shipOutside = !!(this.ship && this.ship.position.y < doorLip - 2);
+
     this.renderer.renderWorldLayer((worldCtx) => {
       this.hangarBay.renderDeck(worldCtx, space);
       this.hangarBay.renderCrew(worldCtx);
       this.hangarBay.renderElevatorTransits(worldCtx);
-      this.hangarBay.renderVisitors(worldCtx);
-      this._drawHangarHoverShadow(worldCtx);
+      this.hangarBay.renderVisitors(worldCtx, {
+        beforeOcclusion: (wctx) => {
+          if (this.ship && shipOutside) {
+            this._drawHangarHoverShadow(wctx);
+            this.renderer.drawShipInWorld(wctx, this.ship);
+          }
+        },
+        afterOcclusion: (wctx) => {
+          if (this.ship && !shipOutside) {
+            this._drawHangarHoverShadow(wctx);
+            this.renderer.drawShipInWorld(wctx, this.ship);
+          }
+        },
+      });
     }, this.camera);
 
     this.renderer.renderProjectiles(
@@ -1148,10 +1163,6 @@ export class GameEngine {
       this.camera,
       this.ship
     );
-
-    if (this.ship) {
-      this.renderer.renderShip(this.ship, this.camera);
-    }
 
     this.renderer.renderWorldLayer((worldCtx) => {
       this.hangarBay.renderOverhead(worldCtx);

@@ -17,6 +17,29 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.51] — 2026-07-12
+
+### Fixed
+- Door threshold hazard paint no longer restamps over arriving ships; duplicate sill stripes removed (floor caution box is the single warning band)
+
+---
+
+## [0.1.50] — 2026-07-12
+
+### Fixed
+- Open bay doors show the same continuous spacefield as the viewport windows (shared chunk anchor); sealed doors keep the dark pocket
+
+---
+
+## [0.1.49] — 2026-07-12
+
+### Fixed
+- Hangar north-wall occlusion: ships exit through open doors and remain visible in viewport glass; solid wall covers them elsewhere
+- Door restamp no longer paints an opaque pocket over departing ships; wall fill uses evenodd holes so stacked window+door apertures stay clear
+- Player B2 launch/land uses the same outside→wall→inside draw order as visitors
+
+---
+
 ## [0.1.48] — 2026-07-12
 
 ### Changed

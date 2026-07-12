@@ -3290,7 +3290,10 @@ export class HangarBay {
   /** Pads, cargo, floor — below crew and ships. */
   renderDeck(ctx, space = null) {
     this._drawBayShell(ctx);
-    if (space) this._drawViewportSpace(ctx, space);
+    if (space) {
+      this._drawViewportSpace(ctx, space);
+      this._drawOpenDoorSpace(ctx, space);
+    }
     this._drawViewportFrames(ctx);
     this._drawFloor(ctx);
     this._drawBayDangerLights(ctx);
@@ -3346,13 +3349,22 @@ export class HangarBay {
     }
   }
 
+  /** North lip of bay doors — ships with y < this are outside (space side). */
+  getDoorLipY() {
+    return -BAY.HALF_H + BAY.DOOR_H;
+  }
+
   /**
-   * Visitor ships on B1/B3.
-   * Elevator-transit visitors are drawn clipped inside the shaft (renderDeck).
-   * Door-exit ships draw first, then north-wall occlusion (windows/doors clear).
+   * Visitor ships on B1/B3 (+ optional player ship via hooks).
+   * Elevator-transit visitors are drawn clipped inside the shaft.
+   * Outside ships draw first, then north-wall occlusion (windows + open doors
+   * stay clear), then door leaves/frames, then inside ships.
+   *
+   * @param {{ beforeOcclusion?: (ctx: CanvasRenderingContext2D) => void,
+   *           afterOcclusion?: (ctx: CanvasRenderingContext2D) => void }} [hooks]
    */
-  renderVisitors(ctx) {
-    const doorLip = -BAY.HALF_H + BAY.DOOR_H;
+  renderVisitors(ctx, hooks = {}) {
+    const doorLip = this.getDoorLipY();
     const outside = [];
     const inside = [];
     for (const pad of this.sidePads) {
@@ -3363,11 +3375,14 @@ export class HangarBay {
       else inside.push(pad);
     }
     for (const pad of outside) this._drawVisitor(ctx, pad);
+    if (hooks.beforeOcclusion) hooks.beforeOcclusion(ctx);
     this._drawNorthWallOcclusion(ctx);
     this._drawViewportFrames(ctx);
-    this._drawBayDoors(ctx);
-    this._drawBayBeacons(ctx);
+    // Leaves/jambs only — floor sill/hazard stays under ships from the deck pass
+    this._drawBayDoors(ctx, { leavesOnly: true });
+    this._drawBayBeacons(ctx, { wallOnly: true });
     for (const pad of inside) this._drawVisitor(ctx, pad);
+    if (hooks.afterOcclusion) hooks.afterOcclusion(ctx);
   }
 
   /**
@@ -3582,39 +3597,27 @@ export class HangarBay {
       }
     }
 
-    const fillBand = (y, bandH, fill) => {
-      ctx.fillStyle = fill;
-      let cursor = -w - 100;
-      const edges = [];
-      for (const hole of holes) {
-        if (hole.y1 <= y || hole.y0 >= y + bandH) continue;
-        edges.push(hole);
-      }
-      edges.sort((a, b) => a.lo - b.lo);
-      for (const hole of edges) {
-        const clipLo = Math.max(hole.lo, -w - 100);
-        const clipHi = Math.min(hole.hi, w + 100);
-        if (clipLo > cursor) ctx.fillRect(cursor, y, clipLo - cursor, bandH);
-        // Above / below hole within this band
-        const above = Math.min(bandH, Math.max(0, hole.y0 - y));
-        if (above > 0) ctx.fillRect(clipLo, y, clipHi - clipLo, above);
-        const belowStart = Math.max(0, hole.y1 - y);
-        if (belowStart < bandH) {
-          ctx.fillRect(clipLo, y + belowStart, clipHi - clipLo, bandH - belowStart);
-        }
-        cursor = Math.max(cursor, clipHi);
-      }
-      if (cursor < w + 100) ctx.fillRect(cursor, y, w + 100 - cursor, bandH);
-    };
+    const wallX = -w - 100;
+    const wallW = w * 2 + 200;
+    const wallY = -h - 80;
+    const wallH = 80 + BAY.DOOR_H;
 
-    fillBand(-h - 80, 80 + BAY.DOOR_H, '#101820');
-    fillBand(-h - 50, 50 + BAY.DOOR_H, '#182430');
+    // Evenodd clip: solid wall minus windows and open door apertures.
+    // (Band-scan fills break when viewport + door holes stack in Y.)
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(wallX, wallY, wallW, wallH);
+    for (const hole of holes) {
+      ctx.rect(hole.lo, hole.y0, hole.hi - hole.lo, hole.y1 - hole.y0);
+    }
+    ctx.clip('evenodd');
 
-    const vpGaps = centers.map((cx) => ({
-      lo: cx - vpW / 2,
-      hi: cx + vpW / 2,
-    }));
-    this._drawWallPanels(ctx, -w - 50, -h - 50, w * 2 + 100, 50 + BAY.DOOR_H, vpGaps, vpY, vpH);
+    ctx.fillStyle = '#101820';
+    ctx.fillRect(wallX, wallY, wallW, wallH);
+    ctx.fillStyle = '#182430';
+    ctx.fillRect(-w - 50, -h - 50, w * 2 + 100, 50 + BAY.DOOR_H);
+    this._drawWallPanels(ctx, -w - 50, -h - 50, w * 2 + 100, 50 + BAY.DOOR_H, [], vpY, vpH);
+    ctx.restore();
   }
 
   /** Overhead gantry + FX above deck actors. */
@@ -3932,9 +3935,7 @@ export class HangarBay {
       const x = cx - vpW / 2;
       const y = vpY;
       const t = 3;
-      // Recessed shadow
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-      ctx.fillRect(x - 1, y + 1, vpW + 2, vpH + 2);
+      // Frame only — never fill the glass (ships must read through windows)
       ctx.fillStyle = '#1e2a36';
       ctx.fillRect(x - t, y - t, vpW + t * 2, t);
       ctx.fillRect(x - t, y + vpH, vpW + t * 2, t);
@@ -3998,7 +3999,70 @@ export class HangarBay {
     ctx.restore();
   }
 
-  _drawBayDoors(ctx) {
+  /**
+   * Same space chunk as `_drawViewportSpace` (identical mid/cover/camera), clipped
+   * only to open bay-door apertures so doors and windows share one field.
+   */
+  _drawOpenDoorSpace(ctx, space) {
+    const vpW = BAY.VIEWPORT_W;
+    const vpH = BAY.VIEWPORT_H;
+    const vpY = -BAY.HALF_H - 40;
+    const pads = padCenters();
+    const { starfield, nebulaField, spaceX, spaceY, time, nebulae } = space;
+
+    // Match window backdrop anchor exactly — doors peek into the same chunk
+    const left = pads[0] - vpW / 2;
+    const right = pads[pads.length - 1] + vpW / 2;
+    const midX = (left + right) / 2;
+    const midY = vpY + vpH / 2;
+    const doorTop = -BAY.HALF_H;
+    const doorH = BAY.DOOR_H;
+    const dh = BAY.DOOR_HALF;
+    // Cover must reach door bottoms (south of window mid) without changing windows
+    const cover = Math.max(
+      Math.hypot(right - left, vpH) / 2 + 40,
+      Math.hypot(right - left, (doorTop + doorH - midY) * 2) / 2 + 40
+    );
+
+    ctx.save();
+    ctx.beginPath();
+    let any = false;
+    for (let i = 0; i < pads.length; i++) {
+      const open = this.doorOpen[i] || 0;
+      if (open <= 0.05) continue;
+      any = true;
+      const cx = pads[i];
+      const slide = open * (dh + 4);
+      const gap = dh - 1.5 + slide;
+      ctx.rect(cx - gap, doorTop, gap * 2, doorH);
+    }
+    if (!any) {
+      ctx.restore();
+      return;
+    }
+    ctx.clip();
+
+    ctx.translate(midX, midY);
+    nebulaField.renderProcedural(ctx, spaceX, spaceY, time, cover, 0.55);
+    starfield.render(ctx, spaceX, spaceY, cover, time, 0.55);
+    if (nebulae?.length) {
+      ctx.save();
+      ctx.translate(-spaceX, -spaceY);
+      ctx.scale(0.12, 0.12);
+      ctx.translate(spaceX, spaceY);
+      nebulaField.renderWorldNebulae(ctx, nebulae, time);
+      ctx.restore();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * @param {{ leavesOnly?: boolean }} [opts]
+   *   leavesOnly — wall hardware only (leaves, jambs). Floor sill / hazard paint
+   *   stays in the deck pass so it never restamps over arriving ships.
+   */
+  _drawBayDoors(ctx, opts = {}) {
+    const leavesOnly = !!opts.leavesOnly;
     const h = BAY.HALF_H;
     const doorTop = -h;
     const doorH = BAY.DOOR_H;
@@ -4009,9 +4073,11 @@ export class HangarBay {
       const open = this.doorOpen[i] || 0;
       const slide = open * (dh + 4);
 
-      // Recessed pocket behind leaves (space visible when open)
-      ctx.fillStyle = '#0a1018';
-      ctx.fillRect(cx - dh - 6, doorTop - 2, dh * 2 + 12, doorH + 8);
+      // Dark pocket only while sealed — open apertures show shared spacefield
+      if (!leavesOnly && open <= 0.05) {
+        ctx.fillStyle = '#0a1018';
+        ctx.fillRect(cx - dh - 6, doorTop - 2, dh * 2 + 12, doorH + 8);
+      }
 
       // Leaf faces with paneling — slide apart when open
       for (const [baseLx, lw, side] of [
@@ -4050,6 +4116,7 @@ export class HangarBay {
         ctx.stroke();
       }
 
+      // Jamb columns (wall) — safe to restamp over ships at the aperture edges
       for (const px of [cx - dh - 8, cx + dh]) {
         ctx.fillStyle = '#121a22';
         ctx.fillRect(px + 1, doorTop - 2, 8, doorH + 10);
@@ -4058,15 +4125,14 @@ export class HangarBay {
         ctx.fillStyle = 'rgba(120, 150, 170, 0.2)';
         ctx.fillRect(px, doorTop - 4, 8, 2);
       }
+
+      // Deck threshold + label — deck pass only (floor caution lives in _drawFloor)
+      if (leavesOnly) return;
+
       ctx.fillStyle = '#243444';
       ctx.fillRect(cx - dh - 8, doorTop + doorH, dh * 2 + 16, 7);
       ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
       ctx.fillRect(cx - dh - 8, doorTop + doorH + 5, dh * 2 + 16, 2);
-
-      for (let s = 0; s < 6; s++) {
-        ctx.fillStyle = s % 2 === 0 ? '#c9a020' : '#1a1a1a';
-        ctx.fillRect(cx - dh + s * ((dh * 2) / 6), doorTop + doorH + 1, (dh * 2) / 6, 5);
-      }
 
       ctx.fillStyle = 'rgba(100, 180, 255, 0.18)';
       for (const y of [-120, -95, -72]) {
@@ -4088,8 +4154,10 @@ export class HangarBay {
   /**
    * Per-bay door beacons. Modes: idle (dim), warning (flash), steady (elevator),
    * open (solid red).
+   * @param {{ wallOnly?: boolean }} [opts] — skip floor wash (restamp after ships)
    */
-  _drawBayBeacons(ctx) {
+  _drawBayBeacons(ctx, opts = {}) {
+    const wallOnly = !!opts.wallOnly;
     const doorTop = -BAY.HALF_H;
     padCenters().forEach((cx, i) => {
       const mode = this.bayBeacons[i] || 'idle';
@@ -4133,7 +4201,7 @@ export class HangarBay {
         }
       }
 
-      if (mode === 'warning' || mode === 'open' || mode === 'steady') {
+      if (!wallOnly && (mode === 'warning' || mode === 'open' || mode === 'steady')) {
         const a =
           mode === 'open' ? 0.1
             : mode === 'steady' ? 0.05
