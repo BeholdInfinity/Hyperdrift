@@ -50,9 +50,10 @@ The hangar bay is the prototype seed of **Home Base**: the place you start a new
 | Full-frame docked bay (B1 · B2 · B3; player on B2); lived-in industrial set dressing; blast backsplash + danger-lane floor lights | Persistent inventory / loadout across sessions |
 | Live thrusters / engine / weapons (translation locked until launch) | Mission board, shop UI, between-run meta |
 | 3×6 cargo grid (2 cols/bay: left=in, right=out), manned crane, stairs, bulkheads | Player-request job queue for **B2 only** (see below) |
-| Forklift + mechanic logistics (ambient on all pads today) | |
+| Forklift + mechanic logistics (ambient on occupied pads) | |
 | Distinct upgrade parts + hold cargo; destructible | |
 | B2 **LAUNCH** / dock landing (lift burst, pad turntable, doors, thrust) | |
+| B1/B3 ambient arrive/depart (doors) + elevator lower/raise-then-launch; pad turntables; empty-bay cargo sweep; elevator shafts | |
 | Jennings Station overworld exterior + approach dock | |
 
 Entered from the title screen (**ENTER HANGAR**). **QUICK LAUNCH** skips straight to space near the station.
@@ -73,7 +74,7 @@ Each hardpoint holds up to **4** items in a 2×2 slot grid. Hold cargo is rectan
 
 ### Bay activity: ambient vs player-request (future)
 
-**Neighbor pads (B1 / B3)** — loading, unloading, welding/repairs, and similar work stay **simulated ambient theater**. Other ships look busy; that traffic does not consume player resources or wait on UI.
+**Neighbor pads (B1 / B3)** — loading, unloading, welding/repairs, and similar work stay **simulated ambient theater**. Other ships look busy; that traffic does not consume player resources or wait on UI. Ships periodically **arrive and depart** through the bay doors (evac → beacons → doors → lift/thrust), or use the **under-deck elevator**: steadier warning lights, crew clear, pad sinks into a round elevation shaft whose **inner opening matches the pad radius** (hatched rim just outside; 2.5D well darker with depth), with pad+ship **clipped to that opening** so the hangar occludes them until reseated — or an empty pad raises a ship that **quickly launches**. Door landings match B2 turntable logic (empty pads face south; land nose-south; pad turns north). Elevator raises arrive nose-north. After depart, the pad turns south again. Departing ships exit the door then are **occluded by the north wall** except through the windows. **Empty bays hold no cargo**; after a leave, station crew sweep every hardpoint (including inbound) until the bay is bare.
 
 **Player pad (B2)** — the same animation vocabulary (cargo haulers, welders, crane, etc.) runs **only when the player requests it**. Requests can be queued; each item is checked off **only after its animations complete**.
 
@@ -263,7 +264,8 @@ Prototype backlog (near-term) and long-term crew-game systems are tracked separa
 - [x] Home Base: launch from hangar into a run
 - [x] Home Base: extract / return to hangar
 - [ ] Home Base: persistent cargo / loadout between runs
-- [ ] Home Base: B2 player-request job queue (sell/unload, repair, buy/load, upgrade = cargo + weld); B1/B3 stay ambient sim
+- [ ] Home Base: B2 player-request job queue (sell/unload, repair, buy/load, upgrade = cargo + weld)
+- [x] Home Base: B1/B3 ambient arrive/depart + elevator + empty-bay cargo sweep
 - [ ] Equipment upgrades
 - [ ] Fuel and resource management
 - [ ] Asteroid fragmentation

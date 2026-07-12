@@ -57,7 +57,7 @@ src/
     NebulaField.js        3 depth layers + ambient procedural nebulae
     SpeedStreaks.js       Velocity-opposed foreground streaks (screen-space)
     HangarBay.js          Home Base hangar (3×6 cargo lanes + logistics NPCs)
-    HangarVisitorShips.js Placeholder neighbor-pad ship silhouettes
+    HangarVisitorShips.js Neighbor-pad ship silhouettes (+ ambient traffic draws)
     Station.js            Jennings Station overworld exterior + dock zones
   utils/
     MathUtils.js, SeededRandom.js
@@ -87,7 +87,7 @@ src/
 | Dorsal 360° combat turret (LMB, 3/s) + nose mining laser (RMB) | Done |
 | Circular viewport + corner UI placeholders | Done |
 | Title screen (ENTER HANGAR / QUICK LAUNCH / SETTINGS; version stamp) | Done |
-| Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Bay + launch/land done (lift/settle + pad turn) |
+| Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Bay + launch/land; B1/B3 traffic + elevator shafts/occlusion |
 | Jennings Station overworld exterior + dock prompt | Done |
 | Settings controls sandbox (ship-only viewport) | Done |
 | Procedural asteroids + nebulae | Done |
@@ -135,7 +135,7 @@ src/
 
 ## Known gaps / next steps
 
-- Home Base: B2 logistics only on player request (queued; animation-gated); B1/B3 remain ambient sim (`GDD.md`)
+- Home Base: B2 logistics only on player request (queued; animation-gated); B1/B3 ambient traffic + cargo rules are in (`GDD.md`)
 - Ship silhouette / hardpoint design pass (hangar is ready for close inspection)
 - Asteroids destroy but don't fragment into smaller pieces yet
 - No fuel consumption on afterburner

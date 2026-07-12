@@ -10,8 +10,15 @@
 
 import { HANGAR, SHIP } from '../core/Constants.js';
 import { SHIP_EXTENT } from '../entities/ShipHardpoints.js';
-import { drawVisitorShip, pickVisitorId } from './HangarVisitorShips.js';
+import {
+  drawVisitorShip,
+  pickVisitorId,
+  makeVisitorThrusters,
+  getVisitorPropulsion,
+} from './HangarVisitorShips.js';
 
+const FACE_SOUTH = Math.PI / 2;
+const FACE_NORTH = SHIP.SPAWN_ANGLE;
 const BAY = {
   HALF_W: 340,
   HALF_H: 200,
@@ -178,13 +185,39 @@ function thrusterActivity(ship) {
   return { maneuver, engine };
 }
 
-function rollSidePad(x, bayId) {
-  const occupied = Math.random() < 0.7;
+function rollSidePad(x, bayId, bayIndex) {
+  const occupied = Math.random() < HANGAR.VISITOR_OCCUPY_CHANCE;
+  const visitorId = occupied ? pickVisitorId() : null;
   return {
     x,
     bayId,
-    visitorId: occupied ? pickVisitorId() : null,
+    bayIndex,
+    visitorId,
+    cooldown: occupied
+      ? rand(HANGAR.VISITOR_COOLDOWN_BUSY_MIN, HANGAR.VISITOR_COOLDOWN_BUSY_MAX)
+      : rand(HANGAR.VISITOR_COOLDOWN_EMPTY_MIN, HANGAR.VISITOR_COOLDOWN_EMPTY_MAX),
+    seq: null,
+    shipY: 0,
+    shipScale: 1,
+    shipHover: 0,
+    shipAngle: occupied ? FACE_NORTH : FACE_SOUTH,
+    /** Turntable facing — empty pads point south; occupied face north */
+    padAngle: occupied ? FACE_NORTH : FACE_SOUTH,
+    padDrop: 0,
+    thrusters: visitorId ? makeVisitorThrusters(visitorId) : null,
+    shipVx: 0,
+    shipVy: 0,
   };
+}
+
+function smoothstep(t) {
+  const x = Math.max(0, Math.min(1, t));
+  return x * x * (3 - 2 * x);
+}
+
+function clearVisitorThrusters(pad) {
+  if (!pad.thrusters) return;
+  for (const k of Object.keys(pad.thrusters)) pad.thrusters[k] = 0;
 }
 
 function makeCargo(kind = null) {
@@ -248,17 +281,21 @@ export class HangarBay {
     this._shipAngle = SHIP.SPAWN_ANGLE;
     this.crane = null;
     this._pressure = 0; // <0 need more cargo, >0 need less
-    /** Per-bay door beacons: 'idle' | 'warning' | 'open' */
+    /** Per-bay door beacons: 'idle' | 'warning' | 'open' | 'steady' */
     this.bayBeacons = ['idle', 'idle', 'idle'];
     /**
-     * Per-bay danger-lane lights: 'idle' | 'danger' | 'incoming' | 'departing'
-     * (incoming/departing = chase flow on vertical strips for launch/land)
+     * Per-bay danger-lane lights: 'idle' | 'danger' | 'incoming' | 'departing' | 'elevator'
+     * (incoming/departing = chase; elevator = steady at chase brightness)
      */
     this.bayLaneMode = ['idle', 'idle', 'idle'];
     /** 0 = sealed, 1 = fully open (leaf slide) */
     this.doorOpen = [0, 0, 0];
-    /** Bay index under launch/land ops lock (−1 = none); stops ambient spawn into zone */
-    this._opsBay = -1;
+    /** Bay indices under launch/land / visitor ops lock */
+    this._opsBays = new Set();
+    /** Empty-bay cargo sweep after a visitor leaves (B1/B3) */
+    this.bayClearing = [false, false, false];
+    /** Pad rim yellow lights: 'off' | 'on' | 'flash' */
+    this.padRimMode = ['off', 'off', 'off'];
     /** B2 turntable facing (matches docked ship nose; SHIP.SPAWN_ANGLE = north) */
     this.playerPadAngle = SHIP.SPAWN_ANGLE;
   }
@@ -273,11 +310,13 @@ export class HangarBay {
     this.bayBeacons = ['idle', 'idle', 'idle'];
     this.bayLaneMode = ['idle', 'idle', 'idle'];
     this.doorOpen = [0, 0, 0];
-    this._opsBay = -1;
+    this._opsBays = new Set();
+    this.bayClearing = [false, false, false];
+    this.padRimMode = ['off', 'off', 'off'];
     this.playerPadAngle = SHIP.SPAWN_ANGLE;
     this.sidePads = [
-      rollSidePad(-BAY.SIDE_PAD_X, 'B1'),
-      rollSidePad(BAY.SIDE_PAD_X, 'B3'),
+      rollSidePad(-BAY.SIDE_PAD_X, 'B1', 0),
+      rollSidePad(BAY.SIDE_PAD_X, 'B3', 2),
     ];
     this.piles = buildPileHardpoints();
     this._seedCargo();
@@ -301,13 +340,17 @@ export class HangarBay {
   /**
    * Start departure / arrival ops on a bay: warning beacons, lane mode, crew evac.
    * @param {number} bayIndex
-   * @param {'departing'|'incoming'} laneMode
+   * @param {'departing'|'incoming'|'elevator'} laneMode
    */
   beginOps(bayIndex, laneMode = 'departing') {
-    this._opsBay = bayIndex;
-    this.bayBeacons[bayIndex] = 'warning';
+    this._opsBays.add(bayIndex);
+    this.bayBeacons[bayIndex] = laneMode === 'elevator' ? 'steady' : 'warning';
     this.bayLaneMode[bayIndex] = laneMode;
-    if (this.crane) this.crane.pause = 99;
+    // Arrival flashes rim; departure / elevator / pad motion hold rim on
+    this.padRimMode[bayIndex] = laneMode === 'incoming' ? 'flash' : 'on';
+    // Player launch/land freezes the crane; side-bay visitor ops do not
+    if (bayIndex === 1 && this.crane) this.crane.pause = 99;
+    this._divertCraneFromBay(bayIndex);
     this._evacBayCrew(bayIndex);
   }
 
@@ -323,19 +366,84 @@ export class HangarBay {
     this.doorOpen[bayIndex] = Math.max(0, Math.min(1, amount));
   }
 
+  /** Pad rim yellow lights: 'off' | 'on' (steady) | 'flash' (arrival). */
+  setPadRim(bayIndex, mode) {
+    this.padRimMode[bayIndex] = mode;
+  }
+
   /** B2 turntable facing angle (ship nose when locked to pad). */
   setPlayerPadAngle(angle) {
     this.playerPadAngle = angle;
   }
 
-  clearOps() {
-    if (this._opsBay >= 0) {
-      this.bayBeacons[this._opsBay] = 'idle';
-      this.bayLaneMode[this._opsBay] = 'idle';
-      this.doorOpen[this._opsBay] = 0;
+  /**
+   * Clear ops on one bay, or all bays when bayIndex is omitted.
+   * @param {number} [bayIndex]
+   */
+  clearOps(bayIndex) {
+    const clearOne = (i) => {
+      if (!this._opsBays.has(i)) return;
+      this._opsBays.delete(i);
+      this.bayBeacons[i] = 'idle';
+      this.bayLaneMode[i] = 'idle';
+      this.doorOpen[i] = 0;
+      this.padRimMode[i] = 'off';
+      if (i === 1 && this.crane) this.crane.pause = 0.2;
+    };
+    if (bayIndex == null) {
+      for (const i of [...this._opsBays]) clearOne(i);
+    } else {
+      clearOne(bayIndex);
     }
-    this._opsBay = -1;
-    if (this.crane) this.crane.pause = 0.2;
+  }
+
+  _sidePadForBay(bayIndex) {
+    return this.sidePads.find((p) => p.bayIndex === bayIndex) || null;
+  }
+
+  /** Occupied neighbor pad, or always-true for player B2. */
+  _bayAcceptsCargo(bay) {
+    if (this.bayClearing[bay]) return false;
+    if (this._opsBays.has(bay)) return false;
+    if (bay === 1) return true;
+    const pad = this._sidePadForBay(bay);
+    return !!(pad?.visitorId && !pad.seq);
+  }
+
+  _bayPileCargoCount(bay) {
+    let n = 0;
+    for (const p of this.piles) {
+      if (p.bay === bay) n += p.items.length;
+    }
+    return n;
+  }
+
+  _startBayClear(bay) {
+    if (bay === 1) return;
+    this.bayClearing[bay] = true;
+    // Cancel mechanic jobs aimed at this pad
+    for (const npc of this.npcs) {
+      if (npc.kind !== 'mechanic') continue;
+      if (npc.targetPad && Math.abs(npc.targetPad.x - (padCenters()[bay] || 0)) < 20) {
+        this._clearTaskClaim(npc);
+        npc.job = 'idle';
+        npc.taskMode = 'despawn';
+        npc.state = 'toExit';
+      }
+    }
+  }
+
+  _divertCraneFromBay(bayIndex) {
+    const c = this.crane;
+    if (!c) return;
+    const touches = (pile) => pile && pile.bay === bayIndex;
+    if (touches(c.pickup) || touches(c.dropoff)) {
+      c.carried = null;
+      c.phase = 'idle';
+      c.pause = 0.15;
+      c.pickup = this._bayPile(1, 'in', ROW.M);
+      c.dropoff = c.pickup;
+    }
   }
 
   _inBayDangerZone(npc, bayIndex) {
@@ -392,9 +500,507 @@ export class HangarBay {
     return !this.npcs.some((n) => this._inBayDangerZone(n, bayIndex));
   }
 
+  _updateBayClearing() {
+    for (const bay of [0, 2]) {
+      if (!this.bayClearing[bay]) continue;
+      if (this._bayPileCargoCount(bay) === 0) this.bayClearing[bay] = false;
+    }
+  }
+
+  _resetPadMotion(pad) {
+    pad.shipY = 0;
+    pad.shipScale = 1;
+    pad.shipHover = 0;
+    pad.shipAngle = pad.visitorId ? FACE_NORTH : FACE_SOUTH;
+    pad.padAngle = pad.visitorId ? FACE_NORTH : FACE_SOUTH;
+    pad.padDrop = 0;
+    pad.shipVx = 0;
+    pad.shipVy = 0;
+    if (pad.visitorId) pad.thrusters = makeVisitorThrusters(pad.visitorId);
+    else pad.thrusters = null;
+    clearVisitorThrusters(pad);
+  }
+
+  _fireVisitorManeuverBurst(pad, power) {
+    if (!pad.visitorId) return;
+    if (!pad.thrusters) pad.thrusters = makeVisitorThrusters(pad.visitorId);
+    clearVisitorThrusters(pad);
+    const prop = getVisitorPropulsion(pad.visitorId);
+    for (const m of prop.thrusters) pad.thrusters[m.key] = power;
+  }
+
+  _fireVisitorNoseBrake(pad, power) {
+    if (!pad.visitorId) return;
+    if (!pad.thrusters) pad.thrusters = makeVisitorThrusters(pad.visitorId);
+    clearVisitorThrusters(pad);
+    const prop = getVisitorPropulsion(pad.visitorId);
+    const noses = prop.thrusters.filter((m) => m.key.startsWith('nose'));
+    if (noses.length) {
+      for (const m of noses) pad.thrusters[m.key] = power;
+    } else {
+      // No nose thrusters — hover on laterals + light engine for settle cue
+      for (const m of prop.thrusters) pad.thrusters[m.key] = power * 0.55;
+      pad.thrusters.mainEngine = power * 0.25;
+    }
+  }
+
+  _fireVisitorEngine(pad, power) {
+    if (!pad.visitorId) return;
+    if (!pad.thrusters) pad.thrusters = makeVisitorThrusters(pad.visitorId);
+    clearVisitorThrusters(pad);
+    pad.thrusters.mainEngine = power;
+  }
+
+  _setPadCooldown(pad, busy) {
+    pad.cooldown = busy
+      ? rand(HANGAR.VISITOR_COOLDOWN_BUSY_MIN, HANGAR.VISITOR_COOLDOWN_BUSY_MAX)
+      : rand(HANGAR.VISITOR_COOLDOWN_EMPTY_MIN, HANGAR.VISITOR_COOLDOWN_EMPTY_MAX);
+  }
+
+  _updateVisitorTraffic(dt) {
+    for (const pad of this.sidePads) {
+      if (pad.seq) {
+        this._tickVisitorSeq(pad, dt);
+        continue;
+      }
+      if (this._opsBays.has(pad.bayIndex)) continue;
+      if (this.bayClearing[pad.bayIndex]) {
+        pad.cooldown = Math.max(pad.cooldown, 1.5);
+        continue;
+      }
+      pad.cooldown -= dt;
+      if (pad.cooldown > 0) continue;
+
+      if (pad.visitorId) {
+        const kind = Math.random() < HANGAR.VISITOR_ELEVATOR_CHANCE ? 'lower' : 'depart';
+        this._startVisitorSeq(pad, kind);
+      } else if (this._bayPileCargoCount(pad.bayIndex) === 0) {
+        const kind =
+          Math.random() < HANGAR.VISITOR_RAISE_LAUNCH_CHANCE ? 'raiseLaunch' : 'arrive';
+        this._startVisitorSeq(pad, kind);
+      } else {
+        this._startBayClear(pad.bayIndex);
+        pad.cooldown = 2;
+      }
+    }
+  }
+
+  _startVisitorSeq(pad, kind) {
+    pad.shipY = 0;
+    pad.shipScale = 1;
+    pad.shipHover = 0;
+    pad.padDrop = 0;
+    pad.shipVx = 0;
+    pad.shipVy = 0;
+    clearVisitorThrusters(pad);
+
+    if (kind === 'arrive') {
+      pad.visitorId = pickVisitorId();
+      pad.thrusters = makeVisitorThrusters(pad.visitorId);
+      pad.padAngle = FACE_SOUTH;
+      pad.shipAngle = FACE_SOUTH;
+      pad.shipY = HANGAR.LAND_START_Y;
+      pad.shipHover = 1;
+      pad.shipScale = HANGAR.VISITOR_HOVER_SCALE;
+      pad.shipVy = HANGAR.VISITOR_APPROACH_SPEED;
+      this.beginOps(pad.bayIndex, 'incoming');
+      this.setDoorOpen(pad.bayIndex, 1);
+      this.setBeacon(pad.bayIndex, 'open');
+      pad.seq = { kind, phase: 'approach', t: 0 };
+    } else if (kind === 'depart') {
+      pad.padAngle = FACE_NORTH;
+      pad.shipAngle = FACE_NORTH;
+      this.beginOps(pad.bayIndex, 'departing');
+      pad.seq = { kind, phase: 'warn', t: 0 };
+    } else if (kind === 'lower') {
+      pad.padAngle = FACE_NORTH;
+      pad.shipAngle = FACE_NORTH;
+      this.beginOps(pad.bayIndex, 'elevator');
+      pad.seq = { kind, phase: 'warn', t: 0 };
+    } else if (kind === 'raiseLaunch') {
+      pad.visitorId = null;
+      pad.thrusters = null;
+      pad.padAngle = FACE_SOUTH;
+      pad.shipAngle = FACE_SOUTH;
+      this.beginOps(pad.bayIndex, 'elevator');
+      pad.seq = { kind, phase: 'warn', t: 0 };
+    }
+  }
+
+  _finishVisitorLeave(pad, { clearCargo = true } = {}) {
+    pad.visitorId = null;
+    pad.thrusters = null;
+    pad.shipY = 0;
+    pad.shipScale = 1;
+    pad.shipHover = 0;
+    pad.padDrop = 0;
+    pad.shipVx = 0;
+    pad.shipVy = 0;
+    pad.padAngle = FACE_SOUTH;
+    pad.shipAngle = FACE_SOUTH;
+    this.clearOps(pad.bayIndex);
+    pad.seq = null;
+    if (clearCargo) this._startBayClear(pad.bayIndex);
+    this._setPadCooldown(pad, false);
+  }
+
+  _finishVisitorArrive(pad) {
+    pad.padAngle = FACE_NORTH;
+    pad.shipAngle = FACE_NORTH;
+    pad.shipY = 0;
+    pad.shipScale = 1;
+    pad.shipHover = 0;
+    pad.shipVx = 0;
+    pad.shipVy = 0;
+    clearVisitorThrusters(pad);
+    this.clearOps(pad.bayIndex);
+    pad.seq = null;
+    this._setPadCooldown(pad, true);
+  }
+
+  _tickVisitorSeq(pad, dt) {
+    const s = pad.seq;
+    if (!s) return;
+    s.t += dt;
+    this.tickEvac(pad.bayIndex);
+
+    if (s.kind === 'depart') this._tickVisitorDepart(pad, s, dt);
+    else if (s.kind === 'arrive') this._tickVisitorArrive(pad, s, dt);
+    else if (s.kind === 'lower') this._tickVisitorLower(pad, s, dt);
+    else if (s.kind === 'raiseLaunch') this._tickVisitorRaiseLaunch(pad, s, dt);
+  }
+
+  _tickVisitorDepart(pad, s, dt) {
+    switch (s.phase) {
+      case 'warn':
+        clearVisitorThrusters(pad);
+        if (s.t > 1.2) {
+          s.phase = 'clear';
+          s.t = 0;
+        }
+        break;
+      case 'clear':
+        clearVisitorThrusters(pad);
+        if (this.isBayDangerClear(pad.bayIndex) || s.t > 3.2) {
+          s.phase = 'doors';
+          s.t = 0;
+          this.setBeacon(pad.bayIndex, 'open');
+        }
+        break;
+      case 'doors':
+        clearVisitorThrusters(pad);
+        this.setDoorOpen(pad.bayIndex, Math.min(1, s.t / HANGAR.VISITOR_DOOR_TIME));
+        if (s.t > HANGAR.VISITOR_DOOR_TIME + 0.15) {
+          s.phase = 'lift';
+          s.t = 0;
+        }
+        break;
+      case 'lift': {
+        const u = smoothstep(s.t / HANGAR.VISITOR_LIFT_TIME);
+        pad.shipHover = u;
+        pad.shipScale = 1 + u * (HANGAR.VISITOR_HOVER_SCALE - 1);
+        const burst = s.t < 0.35 ? HANGAR.HOVER_BURST_POWER : Math.max(0, 0.55 - (s.t - 0.35));
+        if (burst > 0.02) this._fireVisitorManeuverBurst(pad, burst);
+        else clearVisitorThrusters(pad);
+        if (s.t >= HANGAR.VISITOR_LIFT_TIME) {
+          pad.shipHover = 1;
+          pad.shipScale = HANGAR.VISITOR_HOVER_SCALE;
+          s.phase = 'thrust';
+          s.t = 0;
+          pad.shipVy = 0;
+        }
+        break;
+      }
+      case 'thrust': {
+        const power = Math.min(1.15, 0.4 + s.t * 0.55);
+        this._fireVisitorEngine(pad, power);
+        pad.shipVy -= HANGAR.VISITOR_THRUST_ACCEL * dt;
+        pad.shipY += pad.shipVy * dt;
+        pad.shipHover = 1;
+        pad.shipScale = HANGAR.VISITOR_HOVER_SCALE;
+        pad.shipAngle = FACE_NORTH;
+        pad.padAngle = FACE_NORTH;
+        if (pad.shipY < HANGAR.LAUNCH_EXIT_Y || s.t > 5) {
+          s.phase = 'doorsClose';
+          s.t = 0;
+          pad.visitorId = null;
+          pad.thrusters = null;
+          pad.shipY = 0;
+          pad.shipHover = 0;
+          pad.shipScale = 1;
+          pad.shipVy = 0;
+          this.setBeacon(pad.bayIndex, 'warning');
+        }
+        break;
+      }
+      case 'doorsClose':
+        this.setDoorOpen(pad.bayIndex, Math.max(0, 1 - s.t / 1.3));
+        if (s.t > 1.35) {
+          s.phase = 'turnEmpty';
+          s.t = 0;
+        }
+        break;
+      case 'turnEmpty': {
+        // Pad arrow north → south after departure
+        const u = smoothstep(s.t / HANGAR.PAD_TURN_TIME);
+        pad.padAngle = FACE_NORTH + (FACE_SOUTH - FACE_NORTH) * u;
+        if (s.t >= HANGAR.PAD_TURN_TIME) {
+          pad.padAngle = FACE_SOUTH;
+          this._finishVisitorLeave(pad);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  _tickVisitorArrive(pad, s, dt) {
+    switch (s.phase) {
+      case 'approach': {
+        // Soft brake as we near the pad (nose-south)
+        if (pad.shipY > -70) {
+          this._fireVisitorNoseBrake(pad, 0.9);
+          pad.shipVy = Math.max(12, pad.shipVy - 90 * dt);
+        } else {
+          clearVisitorThrusters(pad);
+        }
+        pad.shipY += pad.shipVy * dt;
+        pad.shipAngle = FACE_SOUTH;
+        pad.padAngle = FACE_SOUTH;
+        if (pad.shipY > -6) {
+          pad.shipY = 0;
+          pad.shipVy = 0;
+          s.phase = 'settle';
+          s.t = 0;
+        }
+        break;
+      }
+      case 'settle': {
+        const u = smoothstep(s.t / HANGAR.VISITOR_LIFT_TIME);
+        pad.shipHover = 1 - u;
+        pad.shipScale = HANGAR.VISITOR_HOVER_SCALE - u * (HANGAR.VISITOR_HOVER_SCALE - 1);
+        const burst = s.t < 0.35 ? 0.95 : Math.max(0, 0.5 - (s.t - 0.35));
+        if (burst > 0.02) this._fireVisitorManeuverBurst(pad, burst);
+        else clearVisitorThrusters(pad);
+        pad.shipAngle = FACE_SOUTH;
+        pad.padAngle = FACE_SOUTH;
+        if (s.t >= HANGAR.VISITOR_LIFT_TIME) {
+          pad.shipHover = 0;
+          pad.shipScale = 1;
+          clearVisitorThrusters(pad);
+          s.phase = 'turn';
+          s.t = 0;
+        }
+        break;
+      }
+      case 'turn': {
+        // Pad + ship: south → north (same as B2 turntable)
+        this.setPadRim(pad.bayIndex, 'on');
+        const u = smoothstep(s.t / HANGAR.PAD_TURN_TIME);
+        const angle = FACE_SOUTH + (FACE_NORTH - FACE_SOUTH) * u;
+        pad.shipAngle = angle;
+        pad.padAngle = angle;
+        clearVisitorThrusters(pad);
+        if (s.t >= HANGAR.PAD_TURN_TIME) {
+          pad.shipAngle = FACE_NORTH;
+          pad.padAngle = FACE_NORTH;
+          s.phase = 'doorsClose';
+          s.t = 0;
+          this.setBeacon(pad.bayIndex, 'warning');
+        }
+        break;
+      }
+      case 'doorsClose':
+        this.setDoorOpen(pad.bayIndex, Math.max(0, 1 - s.t / 1.3));
+        if (s.t > 1.4) this._finishVisitorArrive(pad);
+        break;
+      default:
+        break;
+    }
+  }
+
+  _tickVisitorLower(pad, s, dt) {
+    switch (s.phase) {
+      case 'warn':
+        clearVisitorThrusters(pad);
+        if (s.t > 1.0) {
+          s.phase = 'clear';
+          s.t = 0;
+        }
+        break;
+      case 'clear':
+        clearVisitorThrusters(pad);
+        if (this.isBayDangerClear(pad.bayIndex) || s.t > 3.0) {
+          s.phase = 'sink';
+          s.t = 0;
+        }
+        break;
+      case 'sink': {
+        const u = smoothstep(s.t / HANGAR.VISITOR_SINK_TIME);
+        pad.padDrop = u;
+        pad.shipHover = 0;
+        pad.padAngle = FACE_NORTH;
+        pad.shipAngle = FACE_NORTH;
+        clearVisitorThrusters(pad);
+        if (s.t >= HANGAR.VISITOR_SINK_TIME) {
+          s.phase = 'below';
+          s.t = 0;
+          pad.padDrop = 1;
+          pad.visitorId = null;
+          pad.thrusters = null;
+        }
+        break;
+      }
+      case 'below':
+        pad.padDrop = 1;
+        pad.padAngle = FACE_SOUTH;
+        if (s.t >= HANGAR.VISITOR_BELOW_TIME) {
+          s.phase = 'riseEmpty';
+          s.t = 0;
+        }
+        break;
+      case 'riseEmpty': {
+        const u = smoothstep(s.t / HANGAR.VISITOR_RISE_TIME);
+        pad.padDrop = 1 - u;
+        pad.padAngle = FACE_SOUTH;
+        if (s.t >= HANGAR.VISITOR_RISE_TIME) {
+          pad.padDrop = 0;
+          this._finishVisitorLeave(pad);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  _tickVisitorRaiseLaunch(pad, s, dt) {
+    switch (s.phase) {
+      case 'warn':
+        if (s.t > 0.9) {
+          s.phase = 'clear';
+          s.t = 0;
+        }
+        break;
+      case 'clear':
+        if (this.isBayDangerClear(pad.bayIndex) || s.t > 2.8) {
+          s.phase = 'sink';
+          s.t = 0;
+        }
+        break;
+      case 'sink': {
+        const u = smoothstep(s.t / HANGAR.VISITOR_SINK_TIME);
+        pad.padDrop = u;
+        pad.padAngle = FACE_SOUTH;
+        if (s.t >= HANGAR.VISITOR_SINK_TIME) {
+          s.phase = 'below';
+          s.t = 0;
+          pad.padDrop = 1;
+        }
+        break;
+      }
+      case 'below':
+        pad.padDrop = 1;
+        if (s.t >= HANGAR.VISITOR_BELOW_TIME * 0.85) {
+          pad.visitorId = pickVisitorId();
+          pad.thrusters = makeVisitorThrusters(pad.visitorId);
+          pad.padAngle = FACE_NORTH;
+          pad.shipAngle = FACE_NORTH;
+          s.phase = 'riseShip';
+          s.t = 0;
+        }
+        break;
+      case 'riseShip': {
+        const u = smoothstep(s.t / HANGAR.VISITOR_RISE_TIME);
+        pad.padDrop = 1 - u;
+        pad.shipHover = 0;
+        pad.shipScale = 1;
+        pad.padAngle = FACE_NORTH;
+        pad.shipAngle = FACE_NORTH;
+        clearVisitorThrusters(pad);
+        if (s.t >= HANGAR.VISITOR_RISE_TIME) {
+          pad.padDrop = 0;
+          this.setLaneMode(pad.bayIndex, 'departing');
+          this.setBeacon(pad.bayIndex, 'warning');
+          s.phase = 'doors';
+          s.t = 0;
+        }
+        break;
+      }
+      case 'doors':
+        clearVisitorThrusters(pad);
+        this.setDoorOpen(pad.bayIndex, Math.min(1, s.t / 1.1));
+        if (s.t > 1.15) {
+          this.setBeacon(pad.bayIndex, 'open');
+          s.phase = 'lift';
+          s.t = 0;
+        }
+        break;
+      case 'lift': {
+        const u = smoothstep(s.t / (HANGAR.VISITOR_LIFT_TIME * 0.75));
+        pad.shipHover = u;
+        pad.shipScale = 1 + u * (HANGAR.VISITOR_HOVER_SCALE - 1);
+        const burst = s.t < 0.28 ? HANGAR.HOVER_BURST_POWER : Math.max(0, 0.45 - (s.t - 0.28));
+        if (burst > 0.02) this._fireVisitorManeuverBurst(pad, burst);
+        else clearVisitorThrusters(pad);
+        if (s.t >= HANGAR.VISITOR_LIFT_TIME * 0.75) {
+          s.phase = 'thrust';
+          s.t = 0;
+          pad.shipVy = 0;
+        }
+        break;
+      }
+      case 'thrust': {
+        const power = Math.min(1.2, 0.5 + s.t * 0.7);
+        this._fireVisitorEngine(pad, power);
+        pad.shipVy -= HANGAR.VISITOR_THRUST_ACCEL * 1.15 * dt;
+        pad.shipY += pad.shipVy * dt;
+        pad.shipHover = 1;
+        pad.shipScale = HANGAR.VISITOR_HOVER_SCALE;
+        pad.shipAngle = FACE_NORTH;
+        pad.padAngle = FACE_NORTH;
+        if (pad.shipY < HANGAR.LAUNCH_EXIT_Y || s.t > 4.5) {
+          s.phase = 'doorsClose';
+          s.t = 0;
+          pad.visitorId = null;
+          pad.thrusters = null;
+          pad.shipY = 0;
+          pad.shipHover = 0;
+          pad.shipScale = 1;
+          pad.shipVy = 0;
+          this.setBeacon(pad.bayIndex, 'warning');
+        }
+        break;
+      }
+      case 'doorsClose':
+        this.setDoorOpen(pad.bayIndex, Math.max(0, 1 - s.t / 1.2));
+        if (s.t > 1.25) {
+          s.phase = 'turnEmpty';
+          s.t = 0;
+        }
+        break;
+      case 'turnEmpty': {
+        const u = smoothstep(s.t / HANGAR.PAD_TURN_TIME);
+        pad.padAngle = FACE_NORTH + (FACE_SOUTH - FACE_NORTH) * u;
+        if (s.t >= HANGAR.PAD_TURN_TIME) {
+          pad.padAngle = FACE_SOUTH;
+          this._finishVisitorLeave(pad, { clearCargo: false });
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
   _seedCargo() {
-    // Light seed — don't pre-stuff inbound lanes
+    // Light seed — don't pre-stuff inbound lanes; empty neighbor bays stay bare
     for (const pile of this.piles) {
+      if (pile.bay !== 1) {
+        const pad = this._sidePadForBay(pile.bay);
+        if (!pad?.visitorId) continue;
+      }
       let count = 0;
       if (pile.lane === 'in' && pile.row === ROW.S) count = Math.random() < 0.45 ? 1 : 0;
       else if (pile.lane === 'in' && pile.row === ROW.M) count = Math.random() < 0.35 ? 1 : 0;
@@ -454,6 +1060,7 @@ export class HangarBay {
   }
 
   _bayNeedsInbound(bay) {
+    if (!this._bayAcceptsCargo(bay)) return false;
     const south = this._bayPile(bay, 'in', ROW.S);
     if (!south || south.items.length >= PILE_CAP) return false;
     return this._bayInboundStock(bay) < INBOUND_SOFT_CAP;
@@ -524,9 +1131,20 @@ export class HangarBay {
       const outS = this._bayPile(bay, 'out', ROW.S);
       const outM = this._bayPile(bay, 'out', ROW.M);
       const outN = this._bayPile(bay, 'out', ROW.N);
+      const clearing = !!this.bayClearing[bay];
+
+      // Empty-bay sweep: dump every hardpoint down to south-out for forklift haul-off
+      if (clearing) {
+        push(inS, outS, 16);
+        push(inM, outS, 16);
+        push(inN, outS, 16);
+        push(outM, outS, 16);
+        push(outN, outS, 16);
+        continue;
+      }
 
       // Inbound lift: don't keep stuffing mid/top that are already stocked
-      if (inS?.items.length) {
+      if (inS?.items.length && this._bayAcceptsCargo(bay)) {
         const top = inS.items[inS.items.length - 1];
         if (top.family === 'upgrade') {
           const nCount = inN?.items.length || 0;
@@ -724,9 +1342,11 @@ export class HangarBay {
 
     this._updatePressure();
     this._updateCrane(deltaTime);
+    this._updateVisitorTraffic(deltaTime);
+    this._updateBayClearing();
 
     this._spawnTimer -= deltaTime;
-    if (this._spawnTimer <= 0 && this.npcs.length < 6 && this._opsBay < 0) {
+    if (this._spawnTimer <= 0 && this.npcs.length < 6 && !this._opsBays.has(1)) {
       const forks = this.npcs.filter((n) => n.kind === 'forklift').length;
       const mechs = this.npcs.filter((n) => n.kind === 'mechanic').length;
       // Mechanics first: cargo pressure used to starve pedestrians by always
@@ -741,10 +1361,10 @@ export class HangarBay {
         this._spawnForklift(Math.random() < 0.5 ? -1 : 1);
       }
       this._spawnTimer = mechs < 2 ? rand(0.8, 1.6) : rand(1.6, 3.5);
-    } else if (this._opsBay >= 0) {
+    } else if (this._opsBays.has(1)) {
       this._spawnTimer = 1.5;
-      this.tickEvac(this._opsBay);
     }
+    for (const b of this._opsBays) this.tickEvac(b);
 
     const hazardLevel =
       this._hazard.maneuver * 0.55 +
@@ -1517,14 +2137,26 @@ export class HangarBay {
 
     for (const p of southOut) {
       if (!p.items.length) continue;
-      const clears = p.items.length >= PILE_CAP || blockedSouthOut.has(p.id);
+      const clears = p.items.length >= PILE_CAP || blockedSouthOut.has(p.id) || this.bayClearing[p.bay];
       tasks.push({
         job: 'takeOut',
         targetPile: p,
         status: 'doable',
         // Outbound slightly above inbound so empty trucks clear clogs first
-        weight: clears ? 12 : 6,
+        weight: clears ? (this.bayClearing[p.bay] ? 18 : 12) : 6,
         clears,
+      });
+    }
+
+    // Empty-bay sweep: haul leftover inbound south stock off-station too
+    for (const p of southIn) {
+      if (!this.bayClearing[p.bay] || !p.items.length) continue;
+      tasks.push({
+        job: 'takeOut',
+        targetPile: p,
+        status: 'doable',
+        weight: 18,
+        clears: true,
       });
     }
 
@@ -2227,13 +2859,13 @@ export class HangarBay {
   }
 
   /**
-   * Auto danger on B2 when player engines/thrusters blast; preserve incoming/departing.
+   * Auto danger on B2 when player engines/thrusters blast; preserve incoming/departing/elevator.
    */
   _syncBayLaneModes() {
     for (let i = 0; i < 3; i++) {
       const mode = this.bayLaneMode[i];
-      if (mode === 'incoming' || mode === 'departing') continue;
-      if (this._opsBay === i) continue;
+      if (mode === 'incoming' || mode === 'departing' || mode === 'elevator') continue;
+      if (this._opsBays.has(i)) continue;
       if (i === 1) {
         const hot =
           this._hazard.engine > 0.28 || this._hazard.maneuver > 0.5;
@@ -2650,6 +3282,7 @@ export class HangarBay {
   render(ctx, space = null) {
     this.renderDeck(ctx, space);
     this.renderCrew(ctx);
+    this.renderElevatorTransits(ctx);
     this.renderVisitors(ctx);
     this.renderOverhead(ctx);
   }
@@ -2667,16 +3300,27 @@ export class HangarBay {
     this._drawBayDoors(ctx);
     this._drawBayBeacons(ctx);
     this._drawCargoPiles(ctx);
+
+    // B2 shaft well under the player pad (rim peeks around the pad edge)
+    this._drawElevationShaft(ctx, 0, 0);
     this._drawDockPad(ctx, 0, 0, 'B2', {
       active: true,
       angle: this.playerPadAngle,
+      rimMode: this.padRimMode[1] || 'off',
     });
+
     for (const pad of this.sidePads) {
-      this._drawDockPad(ctx, pad.x, 0, pad.bayId, {
-        active: false,
-        occupied: !!pad.visitorId,
-        angle: SHIP.SPAWN_ANGLE,
-      });
+      const drop = pad.padDrop || 0;
+      this._drawElevationShaft(ctx, pad.x, 0);
+      if (drop < 0.02) {
+        this._drawDockPad(ctx, pad.x, 0, pad.bayId, {
+          active: false,
+          occupied: !!pad.visitorId,
+          angle: pad.padAngle ?? FACE_NORTH,
+          rimMode: this.padRimMode[pad.bayIndex] || 'off',
+        });
+      }
+      // Transit pad+ship drawn later (clipped) so deck dressing stays around the hole
     }
   }
 
@@ -2690,11 +3334,287 @@ export class HangarBay {
     this._drawBulkheadDoors(ctx);
   }
 
-  /** Visitor ships on B1/B3. */
-  renderVisitors(ctx) {
+  /**
+   * Elevator pad+ship while descending/ascending — clipped to the shaft opening
+   * so the rest of the hangar occludes anything outside the circle.
+   */
+  renderElevatorTransits(ctx) {
     for (const pad of this.sidePads) {
-      if (pad.visitorId) this._drawVisitor(ctx, pad);
+      if ((pad.padDrop || 0) < 0.02) continue;
+      this._drawElevatorTransit(ctx, pad);
+      this._drawElevationShaftRim(ctx, pad.x, 0);
     }
+  }
+
+  /**
+   * Visitor ships on B1/B3.
+   * Elevator-transit visitors are drawn clipped inside the shaft (renderDeck).
+   * Door-exit ships draw first, then north-wall occlusion (windows/doors clear).
+   */
+  renderVisitors(ctx) {
+    const doorLip = -BAY.HALF_H + BAY.DOOR_H;
+    const outside = [];
+    const inside = [];
+    for (const pad of this.sidePads) {
+      if (!pad.visitorId) continue;
+      if ((pad.padDrop || 0) >= 0.02) continue; // shaft pass owns these
+      const y = pad.shipY || 0;
+      if (y < doorLip - 2) outside.push(pad);
+      else inside.push(pad);
+    }
+    for (const pad of outside) this._drawVisitor(ctx, pad);
+    this._drawNorthWallOcclusion(ctx);
+    this._drawViewportFrames(ctx);
+    this._drawBayDoors(ctx);
+    this._drawBayBeacons(ctx);
+    for (const pad of inside) this._drawVisitor(ctx, pad);
+  }
+
+  /**
+   * 2.5D elevator shaft. Inner opening radius = pad radius (exact match).
+   * Rim sits just outside the pad circumference; interior is the deep well.
+   */
+  _drawElevationShaft(ctx, cx, cy) {
+    this._drawElevationShaftWell(ctx, cx, cy);
+    this._drawElevationShaftRim(ctx, cx, cy);
+  }
+
+  /** Dark cylindrical well — clipped to pad circle. */
+  _drawElevationShaftWell(ctx, cx, cy) {
+    const r = BAY.PAD_R;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    // Depth gradient: steel-blue near the lip → near-black at the deep south
+    const grad = ctx.createLinearGradient(0, -r, 0, r * 0.85);
+    grad.addColorStop(0, '#2a3848');
+    grad.addColorStop(0.35, '#1a2430');
+    grad.addColorStop(0.7, '#0a1018');
+    grad.addColorStop(1, '#020408');
+    ctx.fillStyle = grad;
+    ctx.fillRect(-r, -r, r * 2, r * 2);
+
+    // Soft radial falloff toward deep center (offset slightly south)
+    const radial = ctx.createRadialGradient(0, r * 0.22, r * 0.1, 0, r * 0.15, r);
+    radial.addColorStop(0, 'rgba(0, 0, 0, 0.75)');
+    radial.addColorStop(0.55, 'rgba(0, 0, 0, 0.25)');
+    radial.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = radial;
+    ctx.fillRect(-r, -r, r * 2, r * 2);
+
+    // Vertical cylinder guide lines (left / center / right)
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
+    ctx.lineWidth = 1.1;
+    for (const lx of [-r * 0.52, 0, r * 0.52]) {
+      ctx.beginPath();
+      ctx.moveTo(lx, -r * 0.92);
+      ctx.lineTo(lx * 0.35, r * 0.72);
+      ctx.stroke();
+    }
+
+    // Curved depth rings — deeper rings smaller + shifted south (2.5D look-down)
+    for (const [t, alpha] of [
+      [0.28, 0.45],
+      [0.52, 0.55],
+      [0.78, 0.7],
+    ]) {
+      const rr = r * (1 - t * 0.72);
+      const oy = t * r * 0.38;
+      ctx.strokeStyle = `rgba(0, 0, 0, ${alpha})`;
+      ctx.lineWidth = 1.15;
+      ctx.beginPath();
+      ctx.ellipse(0, oy, rr, rr * 0.92, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // Subtle face highlight on the north lip of each ring
+      ctx.strokeStyle = `rgba(90, 120, 145, ${0.12 * (1 - t)})`;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.ellipse(0, oy, rr, rr * 0.92, 0, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.stroke();
+    }
+
+    // Deep void
+    ctx.fillStyle = '#000';
+    ctx.beginPath();
+    ctx.ellipse(0, r * 0.42, r * 0.22, r * 0.18, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+  }
+
+  /** Textured rim just outside the pad circumference. */
+  _drawElevationShaftRim(ctx, cx, cy) {
+    const r = BAY.PAD_R;
+    const rim = 3.5;
+    ctx.save();
+    ctx.translate(cx, cy);
+
+    // Annulus: outer rim disk minus pad hole
+    ctx.beginPath();
+    ctx.arc(0, 0, r + rim, 0, Math.PI * 2);
+    ctx.arc(0, 0, r, 0, Math.PI * 2, true);
+    ctx.fillStyle = '#1a2836';
+    ctx.fill('evenodd');
+
+    // Cross-hatch / mesh on the rim face
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(0, 0, r + rim, 0, Math.PI * 2);
+    ctx.arc(0, 0, r, 0, Math.PI * 2, true);
+    ctx.clip('evenodd');
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.lineWidth = 0.6;
+    for (let i = -r - rim; i < r + rim; i += 2.2) {
+      ctx.beginPath();
+      ctx.moveTo(i, -r - rim);
+      ctx.lineTo(i + (r + rim) * 2, r + rim);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(i, r + rim);
+      ctx.lineTo(i + (r + rim) * 2, -r - rim);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Inner lip (matches pad outline exactly)
+    ctx.strokeStyle = 'rgba(100, 130, 150, 0.55)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(0, 0, r, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Outer rim edge
+    ctx.strokeStyle = 'rgba(60, 85, 105, 0.65)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, 0, r + rim, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Top bevel highlight on north of rim
+    ctx.strokeStyle = 'rgba(140, 170, 190, 0.28)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, 0, r + rim * 0.55, Math.PI * 1.15, Math.PI * 1.85);
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  /**
+   * Descending/ascending pad + ship, clipped to the shaft opening so the rest
+   * of the hangar occludes anything outside the circle.
+   */
+  _drawElevatorTransit(ctx, pad) {
+    const drop = pad.padDrop || 0;
+    const r = BAY.PAD_R;
+    const south = drop * 48;
+    const sc = 1 - drop * 0.55;
+    const alpha = Math.max(0, 1 - drop * 0.92);
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.arc(pad.x, 0, r, 0, Math.PI * 2);
+    ctx.clip();
+
+    ctx.globalAlpha = alpha;
+    ctx.translate(pad.x, south);
+    ctx.scale(sc, sc);
+
+    this._drawDockPad(ctx, 0, 0, pad.bayId, {
+      active: false,
+      occupied: !!pad.visitorId && drop < 0.85,
+      angle: pad.padAngle ?? FACE_NORTH,
+      skipShadow: true,
+      rimMode: this.padRimMode[pad.bayIndex] || 'off',
+    });
+
+    if (pad.visitorId && drop < 0.92) {
+      const hover = pad.shipHover || 0;
+      const angle = pad.shipAngle ?? FACE_NORTH;
+      ctx.save();
+      ctx.translate(0, hover * 2);
+      ctx.scale(pad.shipScale || 1, pad.shipScale || 1);
+      ctx.rotate(angle);
+      drawVisitorShip(ctx, pad.visitorId, {
+        thrusters: pad.thrusters,
+        velocity: { x: pad.shipVx || 0, y: pad.shipVy || 0 },
+        angle,
+        angularVelocity: 0,
+      });
+      ctx.restore();
+    }
+
+    ctx.restore();
+  }
+
+  /**
+   * Redraw north wall solid mass so departing ships are occluded except through
+   * viewport windows and open bay-door apertures.
+   */
+  _drawNorthWallOcclusion(ctx) {
+    const w = BAY.HALF_W;
+    const h = BAY.HALF_H;
+    const centers = padCenters();
+    const vpW = BAY.VIEWPORT_W;
+    const vpH = BAY.VIEWPORT_H;
+    const vpY = -h - 40;
+    const doorTop = -h;
+    const doorH = BAY.DOOR_H;
+    const dh = BAY.DOOR_HALF;
+
+    const holes = [];
+    for (let i = 0; i < centers.length; i++) {
+      const cx = centers[i];
+      holes.push({ lo: cx - vpW / 2, hi: cx + vpW / 2, y0: vpY, y1: vpY + vpH });
+      const open = this.doorOpen[i] || 0;
+      if (open > 0.05) {
+        const slide = open * (dh + 4);
+        const gap = dh - 1.5 + slide;
+        holes.push({
+          lo: cx - gap,
+          hi: cx + gap,
+          y0: doorTop,
+          y1: doorTop + doorH,
+        });
+      }
+    }
+
+    const fillBand = (y, bandH, fill) => {
+      ctx.fillStyle = fill;
+      let cursor = -w - 100;
+      const edges = [];
+      for (const hole of holes) {
+        if (hole.y1 <= y || hole.y0 >= y + bandH) continue;
+        edges.push(hole);
+      }
+      edges.sort((a, b) => a.lo - b.lo);
+      for (const hole of edges) {
+        const clipLo = Math.max(hole.lo, -w - 100);
+        const clipHi = Math.min(hole.hi, w + 100);
+        if (clipLo > cursor) ctx.fillRect(cursor, y, clipLo - cursor, bandH);
+        // Above / below hole within this band
+        const above = Math.min(bandH, Math.max(0, hole.y0 - y));
+        if (above > 0) ctx.fillRect(clipLo, y, clipHi - clipLo, above);
+        const belowStart = Math.max(0, hole.y1 - y);
+        if (belowStart < bandH) {
+          ctx.fillRect(clipLo, y + belowStart, clipHi - clipLo, bandH - belowStart);
+        }
+        cursor = Math.max(cursor, clipHi);
+      }
+      if (cursor < w + 100) ctx.fillRect(cursor, y, w + 100 - cursor, bandH);
+    };
+
+    fillBand(-h - 80, 80 + BAY.DOOR_H, '#101820');
+    fillBand(-h - 50, 50 + BAY.DOOR_H, '#182430');
+
+    const vpGaps = centers.map((cx) => ({
+      lo: cx - vpW / 2,
+      hi: cx + vpW / 2,
+    }));
+    this._drawWallPanels(ctx, -w - 50, -h - 50, w * 2 + 100, 50 + BAY.DOOR_H, vpGaps, vpY, vpH);
   }
 
   /** Overhead gantry + FX above deck actors. */
@@ -3166,8 +4086,8 @@ export class HangarBay {
   }
 
   /**
-   * Per-bay door beacons. Modes: idle (dim), warning (flash), open (solid red).
-   * Wired for future launch/door cycles via `this.bayBeacons[i]`.
+   * Per-bay door beacons. Modes: idle (dim), warning (flash), steady (elevator),
+   * open (solid red).
    */
   _drawBayBeacons(ctx) {
     const doorTop = -BAY.HALF_H;
@@ -3183,6 +4103,10 @@ export class HangarBay {
         on = Math.sin(this.time * 10 + i) > 0;
         glow = on ? 0.85 : 0.12;
         color = '255, 160, 20';
+      } else if (mode === 'steady') {
+        on = true;
+        glow = 0.55 + 0.08 * Math.sin(this.time * 1.6 + i);
+        color = '255, 190, 60';
       } else if (mode === 'open') {
         on = true;
         glow = 0.9;
@@ -3209,8 +4133,11 @@ export class HangarBay {
         }
       }
 
-      if (mode === 'warning' || mode === 'open') {
-        const a = mode === 'open' ? 0.1 : (on ? 0.08 : 0.02);
+      if (mode === 'warning' || mode === 'open' || mode === 'steady') {
+        const a =
+          mode === 'open' ? 0.1
+            : mode === 'steady' ? 0.05
+              : (on ? 0.08 : 0.02);
         ctx.fillStyle = `rgba(${color}, ${a})`;
         ctx.beginPath();
         ctx.ellipse(cx, doorTop + BAY.DOOR_H + 28, 36, 18, 0, 0, Math.PI * 2);
@@ -3779,14 +4706,18 @@ export class HangarBay {
     const active = !!opts.active;
     const occupied = !!opts.occupied;
     const angle = opts.angle ?? SHIP.SPAWN_ANGLE;
+    const skipShadow = !!opts.skipShadow;
+    const rimMode = opts.rimMode || 'off';
     ctx.save();
     ctx.translate(cx, cy);
 
-    // Soft contact shadow (2.5D)
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
-    ctx.beginPath();
-    ctx.ellipse(0, 4, BAY.PAD_R + 2, BAY.PAD_R * 0.55, 0, 0, Math.PI * 2);
-    ctx.fill();
+    // Soft contact shadow (2.5D) — skip while sunk in the shaft
+    if (!skipShadow) {
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+      ctx.beginPath();
+      ctx.ellipse(0, 4, BAY.PAD_R + 2, BAY.PAD_R * 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     ctx.rotate(angle);
 
@@ -3811,16 +4742,44 @@ export class HangarBay {
     ctx.arc(0, 0, BAY.PAD_R, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Outer caution ring ticks
+    // Outer rim: 6 dark separators + 6 yellow caution lights
     for (let i = 0; i < 12; i++) {
       const a = (i / 12) * Math.PI * 2;
-      ctx.strokeStyle = i % 2 ? 'rgba(201, 160, 32, 0.35)' : 'rgba(20, 20, 16, 0.35)';
-      ctx.lineWidth = 2;
+      const x0 = Math.cos(a) * (BAY.PAD_R - 1);
+      const y0 = Math.sin(a) * (BAY.PAD_R - 1);
+      const x1 = Math.cos(a) * (BAY.PAD_R + 2.5);
+      const y1 = Math.sin(a) * (BAY.PAD_R + 2.5);
+      if (i % 2 === 0) {
+        ctx.strokeStyle = 'rgba(20, 20, 16, 0.4)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(x0, y0);
+        ctx.lineTo(x1, y1);
+        ctx.stroke();
+        continue;
+      }
+      let lit = 0.2;
+      if (rimMode === 'on') lit = 0.95;
+      else if (rimMode === 'flash') {
+        lit = Math.sin(this.time * 10 + i) > 0 ? 0.95 : 0.14;
+      }
+      ctx.strokeStyle = `rgba(201, 160, 32, ${0.3 + lit * 0.7})`;
+      ctx.lineWidth = 2.4;
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(Math.cos(a) * (BAY.PAD_R - 1), Math.sin(a) * (BAY.PAD_R - 1));
-      ctx.lineTo(Math.cos(a) * (BAY.PAD_R + 2), Math.sin(a) * (BAY.PAD_R + 2));
+      ctx.moveTo(x0, y0);
+      ctx.lineTo(x1, y1);
       ctx.stroke();
+      if (lit > 0.45) {
+        const mx = (x0 + x1) * 0.5;
+        const my = (y0 + y1) * 0.5;
+        ctx.fillStyle = `rgba(255, 220, 80, ${(lit - 0.45) * 0.55})`;
+        ctx.beginPath();
+        ctx.ellipse(mx, my, 4.5, 3.2, a, 0, Math.PI * 2);
+        ctx.fill();
+      }
     }
+    ctx.lineCap = 'butt';
 
     // Nose chevron — reads turntable facing (local +X = pad forward)
     ctx.fillStyle = active
@@ -3860,18 +4819,37 @@ export class HangarBay {
   }
 
   _drawVisitor(ctx, pad) {
-    ctx.save();
-    ctx.translate(pad.x, 0);
-    ctx.rotate(SHIP.SPAWN_ANGLE);
-    drawVisitorShip(ctx, pad.visitorId);
-    ctx.restore();
+    const drop = pad.padDrop || 0;
+    const south = drop * 52;
+    const sc = (1 - drop * 0.42) * (pad.shipScale || 1);
+    const alpha = 1 - drop * 0.8;
+    const hover = pad.shipHover || 0;
+    const y = (pad.shipY || 0) + south + hover * 2;
+    const angle = pad.shipAngle ?? FACE_NORTH;
+
+    // Ground shadow (shrinks / fades as pad descends or ship lifts)
+    if (drop < 0.85 && Math.abs(pad.shipY || 0) < 40) {
+      ctx.save();
+      ctx.translate(pad.x, south + 4 + hover * 5);
+      ctx.fillStyle = `rgba(0, 0, 0, ${(0.18 + hover * 0.28) * (1 - drop)})`;
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 14 + hover * 4, 8 + hover * 2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
 
     ctx.save();
-    ctx.translate(pad.x, 0);
-    ctx.fillStyle = 'rgba(120, 140, 160, 0.4)';
-    ctx.font = '5px sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText(pad.bayId, 0, BAY.PAD_R + 9);
+    ctx.globalAlpha = alpha;
+    ctx.translate(pad.x, y);
+    ctx.scale(sc, sc * (1 - drop * 0.1));
+    ctx.rotate(angle);
+
+    drawVisitorShip(ctx, pad.visitorId, {
+      thrusters: pad.thrusters,
+      velocity: { x: pad.shipVx || 0, y: pad.shipVy || 0 },
+      angle,
+      angularVelocity: 0,
+    });
     ctx.restore();
   }
 
@@ -3939,6 +4917,10 @@ export class HangarBay {
   _dangerYellowLit(mode, along, t) {
     if (mode === 'idle') return 0.22;
     if (mode === 'danger') return 0.55 + 0.35 * (0.5 + 0.5 * Math.sin(t * 5));
+    if (mode === 'elevator') {
+      // Steady at arrive/depart peak brightness — no chase / blink
+      return 0.95;
+    }
     // Chase pulse along strip axis (along increases south / +Y for verticals)
     const period = 36;
     let phase;
@@ -3991,6 +4973,9 @@ export class HangarBay {
       let lit = 0.22;
       if (mode === 'danger' || mode === 'incoming' || mode === 'departing') {
         lit = 0.55 + 0.35 * (0.5 + 0.5 * Math.sin(t * 5 + x * 0.05));
+      } else if (mode === 'elevator') {
+        // Match active-mode peak, steady (no pulse)
+        lit = 0.9;
       }
       ctx.fillStyle = `rgba(201, 160, 32, ${0.35 + lit * 0.65})`;
       ctx.fillRect(x, y - half, w, half * 2);

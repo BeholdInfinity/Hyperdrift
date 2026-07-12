@@ -17,6 +17,41 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.48] — 2026-07-12
+
+### Changed
+- Pad rim: 6 yellow caution streaks are wired lights — steady on for departure, elevator, and pad turn; flash on arrival
+- Elevator bay-outline danger lights stay fully lit at arrive/depart brightness (halo included) with no chase/blink
+
+---
+
+## [0.1.47] — 2026-07-12
+
+### Changed
+- Elevator shafts: inner opening matches pad radius exactly; hatched rim just outside; 2.5D well with depth gradient, vertical guides, and south-shifted depth rings
+- Descending/ascending pad+ship are clipped to the shaft circle so the hangar occludes anything outside the opening until the pad reseats
+
+---
+
+## [0.1.46] — 2026-07-11
+
+### Added
+- Round 2.5D elevator shafts under hangar pads (darker deeper) for lower/raise reads
+- Visitor pad turntables match B2: empty faces south; door landings settle south then turn north; elevator raises nose-north; pad turns south after depart
+- Visitor thruster/engine plumes use player plume style (flow lean/cone), scaled to hull; mounts match each silhouette’s cups
+- Departing visitors pass through open doors then are occluded by the north wall except viewport glass
+
+---
+
+## [0.1.45] — 2026-07-11
+
+### Added
+- B1/B3 ambient arrive/depart: door landings and launches with crew evac, beacons, and danger-lane chase
+- Under-deck elevator alternate: steady warning lights, pad lowers south (2.5D), returns empty — or empty pad raises a ship that quickly launches
+- Empty neighbor bays stay cargo-free; after a ship leaves, crane + forklifts sweep all hardpoints (including inbound) off the bay
+
+---
+
 ## [0.1.44] — 2026-07-11
 
 ### Changed

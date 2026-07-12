@@ -103,6 +103,24 @@ export const HANGAR = {
   PAD_TURN_TIME: 1.55,
   /** Southbound entry speed into open bay */
   LAND_APPROACH_SPEED: 78,
+  /** B1/B3 ambient visitor traffic */
+  VISITOR_OCCUPY_CHANCE: 0.68,
+  /** Chance a leave/arrive uses the under-deck elevator instead of bay doors */
+  VISITOR_ELEVATOR_CHANCE: 0.38,
+  /** Empty bay: chance next event is elevator raise → quick launch (vs door arrive-and-stay) */
+  VISITOR_RAISE_LAUNCH_CHANCE: 0.32,
+  VISITOR_COOLDOWN_BUSY_MIN: 11,
+  VISITOR_COOLDOWN_BUSY_MAX: 24,
+  VISITOR_COOLDOWN_EMPTY_MIN: 5,
+  VISITOR_COOLDOWN_EMPTY_MAX: 14,
+  VISITOR_HOVER_SCALE: 1.12,
+  VISITOR_LIFT_TIME: 0.65,
+  VISITOR_SINK_TIME: 1.75,
+  VISITOR_BELOW_TIME: 2.1,
+  VISITOR_RISE_TIME: 1.35,
+  VISITOR_DOOR_TIME: 1.5,
+  VISITOR_APPROACH_SPEED: 95,
+  VISITOR_THRUST_ACCEL: 160,
 };
 
 /** Jennings Station overworld exterior */

@@ -415,7 +415,7 @@ export class GameEngine {
     let vy = this.ship?.velocity.y ?? -160;
     if (vy > -80) vy = -80;
     if (vy < -220) vy = -220;
-    this.hangarBay.clearOps();
+    this.hangarBay.clearOps(PLAYER_BAY);
     this._hangarSeq = null;
     this._hangarHover = 0;
     this._dockLocked = true;
@@ -452,7 +452,7 @@ export class GameEngine {
     this.ship.visualScale = 1;
     this._clearShipThrusters(this.ship);
     this.hangarBay.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
-    this.hangarBay.clearOps();
+    this.hangarBay.clearOps(PLAYER_BAY);
     this.camera.targetUserZoom = HANGAR.ZOOM_DEFAULT;
     this._setLaunchBtnVisible(true);
   }
@@ -816,7 +816,8 @@ export class GameEngine {
         break;
       }
       case 'turn': {
-        // Pad turntable + ship: south → north (180°)
+        // Pad turntable + ship: south → north (180°) — rim stays on for pad motion
+        this.hangarBay.setPadRim(PLAYER_BAY, 'on');
         const u = this._smoothstep(s.t / HANGAR.PAD_TURN_TIME);
         const angle = FACE_SOUTH + (SHIP.SPAWN_ANGLE - FACE_SOUTH) * u;
         ship.angle = angle;
@@ -1132,6 +1133,7 @@ export class GameEngine {
     this.renderer.renderWorldLayer((worldCtx) => {
       this.hangarBay.renderDeck(worldCtx, space);
       this.hangarBay.renderCrew(worldCtx);
+      this.hangarBay.renderElevatorTransits(worldCtx);
       this.hangarBay.renderVisitors(worldCtx);
       this._drawHangarHoverShadow(worldCtx);
     }, this.camera);
