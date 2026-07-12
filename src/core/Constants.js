@@ -104,15 +104,27 @@ export const HANGAR = {
   /** Southbound entry speed into open bay */
   LAND_APPROACH_SPEED: 78,
   /** B1/B3 ambient visitor traffic */
-  VISITOR_OCCUPY_CHANCE: 0.68,
-  /** Chance a leave/arrive uses the under-deck elevator instead of bay doors */
+  VISITOR_OCCUPY_CHANCE: 0.55,
+  /** Chance a leave uses the under-deck elevator instead of bay doors */
   VISITOR_ELEVATOR_CHANCE: 0.38,
-  /** Empty bay: chance next event is elevator raise → quick launch (vs door arrive-and-stay) */
-  VISITOR_RAISE_LAUNCH_CHANCE: 0.32,
+  /** Empty bay: among elevator raises, chance of immediate leave vs raise-for-service */
+  VISITOR_RAISE_LAUNCH_CHANCE: 0.4,
+  /** Empty bay: chance next event is elevator raise (vs door arrive) */
+  VISITOR_EMPTY_ELEVATOR_CHANCE: 0.35,
   VISITOR_COOLDOWN_BUSY_MIN: 11,
   VISITOR_COOLDOWN_BUSY_MAX: 24,
-  VISITOR_COOLDOWN_EMPTY_MIN: 5,
-  VISITOR_COOLDOWN_EMPTY_MAX: 14,
+  /** Empty pad wait before next arrive / raise (longer so bays stay clear) */
+  VISITOR_COOLDOWN_EMPTY_MIN: 18,
+  VISITOR_COOLDOWN_EMPTY_MAX: 42,
+  /** After captain checklist complete, wait before exit */
+  VISITOR_SERVICE_DWELL_MIN: 8,
+  VISITOR_SERVICE_DWELL_MAX: 20,
+  /** Beat after settle before deck work starts */
+  VISITOR_ARRIVE_SETTLE_DWELL_MIN: 2,
+  VISITOR_ARRIVE_SETTLE_DWELL_MAX: 5,
+  /** After B2 captain checklist finishes, wait before rolling a new list (player owns exit). */
+  PLAYER_SERVICE_REROLL_MIN: 10,
+  PLAYER_SERVICE_REROLL_MAX: 60,
   VISITOR_HOVER_SCALE: 1.12,
   VISITOR_LIFT_TIME: 0.65,
   VISITOR_SINK_TIME: 1.75,

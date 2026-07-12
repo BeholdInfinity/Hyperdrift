@@ -87,7 +87,7 @@ src/
 | Dorsal 360° combat turret (LMB, 3/s) + nose mining laser (RMB) | Done |
 | Circular viewport + corner UI placeholders | Done |
 | Title screen (ENTER HANGAR / QUICK LAUNCH / SETTINGS; version stamp) | Done |
-| Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Bay + launch/land; B1/B3 traffic + elevator shafts/occlusion |
+| Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Bay + launch/land; B1–B3 captain checklists; B1/B3 door/elevator traffic |
 | Jennings Station overworld exterior + dock prompt | Done |
 | Settings controls sandbox (ship-only viewport) | Done |
 | Procedural asteroids + nebulae | Done |
@@ -135,7 +135,7 @@ src/
 
 ## Known gaps / next steps
 
-- Home Base: B2 logistics only on player request (queued; animation-gated); B1/B3 ambient traffic + cargo rules are in (`GDD.md`)
+- Home Base: B2 player-request job queue still future; interim B2 uses the same captain checklist as B1/B3 (reroll 10–60s after complete; player owns launch) — see `GDD.md`
 - Ship silhouette / hardpoint design pass (hangar is ready for close inspection)
 - Asteroids destroy but don't fragment into smaller pieces yet
 - No fuel consumption on afterburner

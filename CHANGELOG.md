@@ -17,6 +17,64 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.57] — 2026-07-12
+
+### Changed
+- B2 uses the same captain service checklist as B1/B3; completing it does not launch — after dwell, wait 10–60s then re-roll a new list (player still owns exit)
+
+---
+
+## [0.1.56] — 2026-07-12
+
+### Fixed
+- Visitor checklist no longer stalls when staged freight is exported, duplicated, or left as `ready` orphans
+- Forklifts won't re-deliver into a bay being cleared; inbound despawn restages checklist needs
+- Crane keeps service cargo on its bay, sweeps non-matching south-in blockers, and won't dump tagged inbound off-station
+- Unload checklist completes on pile deposit; bay clear waits for floor drops / carriers; ambient fallback weld is B2-only
+- Mechanics no longer ping-pong on the blast-wall apron during bay ops (skirt stick + don't fight corridor crosses)
+- Pedestrians no longer N/S bounce on cool B2: hatch rally uses corridor X; pad keep-out skipped on apron jobs (toPile/linger)
+- B2 no longer endless ambient hull-welding; exit-reroute won't yank leavers back for fluff weld
+
+---
+
+## [0.1.55] — 2026-07-12
+
+### Changed
+- B1/B3 visitors roll ship need meters and a captain service checklist on door land / raise-for-service / spawn-occupied (never idle door-leave with empty visit)
+- Empty checklist → short dwell then elevator-only transfer; after service, exit by door or elevator
+- Empty-bay elevator raise: immediate leave (`raiseLaunch`) or ascend-and-stay for service (`raiseArrive`)
+- Forklifts / crane / mechanics follow checklist order (parallel where safe); inbound freight only what the bay still needs
+- Destroyed staged service cargo/upgrades are re-ordered until the checklist completes
+- Longer empty-bay cooldown and post-service dwell
+
+---
+
+## [0.1.54] — 2026-07-12
+
+### Fixed
+- Mechanics no longer start welding at a danger-lane edge when skirting a hot bay (skirt waypoints no longer count as arriving at the hull)
+- Elevator / ops cancel in-progress hull weld/repair; job revalidates so crew don't weld air after a ship leaves
+
+---
+
+## [0.1.53] — 2026-07-12
+
+### Changed
+- Mechanics path around hot danger lanes toward their destination instead of idling at the edge; when the bay clears they take the shorter straight path again
+- Exception: if they dropped cargo still inside a hot bay, they wait at the edge until they can reclaim it
+
+---
+
+## [0.1.52] — 2026-07-12
+
+### Changed
+- Bay ops danger: mechanics scramble only from the lit danger rectangle to the nearest safe floor, then resume after a short random delay
+- Arrive/depart: mechanics drop cargo / abort welds; reclaim their crate after the bay clears (crane sweeps unclaimed drops after a few seconds)
+- Blast-wall pathing hugs shield edges and avoids hot danger lanes (hold at the edge instead of cutting through)
+- Forklifts ignore bay ops danger; short flinch only when shot
+
+---
+
 ## [0.1.51] — 2026-07-12
 
 ### Fixed

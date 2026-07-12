@@ -50,10 +50,10 @@ The hangar bay is the prototype seed of **Home Base**: the place you start a new
 | Full-frame docked bay (B1 · B2 · B3; player on B2); lived-in industrial set dressing; blast backsplash + danger-lane floor lights | Persistent inventory / loadout across sessions |
 | Live thrusters / engine / weapons (translation locked until launch) | Mission board, shop UI, between-run meta |
 | 3×6 cargo grid (2 cols/bay: left=in, right=out), manned crane, stairs, bulkheads | Player-request job queue for **B2 only** (see below) |
-| Forklift + mechanic logistics (ambient on occupied pads) | |
+| Forklift + mechanic logistics (checklist-driven on B1–B3) | |
 | Distinct upgrade parts + hold cargo; destructible | |
 | B2 **LAUNCH** / dock landing (lift burst, pad turntable, doors, thrust) | |
-| B1/B3 ambient arrive/depart (doors) + elevator lower/raise-then-launch; pad turntables; empty-bay cargo sweep; elevator shafts | |
+| B1–B3 captain service checklist (needs curve, parallel deck ops; B1/B3 exit + elevator; B2 rerolls, player owns launch); restage on destroy; empty-bay cargo sweep; elevator shafts | |
 | Jennings Station overworld exterior + approach dock | |
 
 Entered from the title screen (**ENTER HANGAR**). **QUICK LAUNCH** skips straight to space near the station.
@@ -72,20 +72,20 @@ Vertical flow (example upgrade install): forklift → south-left → crane → t
 
 Each hardpoint holds up to **4** items in a 2×2 slot grid. Hold cargo is rectangular; ship mounts use distinct silhouettes. Actors skip full destinations, linger on blocked jobs until space opens, prioritize clearing blockages they can help with, and despawn when idle.
 
-### Bay activity: ambient vs player-request (future)
+### Bay activity: captain checklists (B1–B3) vs player-request (future B2)
 
-**Neighbor pads (B1 / B3)** — loading, unloading, welding/repairs, and similar work stay **simulated ambient theater**. Other ships look busy; that traffic does not consume player resources or wait on UI. Ships periodically **arrive and depart** through the bay doors (evac → beacons → doors → lift/thrust), or use the **under-deck elevator**: steadier warning lights, crew clear, pad sinks into a round elevation shaft whose **inner opening matches the pad radius** (hatched rim just outside; 2.5D well darker with depth), with pad+ship **clipped to that opening** so the hangar occludes them until reseated — or an empty pad raises a ship that **quickly launches**. Door landings match B2 turntable logic (empty pads face south; land nose-south; pad turns north). Elevator raises arrive nose-north. After depart, the pad turns south again. Departing ships exit the door then are **occluded by the north wall** except through the windows and open door apertures (player B2 launch/land uses the same layering). **Empty bays hold no cargo**; after a leave, station crew sweep every hardpoint (including inbound) until the bay is bare.
+**Neighbor pads (B1 / B3)** — visitors run a **captain service checklist**, not random leave timers. On door land, raise-for-service, or spawn-occupied, the ship rolls need meters (fuel / hull / ammo / cargo space) and requests work with a curved probability (`need^2.2`): refuel, repair/weld, reload, load/unload cargo, and 0–3 upgrades. Deck crew (forklift → south-in → crane → mid/upgrade → mechanic) only stage what that list still needs; repair and unload can run in parallel with staging. If the player destroys staged service freight, that need is re-ordered and the visit continues until the checklist is done. After a short settle beat and post-service dwell, exit is **door depart or elevator descend** (same roll). An empty checklist is allowed only as an **elevator transfer** (no door leave with zero work). Empty bays wait longer before the next event; an elevator raise is either **immediate leave** or **ascend and stay for service**. The under-deck elevator still uses steadier warning lights, crew clear, and a round shaft whose **inner opening matches the pad radius** (hatched rim; 2.5D well; pad+ship clipped to the opening). Door landings still use pad turntables (empty pads face south; land nose-south; pad turns north). Elevator raises arrive nose-north. After depart, the pad turns south again. Departing ships exit the door then are **occluded by the north wall** except through the windows and open door apertures (player B2 launch/land uses the same layering). **Empty bays hold no cargo**; after a leave, station crew sweep every hardpoint (including inbound) until the bay is bare.
 
-**Player pad (B2)** — the same animation vocabulary (cargo haulers, welders, crane, etc.) runs **only when the player requests it**. Requests can be queued; each item is checked off **only after its animations complete**.
+**Bay danger lanes** — the lit floor rectangle (door → danger closer, pad-width) is the hot zone during arrive/depart/elevator ops. Mechanics inside scramble to the nearest safe floor, drop cargo / abort welds on arrive or depart (not elevator), then after a short random beat resume or reclaim their dropped crate. They path **around** hot lanes toward other destinations (and cut through again when the bay goes safe if that’s shorter). If they dropped cargo still inside a hot bay, they wait at the edge until they can re-enter for it. Pathing past blast walls hugs the shield edges (not gap midpoints). Forklifts ignore bay ops danger (apron is south of the lights); they only flinch briefly when shot.
 
-| Player action (examples) | What it triggers on B2 |
+**Player pad (B2)** — interim: uses the **same captain checklist** as B1/B3 (need meters + curved requests). Completing the list does **not** launch the ship — the player still owns exit timing. After a short post-service dwell, B2 waits **10–60s** then re-rolls a new checklist. Real player-request queue (sell / repair / buy / upgrade) remains future Home Base work.
+
+| Player action (examples) | What it will trigger on B2 (future) |
 |--------------------------|-------------------------|
 | Land after a mission and **sell** onboard cargo | Unload crew / crane → cargo leaves the ship |
 | Request **hull repairs** | Welder walks up and works the hull |
 | Purchase / install an **upgrade** (weapon, hull armor, etc.) | Cargo brings the part **and** welder installs it |
 | Buy **ammo** or trade goods for other ports | Cargo logic **loads** the ship |
-
-Today’s hangar still runs ambient jobs on the player ship too; wiring B2 to a real request queue is future Home Base work.
 
 ---
 
@@ -226,7 +226,7 @@ Foreground particles moving **opposite** ship velocity — length, brightness, a
 | Region | Purpose | Status |
 |--------|---------|--------|
 | Title screen | Fullscreen live starfield + nebula; ENTER HANGAR / QUICK LAUNCH / SETTINGS; soft vignette | Done |
-| Home Base hangar (Jennings Station) | Docked bay + B2 launch/land (8-thruster lift/settle, pad 180° turn); industrial set; danger lights; logistics | Done (job queue later) |
+| Home Base hangar (Jennings Station) | Docked bay + B2 launch/land; industrial set; danger lights; B1–B3 captain checklists | Done (B2 request queue later) |
 | Jennings Station (overworld) | Industrial exterior; approach + Enter to dock | Done |
 | Settings / controls | Ship-only sandbox viewport with live bindings | Done |
 | Top-left | Radar | Placeholder |
@@ -265,7 +265,7 @@ Prototype backlog (near-term) and long-term crew-game systems are tracked separa
 - [x] Home Base: extract / return to hangar
 - [ ] Home Base: persistent cargo / loadout between runs
 - [ ] Home Base: B2 player-request job queue (sell/unload, repair, buy/load, upgrade = cargo + weld)
-- [x] Home Base: B1/B3 ambient arrive/depart + elevator + empty-bay cargo sweep
+- [x] Home Base: B1–B3 captain service checklist (B2 interim reroll; B1/B3 door/elevator traffic + empty-bay sweep)
 - [ ] Equipment upgrades
 - [ ] Fuel and resource management
 - [ ] Asteroid fragmentation
