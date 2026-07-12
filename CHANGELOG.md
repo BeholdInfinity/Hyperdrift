@@ -19,6 +19,59 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.41] — 2026-07-11
+
+### Fixed
+- Mechanic blast-wall pathing: route via nearest inter-bay corridor (not job `bay` pad), sticky near→far→hold chain, same-side lateral dodge — stops wrong-wall marches and end-to-end ping-pong
+
+---
+
+## [0.1.40] — 2026-07-11
+
+### Fixed
+- Mechanic blast-wall pathing: sticky near→far bypass chain so mid-crossing Y flips no longer pull crew back into the wall
+
+---
+
+## [0.1.39] — 2026-07-11
+
+### Fixed
+- Danger-zone lanes narrowed (half-width 72) so neighboring bay verticals no longer overlap; thinner strip strokes
+- Mechanic pathing around blast walls: stable bypass side, eject if embedded in wall slab, segment-cross detection
+
+---
+
+## [0.1.38] — 2026-07-11
+
+### Fixed
+- Hangar blast backsplash is solid (no center gap); crew path around wall ends
+- Stairs moved further south; danger-zone light lanes widened clear of cargo hardpoints
+
+---
+
+## [0.1.37] — 2026-07-11
+
+### Changed
+- Hangar stairs moved south of per-bay blast backsplash walls (crew walk around wall ends)
+- Per-bay black/yellow danger-zone floor lights (door → former stair line + horizontal closer); yellow cells light on danger; `incoming` / `departing` chase flows on verticals; B2 auto-`danger` when player engines/thrusters fire
+
+---
+
+## [0.1.36] — 2026-07-11
+
+### Changed
+- Hangar bay visual pass: industrial walls/floor (panels, rivets, grime, oil stains), caution markings, fuel tanks/hoses, tool stations, barrels, drains, per-bay door warning beacons (`idle` / `warning` / `open`)
+- Removed hangar overhead bay lights (floating washes and runway fixtures)
+
+---
+
+## [0.1.35] — 2026-07-11
+
+### Fixed
+- Hangar bay windows share one continuous space backdrop (three peeks into the same chunk, not three identical copies)
+
+---
+
 ## [0.1.34] — 2026-07-11
 
 ### Changed

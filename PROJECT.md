@@ -86,7 +86,7 @@ src/
 | Dorsal 360° combat turret (LMB, 3/s) + nose mining laser (RMB) | Done |
 | Circular viewport + corner UI placeholders | Done |
 | Title screen (fullscreen backdrop drift, fade-in, version stamp) | Done |
-| Home Base hangar (full-frame; B1–B3; bridge crane; stairs; 3×6 cargo logistics) | Bay done; launch/return not wired |
+| Home Base hangar (full-frame; B1–B3; industrial dressing; blast walls + danger lanes; bridge crane; stairs; 3×6 cargo logistics) | Bay done; launch/return not wired |
 | Procedural asteroids + nebulae | Done |
 | 7-layer starfield, 3-layer nebulae | Done |
 | Speed streaks (velocity-opposed, screen-space) | Done |

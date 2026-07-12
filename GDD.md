@@ -47,7 +47,7 @@ The hangar bay is the prototype seed of **Home Base**: the place you start a new
 
 | Now | Not yet |
 |-----|---------|
-| Full-frame docked bay (B1 · B2 · B3; player on B2) | Launch into space from the hangar |
+| Full-frame docked bay (B1 · B2 · B3; player on B2); lived-in industrial set dressing; blast backsplash + danger-lane floor lights | Launch into space from the hangar |
 | Live thrusters / engine / weapons (translation locked) | Extract / return from a run into the same bay |
 | 3×6 cargo grid (2 cols/bay: left=in, right=out), manned crane, stairs, bulkheads | Persistent inventory / loadout across sessions |
 | Forklift + mechanic logistics (ambient on all pads today) | Player-request job queue for **B2 only** (see below) |
@@ -223,7 +223,7 @@ Foreground particles moving **opposite** ship velocity — length, brightness, a
 | Region | Purpose | Status |
 |--------|---------|--------|
 | Title screen | Fullscreen live starfield + nebula (same vibrancy as play); soft edge vignette; UI fades in with backdrop | Done |
-| Home Base hangar (title → VIEW SHIP) | Docked Home Base bay (full-frame); B1/B2/B3; 3×6 cargo (in/out per bay); bridge crane; stairs + bulkhead doors; forklift/mechanic logistics; upgrade + hold-cargo silhouettes. Seed for between-mission hub + new-game start | In progress (bay done; launch/return not wired) |
+| Home Base hangar (title → VIEW SHIP) | Docked Home Base bay (full-frame); B1/B2/B3; industrial set dressing + per-bay door beacons; 3×6 cargo (in/out per bay); bridge crane; stairs + bulkhead doors; forklift/mechanic logistics; upgrade + hold-cargo silhouettes. Seed for between-mission hub + new-game start | In progress (bay done; launch/return not wired) |
 | Top-left | Radar | Placeholder |
 | Top-right | Systems (+ fullscreen) | Partial |
 | Bottom-left | Weapons | Placeholder |

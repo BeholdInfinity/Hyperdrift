@@ -41,14 +41,32 @@ const COL_X = (() => {
 })();
 /** North (upgrades), mid (hold cargo), south (forklift storage) */
 const ROW_Y = [-78, 8, 118];
-/** Under-deck stair hatches — one per bay, between mid and south rows */
-const STAIR_Y = (ROW_Y[1] + ROW_Y[2]) / 2;
+/**
+ * South edge of each bay's engine danger zone (former stair Y).
+ * Floor running-lights end here; stairs moved further south past the backsplash.
+ */
+const DANGER_ZONE_SOUTH = (ROW_Y[1] + ROW_Y[2]) / 2;
+/** Blast backsplash behind each ship (engines face south); stairs on safe/south side */
+const BACKSPLASH_Y = DANGER_ZONE_SOUTH + 14;
+const BACKSPLASH_HALF_W = 50;
+/** Y half-thickness treated as blocked for crew pathing around the wall */
+const BACKSPLASH_BAND = 11;
+/** Clearance past wall end when bypassing */
+const BACKSPLASH_BYPASS = 18;
+/** Under-deck stair hatches — south of backsplash (crew walk around wall ends) */
+const STAIR_Y = BACKSPLASH_Y + 34;
 const STAIRS = [-BAY.SIDE_PAD_X, 0, BAY.SIDE_PAD_X].map((x, bay) => ({
   x,
   y: STAIR_Y,
   bay,
   col: bay * 2,
 }));
+/**
+ * Half-width of per-bay danger-zone light lanes (door → DANGER_ZONE_SOUTH).
+ * Must stay outside cargo pads (~±71) and inside half pad-spacing (77.5) so
+ * neighboring bay lines don't double up: 72 leaves ~11px between B1|B2 and B2|B3.
+ */
+const BAY_LANE_HALF = 72;
 
 const BRIDGE_Y_MIN = -BAY.HALF_H + 55;
 const BRIDGE_Y_MAX = BAY.HALF_H - 36;
@@ -230,6 +248,13 @@ export class HangarBay {
     this._shipAngle = SHIP.SPAWN_ANGLE;
     this.crane = null;
     this._pressure = 0; // <0 need more cargo, >0 need less
+    /** Per-bay door beacons: 'idle' | 'warning' | 'open' (launch wiring later) */
+    this.bayBeacons = ['idle', 'idle', 'idle'];
+    /**
+     * Per-bay danger-lane lights: 'idle' | 'danger' | 'incoming' | 'departing'
+     * (incoming/departing = chase flow on vertical strips for future launch/land)
+     */
+    this.bayLaneMode = ['idle', 'idle', 'idle'];
   }
 
   reset() {
@@ -239,6 +264,8 @@ export class HangarBay {
     this._sparkle = [];
     this._debris = [];
     this._hazard = { maneuver: 0, engine: 0, weapons: 0 };
+    this.bayBeacons = ['idle', 'idle', 'idle'];
+    this.bayLaneMode = ['idle', 'idle', 'idle'];
     this.sidePads = [
       rollSidePad(-BAY.SIDE_PAD_X, 'B1'),
       rollSidePad(BAY.SIDE_PAD_X, 'B3'),
@@ -579,6 +606,7 @@ export class HangarBay {
       weaponPulse
     );
     this._shipAngle = ship?.angle ?? SHIP.SPAWN_ANGLE;
+    this._syncBayLaneModes();
 
     this._updatePressure();
     this._updateCrane(deltaTime);
@@ -1283,6 +1311,10 @@ export class HangarBay {
       emergeT: 0,
       exitArmed: false,
       claimKey: null,
+      _crossing: false,
+      _crossPhase: 0,
+      _corridorX: null,
+      _crossCool: 0,
       suit: pick(['#3a6a8a', '#4a7a6a', '#6a5a4a', '#5a5a7a']),
       helmet: pick(['#c8d0d8', '#a8b8c8', '#d0c8b0']),
     };
@@ -1900,10 +1932,196 @@ export class HangarBay {
     this._startMechanicJob(npc);
   }
 
-  /** Step clear of a stair hatch onto the deck (north toward ships). */
+  /** Step clear of a stair hatch onto the deck (around backsplash, toward ships). */
   _hatchRally(npc) {
     const stair = npc.stair || npc.exitStair || this._nearestStair(npc.x);
-    return { x: stair.x, y: stair.y - 26 };
+    return { x: stair.x, y: BACKSPLASH_Y - BACKSPLASH_BAND - 24 };
+  }
+
+  _backsplashGateY(south) {
+    return south
+      ? BACKSPLASH_Y + BACKSPLASH_BAND + 10
+      : BACKSPLASH_Y - BACKSPLASH_BAND - 10;
+  }
+
+  /**
+   * Walkable corridor X positions past blast walls: outer ends + gaps between bays.
+   * Pathing uses these — never npc.bay (job pad), which caused wrong-wall marches.
+   */
+  _backsplashCorridors() {
+    const pads = padCenters();
+    const half = BACKSPLASH_HALF_W;
+    const margin = BACKSPLASH_BYPASS;
+    const xs = [pads[0] - half - margin];
+    for (let i = 0; i < pads.length - 1; i++) {
+      // Midpoint of the open gap between wall i and wall i+1
+      xs.push((pads[i] + half + pads[i + 1] - half) / 2);
+    }
+    xs.push(pads[pads.length - 1] + half + margin);
+    return xs;
+  }
+
+  _pickCorridorX(x, tx = x) {
+    const corridors = this._backsplashCorridors();
+    let best = corridors[0];
+    let bestScore = Infinity;
+    for (const cx of corridors) {
+      // Prefer corridor near the crew; slight bias toward the target's X
+      const score = Math.abs(cx - x) + Math.abs(cx - tx) * 0.25;
+      if (score < bestScore) {
+        bestScore = score;
+        best = cx;
+      }
+    }
+    return best;
+  }
+
+  _clearBacksplashCross(npc) {
+    npc._crossing = false;
+    npc._crossPhase = 0;
+    npc._corridorX = null;
+    npc._crossFromSouth = null;
+  }
+
+  _npcInBacksplash(x, y) {
+    if (Math.abs(y - BACKSPLASH_Y) > BACKSPLASH_BAND) return null;
+    for (const cx of padCenters()) {
+      if (Math.abs(x - cx) <= BACKSPLASH_HALF_W + 1) return cx;
+    }
+    return null;
+  }
+
+  /** True if the segment crosses a solid backsplash slab. */
+  _segmentHitsBacksplash(x0, y0, x1, y1) {
+    const wy = BACKSPLASH_Y;
+    const band = BACKSPLASH_BAND;
+    const bothNorth = y0 < wy - band && y1 < wy - band;
+    const bothSouth = y0 > wy + band && y1 > wy + band;
+    if (bothNorth || bothSouth) return false;
+    const minX = Math.min(x0, x1);
+    const maxX = Math.max(x0, x1);
+    for (const cx of padCenters()) {
+      if (maxX >= cx - BACKSPLASH_HALF_W && minX <= cx + BACKSPLASH_HALF_W) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Locked corridor cross: near-gate → far-gate at fixed corridor X, then release.
+   */
+  _continueBacksplashCross(npc, tx, ty, speed, dt) {
+    const corridorX = npc._corridorX;
+    const gateNear = this._backsplashGateY(npc._crossFromSouth);
+    const gateFar = this._backsplashGateY(!npc._crossFromSouth);
+    const destSouth = !npc._crossFromSouth;
+
+    if (npc._crossPhase <= 1) {
+      npc._crossPhase = 1;
+      if (Math.hypot(npc.x - corridorX, npc.y - gateNear) > 3) {
+        this._moveToward(npc, corridorX, gateNear, speed, dt);
+        return false;
+      }
+      npc._crossPhase = 2;
+    }
+
+    if (npc._crossPhase === 2) {
+      if (Math.hypot(npc.x - corridorX, npc.y - gateFar) > 3) {
+        this._moveToward(npc, corridorX, gateFar, speed, dt);
+        return false;
+      }
+      npc._crossPhase = 3;
+    }
+
+    if (npc._crossPhase >= 3) {
+      const clearY = gateFar;
+      const onDest = destSouth ? npc.y >= clearY - 1 : npc.y <= clearY + 1;
+      if (!onDest || Math.abs(npc.x - corridorX) > 4) {
+        this._moveToward(npc, corridorX, clearY, speed, dt);
+        return false;
+      }
+      this._clearBacksplashCross(npc);
+      npc._crossCool = 0.4;
+    }
+
+    return this._moveToward(npc, tx, ty, speed, dt);
+  }
+
+  _beginBacksplashCross(npc, tx, ty) {
+    npc._crossing = true;
+    npc._crossPhase = 1;
+    npc._corridorX = this._pickCorridorX(npc.x, tx);
+    npc._crossFromSouth = npc.y >= BACKSPLASH_Y;
+  }
+
+  /**
+   * Same-side wall dodge via nearest corridor (no N/S reverse).
+   */
+  _sameSideDodge(npc, tx, ty, speed, dt) {
+    const corridorX = this._pickCorridorX(npc.x, tx);
+    if (Math.abs(npc.x - corridorX) > 4) {
+      this._moveToward(npc, corridorX, npc.y, speed, dt);
+      return false;
+    }
+    return this._moveToward(npc, tx, ty, speed, dt);
+  }
+
+  /**
+   * Mechanic pathing around solid backsplash walls via inter-bay corridors.
+   */
+  _mechMove(npc, tx, ty, speed, dt) {
+    const wy = BACKSPLASH_Y;
+
+    if (npc._crossCool > 0) npc._crossCool -= dt;
+
+    if (npc._crossing) {
+      return this._continueBacksplashCross(npc, tx, ty, speed, dt);
+    }
+
+    // Embedded in a wall — eject through nearest corridor toward destination
+    if (this._npcInBacksplash(npc.x, npc.y) != null) {
+      this._beginBacksplashCross(npc, tx, ty);
+      // Face the destination side when possible
+      if (ty < wy - 4) npc._crossFromSouth = true;
+      else if (ty > wy + 4) npc._crossFromSouth = false;
+      return this._continueBacksplashCross(npc, tx, ty, speed, dt);
+    }
+
+    const npcSouth = npc.y >= wy;
+    const tgtSouth = ty >= wy;
+    const oppositeSides = npcSouth !== tgtSouth;
+    const clips = this._segmentHitsBacksplash(npc.x, npc.y, tx, ty);
+
+    if (!oppositeSides) {
+      if (clips) return this._sameSideDodge(npc, tx, ty, speed, dt);
+      return this._moveToward(npc, tx, ty, speed, dt);
+    }
+
+    if (npc._crossCool > 0) {
+      const corridorX = this._pickCorridorX(npc.x, tx);
+      const destGate = this._backsplashGateY(tgtSouth);
+      this._moveToward(npc, corridorX, destGate, speed, dt);
+      return false;
+    }
+
+    this._beginBacksplashCross(npc, tx, ty);
+    return this._continueBacksplashCross(npc, tx, ty, speed, dt);
+  }
+
+  /**
+   * Auto danger on B2 when player engines/thrusters blast; preserve incoming/departing.
+   */
+  _syncBayLaneModes() {
+    for (let i = 0; i < 3; i++) {
+      const mode = this.bayLaneMode[i];
+      if (mode === 'incoming' || mode === 'departing') continue;
+      if (i === 1) {
+        const hot =
+          this._hazard.engine > 0.28 || this._hazard.maneuver > 0.5;
+        this.bayLaneMode[i] = hot ? 'danger' : 'idle';
+      }
+    }
   }
 
   _updateMechanic(npc, dt, hazard) {
@@ -1924,7 +2142,7 @@ export class HangarBay {
       const stair = npc.exitStair || this._nearestStair(npc.x);
       const safeX = stair.x;
       const safeY = stair.y + 22;
-      if (this._moveToward(npc, safeX, safeY, 58, dt)) {
+      if (this._mechMove(npc, safeX, safeY, 58, dt)) {
         const resume = npc.resumeState || 'toShip';
         npc.state = resume === 'toExit' || resume === 'descend' ? 'toShip' : resume;
         npc.hullTarget = null;
@@ -1973,7 +2191,7 @@ export class HangarBay {
       }
       case 'leaveHatch': {
         const rally = npc.rally || this._hatchRally(npc);
-        if (this._moveToward(npc, rally.x, rally.y, walk, dt)) {
+        if (this._mechMove(npc, rally.x, rally.y, walk, dt)) {
           npc.exitArmed = true;
           if (npc.afterHatch === 'toExit' || npc.taskMode === 'despawn' || npc.job === 'idle') {
             this._clearTaskClaim(npc);
@@ -2005,7 +2223,7 @@ export class HangarBay {
           this._beginNextMechanicTrip(npc);
           break;
         }
-        if (this._moveToward(npc, p.x, p.y + 14, walk, dt)) {
+        if (this._mechMove(npc, p.x, p.y + 14, walk, dt)) {
           npc.state = 'workPile';
           npc.stateT = 0.55;
         }
@@ -2015,7 +2233,7 @@ export class HangarBay {
         const p = this._pileById(npc.lingerPile?.id || npc.targetPile?.id);
         const tx = p ? p.x : npc.x;
         const ty = p ? p.y + 16 : npc.y;
-        this._moveToward(npc, tx, ty, walk * 0.7, dt);
+        this._mechMove(npc, tx, ty, walk * 0.7, dt);
         npc.x += Math.sin(npc.phase) * 0.15;
         if (npc.stateT > 0) break;
         // Recheck: dest free → work; else other doable; else keep lingering / despawn
@@ -2109,7 +2327,7 @@ export class HangarBay {
                 : 'cargo';
           npc.hullTarget = this._shipHullApproach(pad, mode);
         }
-        if (this._moveToward(npc, npc.hullTarget.x, npc.hullTarget.y, walk, dt)) {
+        if (this._mechMove(npc, npc.hullTarget.x, npc.hullTarget.y, walk, dt)) {
           if (npc.job === 'weld') {
             npc.state = 'workWeld';
             npc.stateT = rand(1.1, 1.9);
@@ -2227,7 +2445,7 @@ export class HangarBay {
         }
         if (npc.exit === 'door') {
           if (npc.y < BAY.PATH_Y - 8) {
-            this._moveToward(npc, npc.x, BAY.PATH_Y, walk, dt);
+            this._mechMove(npc, npc.x, BAY.PATH_Y, walk, dt);
             break;
           }
           const doorX = this._doorX(npc.side);
@@ -2246,10 +2464,10 @@ export class HangarBay {
             northOfHatch &&
             Math.hypot(npc.x - approach.x, npc.y - approach.y) > 2
           ) {
-            this._moveToward(npc, approach.x, approach.y, walk, dt);
+            this._mechMove(npc, approach.x, approach.y, walk, dt);
             break;
           }
-          if (this._moveToward(npc, stair.x, stair.y, walk, dt)) {
+          if (this._mechMove(npc, stair.x, stair.y, walk, dt)) {
             npc.state = 'descend';
             npc.stateT = 0.55;
           }
@@ -2324,8 +2542,12 @@ export class HangarBay {
     if (space) this._drawViewportSpace(ctx, space);
     this._drawViewportFrames(ctx);
     this._drawFloor(ctx);
+    this._drawBayDangerLights(ctx);
+    this._drawSetDressing(ctx);
+    this._drawBacksplashWalls(ctx);
     this._drawStairs(ctx);
     this._drawBayDoors(ctx);
+    this._drawBayBeacons(ctx);
     this._drawCargoPiles(ctx);
     this._drawDockPad(ctx, 0, 0, 'B2', { active: true });
     for (const pad of this.sidePads) {
@@ -2370,7 +2592,7 @@ export class HangarBay {
     const vpY = -h - 40;
     const EXT = 2200;
 
-    ctx.fillStyle = '#0a1018';
+    ctx.fillStyle = '#06090e';
     ctx.fillRect(-EXT, -EXT, EXT * 2, EXT * 2);
 
     const northY = -h - 80;
@@ -2379,74 +2601,210 @@ export class HangarBay {
       lo: cx - vpW / 2,
       hi: cx + vpW / 2,
     }));
-    let cursor = -w - 100;
-    for (const g of vpGaps) {
-      if (g.lo > cursor) {
-        ctx.fillRect(cursor, northY, g.lo - cursor, northH);
-      }
-      if (vpY > northY) {
-        ctx.fillRect(g.lo, northY, g.hi - g.lo, vpY - northY);
-      }
-      const belowTop = vpY + vpH;
-      const belowH = northY + northH - belowTop;
-      if (belowH > 0) {
-        ctx.fillRect(g.lo, belowTop, g.hi - g.lo, belowH);
-      }
-      cursor = Math.max(cursor, g.hi);
-    }
-    if (cursor < w + 100) {
-      ctx.fillRect(cursor, northY, w + 100 - cursor, northH);
-    }
 
-    ctx.fillStyle = '#15202c';
+    const fillNorthBand = (y, bandH, fill) => {
+      ctx.fillStyle = fill;
+      let cursor = -w - 100;
+      for (const g of vpGaps) {
+        if (g.lo > cursor) ctx.fillRect(cursor, y, g.lo - cursor, bandH);
+        if (vpY > y) ctx.fillRect(g.lo, y, g.hi - g.lo, Math.min(vpY - y, bandH));
+        const belowTop = vpY + vpH;
+        const belowH = y + bandH - belowTop;
+        if (belowH > 0) ctx.fillRect(g.lo, belowTop, g.hi - g.lo, belowH);
+        cursor = Math.max(cursor, g.hi);
+      }
+      if (cursor < w + 100) ctx.fillRect(cursor, y, w + 100 - cursor, bandH);
+    };
+
+    // Deep outer bulk (station hull beyond the bay)
+    fillNorthBand(northY, northH, '#101820');
+    // Mid shell with slight warm grit
+    fillNorthBand(-h - 50, 50 + BAY.DOOR_H, '#182430');
+
+    // Side / south outer bulk — 2.5D lip (darker “underside” + face)
+    ctx.fillStyle = '#0e1620';
+    ctx.fillRect(-w - 58, -h - 50, 58, (h + 50) * 2);
+    ctx.fillRect(w, -h - 50, 58, (h + 50) * 2);
+    ctx.fillRect(-w - 58, h, (w + 58) * 2, 58);
+    ctx.fillStyle = '#1a2836';
     ctx.fillRect(-w - 50, -h - 50, 50, (h + 50) * 2);
     ctx.fillRect(w, -h - 50, 50, (h + 50) * 2);
     ctx.fillRect(-w - 50, h, (w + 50) * 2, 50);
+    // Top edge highlight on bulk lips
+    ctx.fillStyle = 'rgba(90, 120, 140, 0.22)';
+    ctx.fillRect(-w - 50, -h - 50, 50, 2);
+    ctx.fillRect(w, -h - 50, 50, 2);
+    ctx.fillRect(-w - 50, h, (w + 50) * 2, 2);
 
-    const wallTop = -h - 50;
-    const wallH = 50 + BAY.DOOR_H;
-    cursor = -w - 50;
-    for (const g of vpGaps) {
-      if (g.lo > cursor) {
-        ctx.fillRect(cursor, wallTop, g.lo - cursor, wallH);
-      }
-      if (vpY > wallTop) {
-        ctx.fillRect(g.lo, wallTop, g.hi - g.lo, vpY - wallTop);
-      }
-      const belowTop = vpY + vpH;
-      const belowH = wallTop + wallH - belowTop;
-      if (belowH > 0) {
-        ctx.fillRect(g.lo, belowTop, g.hi - g.lo, belowH);
-      }
-      cursor = Math.max(cursor, g.hi);
-    }
-    if (cursor < w + 50) {
-      ctx.fillRect(cursor, wallTop, w + 50 - cursor, wallH);
-    }
-
-    ctx.fillStyle = '#1c2a38';
+    // Interior deck mass (base before plate detail)
+    ctx.fillStyle = '#1e2c38';
     ctx.fillRect(-w, -h + BAY.DOOR_H, w * 2, h * 2 - BAY.DOOR_H);
-    ctx.strokeStyle = '#3a5568';
-    ctx.lineWidth = 2;
-    ctx.strokeRect(-w, -h, w * 2, h * 2);
 
-    for (const side of [-1, 1]) {
-      for (let i = 0; i < 3; i++) {
-        const wy = -30 + i * 48;
-        // Skip windows that overlap the bulkhead door band
-        if (Math.abs(wy - BAY.PATH_Y) < BAY.BULK_DOOR_HALF + 10) continue;
-        const wx = side < 0 ? -w + 8 : w - 22;
-        ctx.fillStyle = '#2a3848';
-        ctx.fillRect(wx - 2, wy - 2, 18, 22);
-        ctx.strokeStyle = '#7a9bb0';
-        ctx.lineWidth = 1.2;
-        ctx.strokeRect(wx - 2, wy - 2, 18, 22);
-        ctx.fillStyle = 'rgba(6, 10, 18, 0.75)';
-        ctx.fillRect(wx, wy, 14, 18);
-        ctx.strokeStyle = '#4a6070';
-        ctx.strokeRect(wx, wy, 14, 18);
+    // North wall face panels (between / around viewport glass)
+    this._drawWallPanels(ctx, -w - 50, -h - 50, w * 2 + 100, 50 + BAY.DOOR_H, vpGaps, vpY, vpH);
+    // Side wall paneling
+    this._drawSideWallDetail(ctx, -1);
+    this._drawSideWallDetail(ctx, 1);
+
+    ctx.strokeStyle = '#4a6578';
+    ctx.lineWidth = 2.5;
+    ctx.strokeRect(-w, -h, w * 2, h * 2);
+    // Inner shadow line for depth
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-w + 2, -h + 2, w * 2 - 4, h * 2 - 4);
+
+    // Corner columns (2.5D posts)
+    for (const [cx, cy] of [
+      [-w, -h + BAY.DOOR_H],
+      [w, -h + BAY.DOOR_H],
+      [-w, h],
+      [w, h],
+    ]) {
+      this._drawCornerColumn(ctx, cx, cy);
+    }
+  }
+
+  _drawWallPanels(ctx, x0, y0, width, height, vpGaps, vpY, vpH) {
+    const panelW = 28;
+    for (let x = x0; x < x0 + width - 4; x += panelW) {
+      const px = x + 2;
+      const pw = panelW - 4;
+      // Skip glass openings
+      let blocked = false;
+      for (const g of vpGaps) {
+        if (px + pw > g.lo && px < g.hi && y0 < vpY + vpH && y0 + height > vpY) {
+          blocked = true;
+          break;
+        }
+      }
+      if (blocked) continue;
+
+      // Panel face + top bevel (2.5D)
+      ctx.fillStyle = '#1c2a36';
+      ctx.fillRect(px, y0 + 4, pw, height - 8);
+      ctx.fillStyle = 'rgba(110, 140, 160, 0.18)';
+      ctx.fillRect(px, y0 + 4, pw, 2);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+      ctx.fillRect(px, y0 + height - 8, pw, 2);
+      ctx.strokeStyle = 'rgba(60, 85, 105, 0.55)';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(px, y0 + 4, pw, height - 8);
+
+      // Rivets
+      ctx.fillStyle = 'rgba(140, 160, 175, 0.35)';
+      for (const ry of [y0 + 10, y0 + height - 12]) {
+        ctx.beginPath();
+        ctx.arc(px + 3, ry, 0.9, 0, Math.PI * 2);
+        ctx.arc(px + pw - 3, ry, 0.9, 0, Math.PI * 2);
+        ctx.fill();
       }
     }
+
+    // Horizontal stringers
+    ctx.strokeStyle = 'rgba(70, 95, 115, 0.45)';
+    ctx.lineWidth = 1.5;
+    for (const sy of [y0 + 14, y0 + height * 0.55]) {
+      ctx.beginPath();
+      ctx.moveTo(x0 + 4, sy);
+      ctx.lineTo(x0 + width - 4, sy);
+      ctx.stroke();
+    }
+
+    // Grime streaks
+    ctx.fillStyle = 'rgba(20, 14, 8, 0.12)';
+    for (let i = 0; i < 7; i++) {
+      const gx = x0 + 18 + i * 92;
+      ctx.fillRect(gx, y0 + 8, 3 + (i % 3), height - 16);
+    }
+  }
+
+  _drawSideWallDetail(ctx, side) {
+    const w = BAY.HALF_W;
+    const h = BAY.HALF_H;
+    const xFace = side < 0 ? -w : w - 18;
+    const wallTop = -h + BAY.DOOR_H;
+    const wallBot = h;
+
+    // Vertical ribbing
+    for (let i = 0; i < 3; i++) {
+      const wx = side < 0 ? -w + 4 + i * 5 : w - 8 - i * 5;
+      ctx.fillStyle = i === 1 ? '#243444' : '#1a2834';
+      ctx.fillRect(wx, wallTop + 4, 4, wallBot - wallTop - 8);
+      ctx.fillStyle = 'rgba(100, 130, 150, 0.15)';
+      ctx.fillRect(wx, wallTop + 4, 4, 1.5);
+    }
+
+    // Side observation ports (skip bulkhead door band)
+    for (let i = 0; i < 3; i++) {
+      const wy = -30 + i * 48;
+      if (Math.abs(wy - BAY.PATH_Y) < BAY.BULK_DOOR_HALF + 10) continue;
+      const wx = side < 0 ? -w + 8 : w - 22;
+      // Frame depth
+      ctx.fillStyle = '#121a22';
+      ctx.fillRect(wx - 1, wy + 1, 18, 22);
+      ctx.fillStyle = '#2a3848';
+      ctx.fillRect(wx - 2, wy - 2, 18, 22);
+      ctx.strokeStyle = '#7a9bb0';
+      ctx.lineWidth = 1.2;
+      ctx.strokeRect(wx - 2, wy - 2, 18, 22);
+      ctx.fillStyle = 'rgba(6, 10, 18, 0.82)';
+      ctx.fillRect(wx, wy, 14, 18);
+      ctx.strokeStyle = '#4a6070';
+      ctx.strokeRect(wx, wy, 14, 18);
+      // Glass sheen
+      ctx.fillStyle = 'rgba(120, 180, 220, 0.06)';
+      ctx.fillRect(wx + 1, wy + 1, 5, 16);
+    }
+
+    // Wall conduits
+    const pipeX = side < 0 ? -w + 22 : w - 26;
+    ctx.strokeStyle = '#3a4a58';
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.moveTo(pipeX, wallTop + 10);
+    ctx.lineTo(pipeX, BAY.PATH_Y - BAY.BULK_DOOR_HALF - 8);
+    ctx.moveTo(pipeX, BAY.PATH_Y + BAY.BULK_DOOR_HALF + 8);
+    ctx.lineTo(pipeX, wallBot - 10);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(180, 100, 60, 0.55)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(pipeX + side * 5, wallTop + 20);
+    ctx.lineTo(pipeX + side * 5, wallBot - 30);
+    ctx.stroke();
+    // Couplings
+    ctx.fillStyle = '#5a6a78';
+    for (const cy of [wallTop + 40, 20, 90]) {
+      if (Math.abs(cy - BAY.PATH_Y) < BAY.BULK_DOOR_HALF + 6) continue;
+      ctx.fillRect(pipeX - 2, cy, 8, 4);
+    }
+
+    // Stencil hazard strip on wall base
+    ctx.fillStyle = '#c9a020';
+    for (let y = wallTop + 6; y < wallBot - 4; y += 10) {
+      if (Math.abs(y - BAY.PATH_Y) < BAY.BULK_DOOR_HALF + 4) continue;
+      ctx.fillRect(xFace, y, 3, 5);
+      ctx.fillStyle = '#1a1a1a';
+      ctx.fillRect(xFace, y + 5, 3, 5);
+      ctx.fillStyle = '#c9a020';
+    }
+  }
+
+  _drawCornerColumn(ctx, cx, cy) {
+    ctx.fillStyle = '#0a1016';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + 3, 7, 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#2a3848';
+    ctx.fillRect(cx - 5, cy - 14, 10, 16);
+    ctx.fillStyle = 'rgba(120, 150, 170, 0.25)';
+    ctx.fillRect(cx - 5, cy - 14, 10, 2);
+    ctx.fillStyle = '#1a2834';
+    ctx.fillRect(cx - 3, cy - 12, 6, 12);
+    ctx.strokeStyle = '#6a8498';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(cx - 5, cy - 14, 10, 16);
   }
 
   /** Outside the bay, only the door throat is visible; walls hide the rest. */
@@ -2471,31 +2829,49 @@ export class HangarBay {
     for (const side of [-1, 1]) {
       const x0 = side < 0 ? -w - thick : w;
       // Wall panels above and below door (cover NPCs behind solid bulkhead)
-      ctx.fillStyle = '#1a2836';
+      ctx.fillStyle = '#15202c';
       ctx.fillRect(x0, wallTop, thick, Math.max(0, doorLo - wallTop));
       ctx.fillRect(x0, doorHi, thick, Math.max(0, wallBot - doorHi));
+      // Panel seams
+      ctx.strokeStyle = 'rgba(70, 95, 115, 0.4)';
+      ctx.lineWidth = 0.8;
+      for (let y = wallTop + 12; y < doorLo - 4; y += 16) {
+        ctx.beginPath();
+        ctx.moveTo(x0 + 2, y);
+        ctx.lineTo(x0 + thick - 2, y);
+        ctx.stroke();
+      }
 
-      // Corridor mass above/below the door band (hides approach outside the throat)
       const deepX = side < 0 ? -w - thick - 120 : w + thick;
-      ctx.fillStyle = '#0c141c';
+      ctx.fillStyle = '#0a1018';
       ctx.fillRect(deepX, wallTop, 120, Math.max(0, doorLo - wallTop));
       ctx.fillRect(deepX, doorHi, 120, Math.max(0, wallBot - doorHi));
 
-      // Door frame
-      ctx.fillStyle = '#2a3848';
+      // Door frame with depth lip
+      ctx.fillStyle = '#0e1620';
+      ctx.fillRect(x0 - 3, doorLo - 5, thick + 6, doorHi - doorLo + 10);
+      ctx.fillStyle = '#2e3e4e';
       ctx.fillRect(x0 - 2, doorLo - 4, thick + 4, 4);
       ctx.fillRect(x0 - 2, doorHi, thick + 4, 4);
       ctx.fillRect(x0 - 2, doorLo, 3, doorHi - doorLo);
       ctx.fillRect(x0 + thick - 1, doorLo, 3, doorHi - doorLo);
+      ctx.fillStyle = 'rgba(130, 160, 180, 0.2)';
+      ctx.fillRect(x0 - 2, doorLo - 4, thick + 4, 1.5);
 
       ctx.strokeStyle = '#7a9bb0';
       ctx.lineWidth = 1.2;
       ctx.strokeRect(x0 - 2, doorLo - 4, thick + 4, doorHi - doorLo + 8);
 
-      ctx.fillStyle = 'rgba(100, 180, 255, 0.08)';
+      // Caution jamb stripes
+      for (let i = 0; i < 5; i++) {
+        ctx.fillStyle = i % 2 ? '#c9a020' : '#1a1a1a';
+        ctx.fillRect(x0 + 2, doorLo + 4 + i * 11, thick - 4, 9);
+      }
+
+      ctx.fillStyle = 'rgba(100, 180, 255, 0.06)';
       ctx.fillRect(x0, doorLo, thick, doorHi - doorLo);
 
-      ctx.fillStyle = 'rgba(100, 180, 255, 0.35)';
+      ctx.fillStyle = 'rgba(100, 180, 255, 0.4)';
       ctx.font = '4px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(
@@ -2514,18 +2890,23 @@ export class HangarBay {
       const x = cx - vpW / 2;
       const y = vpY;
       const t = 3;
-      ctx.fillStyle = '#2a3848';
+      // Recessed shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      ctx.fillRect(x - 1, y + 1, vpW + 2, vpH + 2);
+      ctx.fillStyle = '#1e2a36';
       ctx.fillRect(x - t, y - t, vpW + t * 2, t);
       ctx.fillRect(x - t, y + vpH, vpW + t * 2, t);
       ctx.fillRect(x - t, y, t, vpH);
       ctx.fillRect(x + vpW, y, t, vpH);
-      ctx.strokeStyle = '#7a9bb0';
+      ctx.fillStyle = 'rgba(120, 150, 170, 0.25)';
+      ctx.fillRect(x - t, y - t, vpW + t * 2, 1.5);
+      ctx.strokeStyle = '#8aabbc';
       ctx.lineWidth = 1.5;
       ctx.strokeRect(x - t, y - t, vpW + t * 2, vpH + t * 2);
       ctx.strokeStyle = '#4a6070';
       ctx.lineWidth = 1;
       ctx.strokeRect(x - 1, y - 1, vpW + 2, vpH + 2);
-      ctx.fillStyle = '#8a9aa8';
+      ctx.fillStyle = '#9aaab8';
       for (const [bx, by] of [
         [x - 1, y - 1],
         [x + vpW - 1, y - 1],
@@ -2543,30 +2924,36 @@ export class HangarBay {
     const vpW = BAY.VIEWPORT_W;
     const vpH = BAY.VIEWPORT_H;
     const vpY = -BAY.HALF_H - 40;
+    const pads = padCenters();
     const { starfield, nebulaField, spaceX, spaceY, time, nebulae } = space;
 
-    for (const cx of padCenters()) {
-      const x = cx - vpW / 2;
+    // One continuous space pass behind the north wall; each window clips a
+    // different slice (not three re-centered copies of the same chunk).
+    const left = pads[0] - vpW / 2;
+    const right = pads[pads.length - 1] + vpW / 2;
+    const midX = (left + right) / 2;
+    const midY = vpY + vpH / 2;
+    const cover = Math.hypot(right - left, vpH) / 2 + 40;
+
+    ctx.save();
+    ctx.beginPath();
+    for (const cx of pads) {
+      ctx.rect(cx - vpW / 2, vpY, vpW, vpH);
+    }
+    ctx.clip();
+
+    ctx.translate(midX, midY);
+    nebulaField.renderProcedural(ctx, spaceX, spaceY, time, cover, 0.55);
+    starfield.render(ctx, spaceX, spaceY, cover, time, 0.55);
+    if (nebulae?.length) {
       ctx.save();
-      ctx.beginPath();
-      ctx.rect(x, vpY, vpW, vpH);
-      ctx.clip();
-
-      ctx.translate(cx, vpY + vpH / 2);
-      const cover = Math.hypot(vpW, vpH) + 40;
-      nebulaField.renderProcedural(ctx, spaceX, spaceY, time, cover, 0.55);
-      starfield.render(ctx, spaceX, spaceY, cover, time, 0.55);
-      if (nebulae?.length) {
-        ctx.save();
-        ctx.translate(-spaceX, -spaceY);
-        ctx.scale(0.12, 0.12);
-        ctx.translate(spaceX, spaceY);
-        nebulaField.renderWorldNebulae(ctx, nebulae, time);
-        ctx.restore();
-      }
-
+      ctx.translate(-spaceX, -spaceY);
+      ctx.scale(0.12, 0.12);
+      ctx.translate(spaceX, spaceY);
+      nebulaField.renderWorldNebulae(ctx, nebulae, time);
       ctx.restore();
     }
+    ctx.restore();
   }
 
   _drawBayDoors(ctx) {
@@ -2577,36 +2964,63 @@ export class HangarBay {
     const labels = bayLabels();
 
     padCenters().forEach((cx, i) => {
-      ctx.fillStyle = '#3a4a58';
-      ctx.strokeStyle = '#6a8498';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.rect(cx - dh, doorTop, dh - 1.5, doorH);
-      ctx.fill();
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.rect(cx + 1.5, doorTop, dh - 1.5, doorH);
-      ctx.fill();
-      ctx.stroke();
+      // Recessed pocket behind leaves
+      ctx.fillStyle = '#0a1018';
+      ctx.fillRect(cx - dh - 6, doorTop - 2, dh * 2 + 12, doorH + 8);
 
-      ctx.strokeStyle = 'rgba(20, 30, 40, 0.7)';
-      ctx.lineWidth = 1;
+      // Leaf faces with paneling
+      for (const [lx, lw] of [
+        [cx - dh, dh - 1.5],
+        [cx + 1.5, dh - 1.5],
+      ]) {
+        ctx.fillStyle = '#3a4a58';
+        ctx.fillRect(lx, doorTop, lw, doorH);
+        ctx.fillStyle = 'rgba(120, 150, 170, 0.12)';
+        ctx.fillRect(lx, doorTop, lw, 2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+        ctx.fillRect(lx, doorTop + doorH - 3, lw, 3);
+        ctx.strokeStyle = '#6a8498';
+        ctx.lineWidth = 1.3;
+        ctx.strokeRect(lx, doorTop, lw, doorH);
+        ctx.strokeStyle = 'rgba(50, 70, 85, 0.7)';
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(lx + 3, doorTop + 4, lw - 6, doorH * 0.4);
+        ctx.strokeRect(lx + 3, doorTop + doorH * 0.5, lw - 6, doorH * 0.38);
+        ctx.fillStyle = 'rgba(150, 170, 185, 0.4)';
+        for (const ry of [doorTop + 6, doorTop + doorH - 6]) {
+          ctx.beginPath();
+          ctx.arc(lx + 4, ry, 0.8, 0, Math.PI * 2);
+          ctx.arc(lx + lw - 4, ry, 0.8, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      ctx.strokeStyle = 'rgba(20, 30, 40, 0.75)';
+      ctx.lineWidth = 1.5;
       ctx.beginPath();
       ctx.moveTo(cx, doorTop + 2);
       ctx.lineTo(cx, doorTop + doorH - 2);
       ctx.stroke();
 
-      ctx.fillStyle = '#2a3848';
-      ctx.fillRect(cx - dh - 8, doorTop - 4, 8, doorH + 10);
-      ctx.fillRect(cx + dh, doorTop - 4, 8, doorH + 10);
+      for (const px of [cx - dh - 8, cx + dh]) {
+        ctx.fillStyle = '#121a22';
+        ctx.fillRect(px + 1, doorTop - 2, 8, doorH + 10);
+        ctx.fillStyle = '#2a3848';
+        ctx.fillRect(px, doorTop - 4, 8, doorH + 10);
+        ctx.fillStyle = 'rgba(120, 150, 170, 0.2)';
+        ctx.fillRect(px, doorTop - 4, 8, 2);
+      }
+      ctx.fillStyle = '#243444';
       ctx.fillRect(cx - dh - 8, doorTop + doorH, dh * 2 + 16, 7);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+      ctx.fillRect(cx - dh - 8, doorTop + doorH + 5, dh * 2 + 16, 2);
 
       for (let s = 0; s < 6; s++) {
         ctx.fillStyle = s % 2 === 0 ? '#c9a020' : '#1a1a1a';
         ctx.fillRect(cx - dh + s * ((dh * 2) / 6), doorTop + doorH + 1, (dh * 2) / 6, 5);
       }
 
-      ctx.fillStyle = 'rgba(100, 180, 255, 0.2)';
+      ctx.fillStyle = 'rgba(100, 180, 255, 0.18)';
       for (const y of [-120, -95, -72]) {
         ctx.beginPath();
         ctx.moveTo(cx, y - 7);
@@ -2616,40 +3030,137 @@ export class HangarBay {
         ctx.fill();
       }
 
-      ctx.fillStyle = 'rgba(100, 180, 255, 0.45)';
+      ctx.fillStyle = 'rgba(100, 180, 255, 0.5)';
       ctx.font = '5px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(`${labels[i]} · SPACE`, cx, doorTop + doorH + 12);
     });
   }
 
+  /**
+   * Per-bay door beacons. Modes: idle (dim), warning (flash), open (solid red).
+   * Wired for future launch/door cycles via `this.bayBeacons[i]`.
+   */
+  _drawBayBeacons(ctx) {
+    const doorTop = -BAY.HALF_H;
+    padCenters().forEach((cx, i) => {
+      const mode = this.bayBeacons[i] || 'idle';
+      let on = false;
+      let color = '255, 170, 40';
+      let glow = 0.15;
+      if (mode === 'idle') {
+        on = Math.sin(this.time * 1.4 + i) > 0.65;
+        glow = on ? 0.35 : 0.08;
+      } else if (mode === 'warning') {
+        on = Math.sin(this.time * 10 + i) > 0;
+        glow = on ? 0.85 : 0.12;
+        color = '255, 160, 20';
+      } else if (mode === 'open') {
+        on = true;
+        glow = 0.9;
+        color = '255, 60, 50';
+      }
+
+      for (const dx of [-BAY.DOOR_HALF - 4, BAY.DOOR_HALF + 4]) {
+        const bx = cx + dx;
+        const by = doorTop - 10;
+        ctx.fillStyle = '#2a3848';
+        ctx.fillRect(bx - 3, by - 2, 6, 5);
+        ctx.strokeStyle = '#6a8498';
+        ctx.lineWidth = 0.8;
+        ctx.strokeRect(bx - 3, by - 2, 6, 5);
+        ctx.fillStyle = `rgba(${color}, ${0.25 + glow * 0.75})`;
+        ctx.beginPath();
+        ctx.arc(bx, by + 1, 2.4, 0, Math.PI * 2);
+        ctx.fill();
+        if (glow > 0.2) {
+          ctx.fillStyle = `rgba(${color}, ${glow * 0.2})`;
+          ctx.beginPath();
+          ctx.ellipse(bx, by + 8, 10, 6, 0, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      if (mode === 'warning' || mode === 'open') {
+        const a = mode === 'open' ? 0.1 : (on ? 0.08 : 0.02);
+        ctx.fillStyle = `rgba(${color}, ${a})`;
+        ctx.beginPath();
+        ctx.ellipse(cx, doorTop + BAY.DOOR_H + 28, 36, 18, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    });
+  }
+
   _drawFloor(ctx) {
     const w = BAY.HALF_W;
     const h = BAY.HALF_H;
+    const deckTop = -h + BAY.DOOR_H + 2;
+    const deckBot = h - 2;
+    const deckLeft = -w + 2;
+    const deckRight = w - 2;
 
     ctx.fillStyle = '#243442';
-    ctx.fillRect(-w + 2, -h + BAY.DOOR_H + 2, w * 2 - 4, h * 2 - BAY.DOOR_H - 4);
+    ctx.fillRect(deckLeft, deckTop, deckRight - deckLeft, deckBot - deckTop);
 
-    ctx.strokeStyle = 'rgba(70, 95, 115, 0.22)';
-    ctx.lineWidth = 1;
-    for (let x = -w + 30; x < w; x += 40) {
+    const tile = 36;
+    for (let y = deckTop; y < deckBot; y += tile) {
+      for (let x = deckLeft; x < deckRight; x += tile) {
+        const tw = Math.min(tile - 1, deckRight - x);
+        const th = Math.min(tile - 1, deckBot - y);
+        const shade = ((Math.floor(x / tile) + Math.floor(y / tile)) & 1) ? 0.03 : 0;
+        ctx.fillStyle = `rgba(30, 42, 54, ${0.35 + shade})`;
+        ctx.fillRect(x, y, tw, th);
+        ctx.fillStyle = 'rgba(110, 140, 160, 0.08)';
+        ctx.fillRect(x, y, tw, 1.2);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+        ctx.fillRect(x, y + th - 1.2, tw, 1.2);
+        ctx.fillRect(x + tw - 1.2, y, 1.2, th);
+      }
+    }
+
+    const stains = [
+      [-90, 50, 28, 14, 0.14],
+      [70, -20, 22, 11, 0.12],
+      [200, 90, 30, 16, 0.15],
+      [-210, 100, 24, 12, 0.13],
+      [40, 160, 40, 10, 0.1],
+      [-40, -50, 18, 20, 0.11],
+      [160, 40, 16, 26, 0.1],
+    ];
+    for (const [sx, sy, sw, sh, a] of stains) {
+      ctx.fillStyle = `rgba(18, 12, 6, ${a})`;
       ctx.beginPath();
-      ctx.moveTo(x, -h + BAY.DOOR_H + 8);
-      ctx.lineTo(x, h - 8);
+      ctx.ellipse(sx, sy, sw, sh, 0.3, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = `rgba(40, 55, 30, ${a * 0.5})`;
+      ctx.beginPath();
+      ctx.ellipse(sx + 4, sy + 2, sw * 0.45, sh * 0.4, -0.4, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.12)';
+    ctx.lineWidth = 3;
+    for (const tx of [-240, -80, 80, 240]) {
+      ctx.beginPath();
+      ctx.moveTo(tx - 6, BAY.PATH_Y - 14);
+      ctx.quadraticCurveTo(tx, BAY.PATH_Y + 6, tx + 10, BAY.PATH_Y + 16);
       ctx.stroke();
     }
-    for (let y = -h + 50; y < h; y += 40) {
-      ctx.beginPath();
-      ctx.moveTo(-w + 8, y);
-      ctx.lineTo(w - 8, y);
-      ctx.stroke();
-    }
 
-    // Human / forklift path
-    ctx.fillStyle = 'rgba(100, 180, 255, 0.04)';
+    ctx.fillStyle = 'rgba(100, 180, 255, 0.035)';
     ctx.fillRect(-w + 4, BAY.PATH_Y - 18, w * 2 - 8, 36);
+    ctx.strokeStyle = 'rgba(200, 160, 40, 0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([8, 6]);
+    ctx.beginPath();
+    ctx.moveTo(-w + 10, BAY.PATH_Y - 18);
+    ctx.lineTo(w - 10, BAY.PATH_Y - 18);
+    ctx.moveTo(-w + 10, BAY.PATH_Y + 18);
+    ctx.lineTo(w - 10, BAY.PATH_Y + 18);
+    ctx.stroke();
+    ctx.setLineDash([]);
 
-    ctx.strokeStyle = 'rgba(100, 180, 255, 0.2)';
+    ctx.strokeStyle = 'rgba(100, 180, 255, 0.22)';
     ctx.lineWidth = 2;
     ctx.setLineDash([14, 12]);
     for (const cx of padCenters()) {
@@ -2659,6 +3170,275 @@ export class HangarBay {
       ctx.stroke();
     }
     ctx.setLineDash([]);
+
+    for (const cx of padCenters()) {
+      this._drawCautionBox(ctx, cx - 42, -h + BAY.DOOR_H + 8, 84, 14);
+    }
+    for (const cx of padCenters()) {
+      this._drawFloorChevron(ctx, cx - 55, 55, -1);
+      this._drawFloorChevron(ctx, cx + 55, 55, 1);
+    }
+  }
+
+  _drawCautionBox(ctx, x, y, w, h) {
+    for (let i = 0; i < Math.ceil(w / 8); i++) {
+      ctx.fillStyle = i % 2 ? '#c9a020' : '#1a1a14';
+      ctx.fillRect(x + i * 8, y, Math.min(8, w - i * 8), h);
+    }
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(x, y, w, h);
+  }
+
+  _drawFloorChevron(ctx, x, y, dir) {
+    ctx.fillStyle = 'rgba(201, 160, 32, 0.28)';
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + dir * 10, y - 6);
+    ctx.lineTo(x + dir * 10, y + 6);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  /** Static industrial props — tanks, hoses, tool stations, barrels (clear of pads/piles). */
+  _drawSetDressing(ctx) {
+    this._drawFuelTank(ctx, -305, 178, 1);
+    this._drawFuelTank(ctx, 305, 178, 0.92);
+
+    this._drawFuelHose(ctx, -290, 170, -200, 155, -120, 148);
+    this._drawFuelHose(ctx, 290, 170, 200, 155, 120, 148);
+
+    this._drawHoseReel(ctx, -318, 30, -1);
+    this._drawHoseReel(ctx, 318, 30, 1);
+    this._drawHoseReel(ctx, -318, -70, -1);
+    this._drawHoseReel(ctx, 318, -70, 1);
+
+    this._drawToolStation(ctx, -230, 172);
+    this._drawToolStation(ctx, 230, 172);
+    this._drawToolStation(ctx, 0, 178);
+
+    this._drawBarrel(ctx, -280, 100, '#4a5a40');
+    this._drawBarrel(ctx, -268, 108, '#3a4a58');
+    this._drawBarrel(ctx, 275, 95, '#5a4030');
+    this._drawBarrel(ctx, 288, 102, '#3a4a58');
+
+    const lockerY = -BAY.HALF_H + BAY.DOOR_H + 18;
+    this._drawWallLocker(ctx, -78, lockerY);
+    this._drawWallLocker(ctx, 78, lockerY);
+
+    this._drawFireExt(ctx, -325, BAY.PATH_Y - 48);
+    this._drawFireExt(ctx, 325, BAY.PATH_Y - 48);
+
+    this._drawDrain(ctx, -160, 165);
+    this._drawDrain(ctx, 160, 165);
+    this._drawDrain(ctx, 0, -40);
+
+    ctx.fillStyle = 'rgba(201, 160, 32, 0.35)';
+    ctx.font = '5px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('KEEP CLEAR', -155, DANGER_ZONE_SOUTH - 8);
+    ctx.fillText('KEEP CLEAR', 155, DANGER_ZONE_SOUTH - 8);
+    ctx.fillStyle = 'rgba(160, 180, 200, 0.25)';
+    ctx.font = '4px sans-serif';
+    ctx.fillText('FUEL · SOUTH', 0, 192);
+  }
+
+  _drawFuelTank(ctx, x, y, scale = 1) {
+    const s = scale;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.scale(s, s);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    ctx.beginPath();
+    ctx.ellipse(0, 6, 14, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#3a4a38';
+    ctx.fillRect(-10, -18, 20, 22);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.fillRect(-10, -18, 5, 22);
+    ctx.fillStyle = 'rgba(140, 160, 120, 0.2)';
+    ctx.fillRect(4, -18, 6, 22);
+    ctx.fillStyle = '#4a5a48';
+    ctx.beginPath();
+    ctx.ellipse(0, -18, 10, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#7a8a70';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    ctx.strokeRect(-10, -18, 20, 22);
+    for (let i = 0; i < 4; i++) {
+      ctx.fillStyle = i % 2 ? '#c9a020' : '#1a1a14';
+      ctx.fillRect(-10 + i * 5, -4, 5, 4);
+    }
+    ctx.fillStyle = '#6a7888';
+    ctx.fillRect(8, -8, 5, 3);
+    ctx.fillStyle = '#c05040';
+    ctx.beginPath();
+    ctx.arc(14, -6.5, 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  _drawFuelHose(ctx, x0, y0, x1, y1, x2, y2) {
+    ctx.strokeStyle = 'rgba(40, 30, 20, 0.55)';
+    ctx.lineWidth = 3.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.quadraticCurveTo(x1, y1 + 8, x2, y2);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(90, 70, 40, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0);
+    ctx.quadraticCurveTo(x1, y1 + 8, x2, y2);
+    ctx.stroke();
+    ctx.fillStyle = '#4a5560';
+    ctx.fillRect(x2 - 3, y2 - 2, 8, 4);
+    ctx.lineCap = 'butt';
+  }
+
+  _drawHoseReel(ctx, x, y, side) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.beginPath();
+    ctx.ellipse(side * 2, 8, 8, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#3a4858';
+    ctx.beginPath();
+    ctx.arc(0, 0, 7, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#7a90a0';
+    ctx.lineWidth = 1.2;
+    ctx.stroke();
+    ctx.fillStyle = '#1a2834';
+    ctx.beginPath();
+    ctx.arc(0, 0, 3, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#5a4030';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(0, 0, 5, 0.2, Math.PI * 1.4);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(side * 5, 4);
+    ctx.quadraticCurveTo(side * 12, 18, side * 8, 28);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawToolStation(ctx, x, y) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.beginPath();
+    ctx.ellipse(0, 4, 16, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#2a3440';
+    ctx.fillRect(-14, -6, 28, 10);
+    ctx.fillStyle = '#3a4858';
+    ctx.fillRect(-14, -8, 28, 3);
+    ctx.fillStyle = 'rgba(140, 160, 180, 0.2)';
+    ctx.fillRect(-14, -8, 28, 1.2);
+    ctx.strokeStyle = '#6a7a88';
+    ctx.lineWidth = 0.9;
+    ctx.strokeRect(-14, -6, 28, 10);
+    ctx.strokeStyle = '#8a9aa8';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(-8, -10);
+    ctx.lineTo(-4, -16);
+    ctx.moveTo(2, -9);
+    ctx.lineTo(6, -15);
+    ctx.stroke();
+    ctx.fillStyle = '#c05040';
+    ctx.fillRect(8, -12, 4, 3);
+    ctx.fillStyle = '#1a2430';
+    ctx.fillRect(-12, 2, 3, 4);
+    ctx.fillRect(9, 2, 3, 4);
+    ctx.restore();
+  }
+
+  _drawBarrel(ctx, x, y, color) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+    ctx.beginPath();
+    ctx.ellipse(0, 5, 6, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = color;
+    ctx.fillRect(-5, -8, 10, 12);
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
+    ctx.fillRect(-5, -8, 3, 12);
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(0, -8, 5, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(200, 180, 100, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-5, -2);
+    ctx.lineTo(5, -2);
+    ctx.moveTo(-5, 2);
+    ctx.lineTo(5, 2);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  _drawWallLocker(ctx, x, y) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
+    ctx.fillRect(x - 9, y + 2, 18, 4);
+    ctx.fillStyle = '#2a3848';
+    ctx.fillRect(x - 10, y - 14, 20, 18);
+    ctx.fillStyle = 'rgba(120, 150, 170, 0.15)';
+    ctx.fillRect(x - 10, y - 14, 20, 2);
+    ctx.strokeStyle = '#6a8498';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - 10, y - 14, 20, 18);
+    ctx.beginPath();
+    ctx.moveTo(x, y - 14);
+    ctx.lineTo(x, y + 4);
+    ctx.stroke();
+    ctx.fillStyle = '#c9a020';
+    ctx.beginPath();
+    ctx.arc(x - 4, y - 4, 1.2, 0, Math.PI * 2);
+    ctx.arc(x + 4, y - 4, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  _drawFireExt(ctx, x, y) {
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + 6, 4, 2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#a03028';
+    ctx.fillRect(x - 3, y - 8, 6, 12);
+    ctx.fillStyle = '#c8c8c8';
+    ctx.fillRect(x - 2, y - 10, 4, 2);
+    ctx.strokeStyle = '#e0e0e0';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(x + 3, y - 8);
+    ctx.lineTo(x + 6, y - 4);
+    ctx.stroke();
+  }
+
+  _drawDrain(ctx, x, y) {
+    ctx.fillStyle = '#121820';
+    ctx.beginPath();
+    ctx.ellipse(x, y, 8, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#4a5a68';
+    ctx.lineWidth = 0.8;
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(70, 90, 105, 0.6)';
+    for (let i = -2; i <= 2; i++) {
+      ctx.beginPath();
+      ctx.moveTo(x - 6, y + i * 1.4);
+      ctx.lineTo(x + 6, y + i * 1.4);
+      ctx.stroke();
+    }
   }
 
   _drawCargoPiles(ctx) {
@@ -2873,14 +3653,43 @@ export class HangarBay {
     ctx.save();
     ctx.translate(cx, cy);
 
-    ctx.fillStyle = active ? '#121820' : '#161c24';
+    // Soft contact shadow (2.5D)
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+    ctx.beginPath();
+    ctx.ellipse(0, 4, BAY.PAD_R + 2, BAY.PAD_R * 0.55, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = active ? '#10161c' : '#141a22';
     ctx.beginPath();
     ctx.arc(0, 0, BAY.PAD_R, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = active ? 'rgba(80, 130, 160, 0.45)' : 'rgba(60, 90, 110, 0.35)';
-    ctx.lineWidth = 1.25;
+    // Concentric wear rings
+    ctx.strokeStyle = active ? 'rgba(50, 80, 100, 0.35)' : 'rgba(40, 60, 75, 0.3)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(0, 0, BAY.PAD_R * 0.62, 0, Math.PI * 2);
     ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(0, 0, BAY.PAD_R * 0.32, 0, Math.PI * 2);
+    ctx.stroke();
+
+    ctx.strokeStyle = active ? 'rgba(90, 140, 170, 0.5)' : 'rgba(60, 90, 110, 0.38)';
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.arc(0, 0, BAY.PAD_R, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Outer caution ring ticks
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      ctx.strokeStyle = i % 2 ? 'rgba(201, 160, 32, 0.35)' : 'rgba(20, 20, 16, 0.35)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(Math.cos(a) * (BAY.PAD_R - 1), Math.sin(a) * (BAY.PAD_R - 1));
+      ctx.lineTo(Math.cos(a) * (BAY.PAD_R + 2), Math.sin(a) * (BAY.PAD_R + 2));
+      ctx.stroke();
+    }
 
     if (active) {
       const pulse = 0.04 + 0.03 * Math.sin(this.time * 2.2);
@@ -2891,7 +3700,7 @@ export class HangarBay {
     }
 
     ctx.fillStyle = active
-      ? 'rgba(100, 180, 255, 0.4)'
+      ? 'rgba(100, 180, 255, 0.45)'
       : 'rgba(120, 140, 160, 0.35)';
     ctx.font = '5px sans-serif';
     ctx.textAlign = 'center';
@@ -2923,14 +3732,22 @@ export class HangarBay {
 
   _drawStairs(ctx) {
     for (const s of STAIRS) {
-      // Hatch into under-deck
-      ctx.fillStyle = '#0e1620';
+      // Hatch lip + shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.fillRect(s.x - 12, s.y - 8, 24, 18);
+      ctx.fillStyle = '#0a121a';
       ctx.strokeStyle = '#5a7088';
-      ctx.lineWidth = 1.2;
+      ctx.lineWidth = 1.3;
       ctx.beginPath();
       ctx.rect(s.x - 11, s.y - 9, 22, 18);
       ctx.fill();
       ctx.stroke();
+
+      // Caution hatch rim
+      for (let i = 0; i < 6; i++) {
+        ctx.fillStyle = i % 2 ? '#c9a020' : '#1a1a14';
+        ctx.fillRect(s.x - 11 + i * (22 / 6), s.y - 9, 22 / 6, 2);
+      }
 
       // Stair treads (perspective: north = deeper)
       for (let i = 0; i < 4; i++) {
@@ -2941,11 +3758,155 @@ export class HangarBay {
         ctx.strokeRect(s.x - 8 + i, s.y - 6 + i * 3.2, 16 - i * 2, 2.8);
       }
 
-      ctx.fillStyle = 'rgba(100, 180, 255, 0.3)';
+      // Handrail stubs
+      ctx.strokeStyle = '#6a8498';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(s.x - 10, s.y + 6);
+      ctx.lineTo(s.x - 10, s.y - 8);
+      ctx.moveTo(s.x + 10, s.y + 6);
+      ctx.lineTo(s.x + 10, s.y - 8);
+      ctx.stroke();
+
+      ctx.fillStyle = 'rgba(100, 180, 255, 0.35)';
       ctx.font = '3.5px sans-serif';
       ctx.textAlign = 'center';
       ctx.fillText(bayLabels()[s.bay] || 'STAIR', s.x, s.y + 14);
     }
+  }
+
+  /**
+   * Black/yellow danger-zone running lights: verticals from bay doors → former
+   * stair line, plus a horizontal closer. Yellow cells glow by bayLaneMode;
+   * incoming/departing chase along the verticals.
+   */
+  _drawBayDangerLights(ctx) {
+    const y0 = -BAY.HALF_H + BAY.DOOR_H + 6;
+    const y1 = DANGER_ZONE_SOUTH;
+    padCenters().forEach((cx, bay) => {
+      const mode = this.bayLaneMode[bay] || 'idle';
+      this._drawDangerStripV(ctx, cx - BAY_LANE_HALF, y0, y1, mode);
+      this._drawDangerStripV(ctx, cx + BAY_LANE_HALF, y0, y1, mode);
+      this._drawDangerStripH(ctx, cx - BAY_LANE_HALF, cx + BAY_LANE_HALF, y1, mode);
+    });
+  }
+
+  _dangerYellowLit(mode, along, t) {
+    if (mode === 'idle') return 0.22;
+    if (mode === 'danger') return 0.55 + 0.35 * (0.5 + 0.5 * Math.sin(t * 5));
+    // Chase pulse along strip axis (along increases south / +Y for verticals)
+    const period = 36;
+    let phase;
+    if (mode === 'incoming') {
+      // Flow south (doors → pad): bright band moves +along
+      phase = ((along + t * 28) % period + period) % period;
+    } else if (mode === 'departing') {
+      // Flow north (pad → doors)
+      phase = ((along - t * 28) % period + period) % period;
+    } else {
+      return 0.35;
+    }
+    return phase < 12 ? 0.95 : 0.18;
+  }
+
+  _drawDangerStripV(ctx, x, y0, y1, mode) {
+    const seg = 7;
+    const t = this.time;
+    const half = 1.6;
+    for (let y = y0, i = 0; y < y1 - 1; y += seg, i++) {
+      const h = Math.min(seg, y1 - y);
+      if (i % 2 === 1) {
+        ctx.fillStyle = '#141410';
+        ctx.fillRect(x - half, y, half * 2, h);
+        continue;
+      }
+      const lit = this._dangerYellowLit(mode, y - y0, t);
+      ctx.fillStyle = `rgba(201, 160, 32, ${0.35 + lit * 0.65})`;
+      ctx.fillRect(x - half, y, half * 2, h);
+      if (lit > 0.45) {
+        ctx.fillStyle = `rgba(255, 220, 80, ${(lit - 0.45) * 0.45})`;
+        ctx.beginPath();
+        ctx.ellipse(x, y + h * 0.5, 5.5, h * 0.7, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  _drawDangerStripH(ctx, x0, x1, y, mode) {
+    const seg = 7;
+    const t = this.time;
+    const half = 1.6;
+    for (let x = x0, i = 0; x < x1 - 1; x += seg, i++) {
+      const w = Math.min(seg, x1 - x);
+      if (i % 2 === 1) {
+        ctx.fillStyle = '#141410';
+        ctx.fillRect(x, y - half, w, half * 2);
+        continue;
+      }
+      let lit = 0.22;
+      if (mode === 'danger' || mode === 'incoming' || mode === 'departing') {
+        lit = 0.55 + 0.35 * (0.5 + 0.5 * Math.sin(t * 5 + x * 0.05));
+      }
+      ctx.fillStyle = `rgba(201, 160, 32, ${0.35 + lit * 0.65})`;
+      ctx.fillRect(x, y - half, w, half * 2);
+      if (lit > 0.45) {
+        ctx.fillStyle = `rgba(255, 220, 80, ${(lit - 0.45) * 0.35})`;
+        ctx.beginPath();
+        ctx.ellipse(x + w * 0.5, y, w * 0.7, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  /** Jet-blast backsplash behind each pad (solid — crew walk around the ends). */
+  _drawBacksplashWalls(ctx) {
+    const y = BACKSPLASH_Y;
+    const hw = BACKSPLASH_HALF_W;
+
+    padCenters().forEach((cx, bay) => {
+      const x0 = cx - hw;
+      const w = hw * 2;
+
+      // Ground shadow
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.fillRect(x0 - 1, y + 4, w + 2, 5);
+
+      // 2.5D slab — dark north face (blast), lighter top
+      ctx.fillStyle = '#1a1010';
+      ctx.fillRect(x0, y - 2, w, 8);
+      ctx.fillStyle = '#3a3230';
+      ctx.fillRect(x0, y - 6, w, 5);
+      ctx.fillStyle = 'rgba(160, 140, 120, 0.22)';
+      ctx.fillRect(x0, y - 6, w, 1.5);
+      ctx.fillStyle = 'rgba(80, 40, 30, 0.35)';
+      ctx.fillRect(x0, y - 2, w, 2);
+      ctx.strokeStyle = '#6a5a50';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x0, y - 6, w, 9);
+
+      // Scorch / rivets on blast face
+      ctx.fillStyle = 'rgba(20, 10, 8, 0.4)';
+      ctx.fillRect(x0 + 2, y - 1, w - 4, 3);
+      ctx.fillStyle = 'rgba(140, 130, 120, 0.35)';
+      for (let rx = x0 + 4; rx < x0 + w - 3; rx += 8) {
+        ctx.beginPath();
+        ctx.arc(rx, y - 4, 0.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // End posts
+      ctx.fillStyle = '#2a3848';
+      ctx.fillRect(x0 - 2, y - 7, 4, 12);
+      ctx.fillRect(x0 + w - 2, y - 7, 4, 12);
+      ctx.fillStyle = '#c9a020';
+      ctx.fillRect(x0 - 2, y - 7, 4, 2);
+      ctx.fillRect(x0 + w - 2, y - 7, 4, 2);
+
+      ctx.fillStyle = 'rgba(160, 180, 200, 0.35)';
+      ctx.font = '3.5px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(`${bayLabels()[bay]} · BLAST`, cx, y - 9);
+    });
   }
 
   /**
@@ -3057,17 +4018,6 @@ export class HangarBay {
       ctx.moveTo(rx1 - 6, y);
       ctx.lineTo(rx1 + 6, y);
       ctx.stroke();
-    }
-
-    // Soft bay lights
-    for (const lx of padCenters()) {
-      for (const ly of [-70, 40, 120]) {
-        const flicker = 0.85 + 0.15 * Math.sin(this.time * 3 + lx * 0.05 + ly);
-        ctx.fillStyle = `rgba(220, 230, 200, ${0.07 * flicker})`;
-        ctx.beginPath();
-        ctx.ellipse(lx, ly, 50, 36, 0, 0, Math.PI * 2);
-        ctx.fill();
-      }
     }
 
     if (!c) return;
