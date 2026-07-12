@@ -7,23 +7,29 @@ import { CameraSystem } from '../systems/CameraSystem.js';
 import { Renderer } from '../systems/Renderer.js';
 import { WeaponSystem } from '../systems/WeaponSystem.js';
 import { AsteroidSystem } from '../systems/AsteroidSystem.js';
+import { PhysicsSystem } from '../systems/PhysicsSystem.js';
 import { Starfield } from '../world/Starfield.js';
 import { NebulaField } from '../world/NebulaField.js';
 import { SpeedStreaks } from '../world/SpeedStreaks.js';
 import { HangarBay } from '../world/HangarBay.js';
-import { PHYSICS, HANGAR } from '../core/Constants.js';
+import { Station } from '../world/Station.js';
+import { PHYSICS, HANGAR, SHIP } from '../core/Constants.js';
+import { Vec2 } from '../utils/MathUtils.js';
 
 /** Slow title-screen drift (world units / sec) */
 const TITLE_DRIFT_SPEED = 52;
 /** How quickly the drift heading turns (rad / sec) */
 const TITLE_TURN_RATE = 0.12;
 
+const PLAYER_BAY = 1; // B2
+
 export class GameEngine {
   constructor(canvas) {
     this.canvas = canvas;
     this.running = false;
     this.paused = false;
-    this.mode = 'title'; // 'title' | 'playing' | 'hangar'
+    /** @type {'title'|'playing'|'hangar'|'controls'} */
+    this.mode = 'title';
     this.lastTime = 0;
 
     this.renderer = new Renderer(canvas);
@@ -32,14 +38,17 @@ export class GameEngine {
     this.entityManager = new EntityManager();
     this.particleSystem = new ParticleSystem();
     this.shipController = new ShipController();
+    this.physics = new PhysicsSystem();
     this.weaponSystem = new WeaponSystem(this.entityManager, this.particleSystem);
     this.asteroidSystem = new AsteroidSystem(this.entityManager);
     this.starfield = new Starfield();
     this.nebulaField = new NebulaField();
     this.speedStreaks = new SpeedStreaks();
     this.hangarBay = new HangarBay();
+    this.station = new Station();
 
     this.ship = null;
+    this._sandboxShip = null;
     this.precisionActive = false;
     this.gameTime = 0;
     this._titleHeading = Math.random() * Math.PI * 2;
@@ -48,10 +57,20 @@ export class GameEngine {
     this._dockPos = { x: 0, y: 0 };
     /** Continues title-screen space drift; shown through hangar bay doors */
     this._spaceCam = { x: 0, y: 0 };
+    /** @type {null|{kind:'launch'|'land', phase:string, t:number}} */
+    this._hangarSeq = null;
+    this._dockLocked = true;
+    this._controlsReturn = 'title';
+    this._dockPrompt = false;
+    this._dockKeyHeld = false;
+
     this._startScreen = document.getElementById('start-screen');
     this._buildStamp = document.getElementById('build-stamp');
     this._hangarHud = document.getElementById('hangar-hud');
     this._overlay = document.getElementById('overlay');
+    this._controlsHud = document.getElementById('controls-hud');
+    this._dockHud = document.getElementById('dock-hud');
+    this._hangarLaunchBtn = document.getElementById('hangar-launch-btn');
 
     this._hudSpeed = document.getElementById('speed-value');
     this._hudCoords = document.getElementById('coords-value');
@@ -83,6 +102,7 @@ export class GameEngine {
     this.running = true;
     this.paused = false;
     this._titleHasDrawn = false;
+    this._hangarSeq = null;
     this._setTitleFade(0);
     this.lastTime = performance.now();
     this.camera.position.set(0, 0);
@@ -95,36 +115,45 @@ export class GameEngine {
     requestAnimationFrame((t) => this._loop(t));
   }
 
-  /** Transition from title into playable flight. */
+  /** Quick-launch into playable flight near Jennings Station. */
   beginPlay() {
-    const x = this.camera.position.x;
-    const y = this.camera.position.y;
-    this.ship = new Ship(x, y);
+    this._clearPlaySession();
+    const spawn = this.station.getExitSpawn();
+    this.ship = new Ship(spawn.x, spawn.y);
+    this.ship.angle = spawn.angle;
+    this.ship.turretAngle = spawn.angle;
     this.precisionActive = false;
     this.entityManager.add(this.ship, 'ship');
     this.mode = 'playing';
     this.paused = false;
+    this._hangarSeq = null;
     this._setTitleFade(1);
     this.canvas.style.opacity = '1';
     this.input.enable();
     this.input.paused = false;
-    this.asteroidSystem.update(x, y);
+    this.camera.position.set(spawn.x, spawn.y);
+    this.camera.userZoom = 1;
+    this.camera.targetUserZoom = 1;
+    this.camera.speedZoom = 1;
+    this.camera.effectiveZoom = 1;
+    this.asteroidSystem.update(spawn.x, spawn.y);
+    this._setDockHud(false);
   }
 
-  /** Home Base hangar (docked bay from title — launch/return not wired yet). */
-  beginHangar() {
-    // Keep the live title-space chunk drifting behind bay doors
+  /** Home Base hangar (Jennings Station bay). */
+  beginHangar({ landing = false } = {}) {
     this._spaceCam.x = this.camera.position.x;
     this._spaceCam.y = this.camera.position.y;
 
-    this.entityManager.clear();
-    this.particleSystem.clear();
+    this._clearPlaySession();
     this._dockPos.x = HANGAR.PLAYER_PAD_X;
     this._dockPos.y = 0;
     this.ship = new Ship(this._dockPos.x, this._dockPos.y);
     this.precisionActive = false;
     this.entityManager.add(this.ship, 'ship');
     this.hangarBay.reset();
+    this._dockLocked = true;
+    this._hangarSeq = null;
 
     this.camera.position.set(this._dockPos.x, this._dockPos.y);
     this.camera.offset.set(0, 0);
@@ -142,21 +171,27 @@ export class GameEngine {
 
     if (this._hangarHud) this._hangarHud.classList.remove('hidden');
     if (this._buildStamp) this._buildStamp.classList.add('hidden');
+    this._setDockHud(false);
+    this._positionLaunchBtn();
+
+    if (landing) {
+      this._startLandingSequence();
+    } else {
+      this._setLaunchBtnVisible(true);
+    }
   }
 
   /** Leave hangar and restore the title screen loop. */
   exitHangar() {
     if (this.mode !== 'hangar') return;
+    if (this._hangarSeq) return;
     this.input.disable();
-    this.entityManager.clear();
-    this.particleSystem.clear();
-    this.ship = null;
-    this.precisionActive = false;
+    this._clearPlaySession();
+    this.hangarBay.clearOps();
     this.mode = 'title';
     this.paused = false;
     this._titleHasDrawn = true;
     this._setTitleFade(1);
-    // Resume title drift from the same space chunk shown through the doors
     this.camera.position.set(this._spaceCam.x, this._spaceCam.y);
     this.camera.offset.set(0, 0);
     this.camera.effectiveZoom = 1;
@@ -167,6 +202,109 @@ export class GameEngine {
 
     if (this._hangarHud) this._hangarHud.classList.add('hidden');
     if (this._buildStamp) this._buildStamp.classList.remove('hidden');
+    this._setLaunchBtnVisible(false);
+  }
+
+  /** Controls sandbox — ship only, no world. */
+  beginControls(returnTo = 'title') {
+    if (this.mode === 'playing' && this.paused) {
+      this.paused = false;
+      if (this._pauseMenu) this._pauseMenu.classList.add('hidden');
+    }
+    this._controlsReturn = returnTo;
+    this._savedCam = {
+      x: this.camera.position.x,
+      y: this.camera.position.y,
+      userZoom: this.camera.userZoom,
+      targetUserZoom: this.camera.targetUserZoom,
+      speedZoom: this.camera.speedZoom,
+      effectiveZoom: this.camera.effectiveZoom,
+    };
+    this._sandboxShip = new Ship(0, 0);
+    this.precisionActive = false;
+    this.mode = 'controls';
+    this.input.enable();
+    this.input.paused = false;
+    this.camera.position.set(0, 0);
+    this.camera.offset.set(0, 0);
+    this.camera.userZoom = 2.4;
+    this.camera.targetUserZoom = 2.4;
+    this.camera.speedZoom = 1;
+    this.camera.effectiveZoom = 2.4;
+    this._setTitleFade(1);
+    this.canvas.style.opacity = '1';
+    if (this._controlsHud) this._controlsHud.classList.remove('hidden');
+    if (this._hangarHud) this._hangarHud.classList.add('hidden');
+    this._setLaunchBtnVisible(false);
+    this._setDockHud(false);
+  }
+
+  exitControls() {
+    if (this.mode !== 'controls') return;
+    this._sandboxShip = null;
+    if (this._controlsHud) this._controlsHud.classList.add('hidden');
+    const ret = this._controlsReturn;
+    if (ret === 'pause' && this.ship) {
+      this.mode = 'playing';
+      this.paused = true;
+      this.input.paused = true;
+      if (this._savedCam) {
+        this.camera.position.set(this._savedCam.x, this._savedCam.y);
+        this.camera.userZoom = this._savedCam.userZoom;
+        this.camera.targetUserZoom = this._savedCam.targetUserZoom;
+        this.camera.speedZoom = this._savedCam.speedZoom;
+        this.camera.effectiveZoom = this._savedCam.effectiveZoom;
+        this.camera.offset.set(0, 0);
+      }
+      if (this._pauseMenu) this._pauseMenu.classList.remove('hidden');
+      this._updateFullscreenButtons(!!document.fullscreenElement);
+      return 'pause';
+    }
+    this.input.disable();
+    this.mode = 'title';
+    this.paused = false;
+    this._titleHasDrawn = true;
+    this._setTitleFade(1);
+    this.camera.position.set(this._spaceCam.x || 0, this._spaceCam.y || 0);
+    this.camera.effectiveZoom = 1;
+    this.camera.userZoom = 1;
+    this.camera.targetUserZoom = 1;
+    return 'title';
+  }
+
+  /** End run and return to title. */
+  returnToMainMenu() {
+    if (this.paused) {
+      this.paused = false;
+      this.input.paused = false;
+      if (this._pauseMenu) this._pauseMenu.classList.add('hidden');
+    }
+    this.input.disable();
+    this._clearPlaySession();
+    this.hangarBay.clearOps();
+    this._hangarSeq = null;
+    this.mode = 'title';
+    this._titleHasDrawn = true;
+    this._setTitleFade(1);
+    this.camera.position.set(this._spaceCam.x || 0, this._spaceCam.y || 0);
+    this.camera.offset.set(0, 0);
+    this.camera.effectiveZoom = 1;
+    this.camera.userZoom = 1;
+    this.camera.targetUserZoom = 1;
+    this.camera.speedZoom = 1;
+    if (this._hangarHud) this._hangarHud.classList.add('hidden');
+    if (this._controlsHud) this._controlsHud.classList.add('hidden');
+    if (this._buildStamp) this._buildStamp.classList.remove('hidden');
+    this._setLaunchBtnVisible(false);
+    this._setDockHud(false);
+  }
+
+  _clearPlaySession() {
+    this.entityManager.clear();
+    this.particleSystem.clear();
+    this.ship = null;
+    this.precisionActive = false;
+    this.speedStreaks = new SpeedStreaks();
   }
 
   stop() {
@@ -198,6 +336,125 @@ export class GameEngine {
     if (this._pauseFullscreenBtn) this._pauseFullscreenBtn.textContent = label;
   }
 
+  requestLaunch() {
+    if (this.mode !== 'hangar' || this._hangarSeq) return;
+    this._startLaunchSequence();
+  }
+
+  requestDock() {
+    if (this.mode !== 'playing' || this.paused || !this.ship) return;
+    const speed = this.ship.velocity.length();
+    if (!this.station.canRequestDock(this.ship.position.x, this.ship.position.y, speed)) {
+      return;
+    }
+    this.beginHangar({ landing: true });
+    if (typeof this.onEnterHangar === 'function') this.onEnterHangar();
+  }
+
+  _startLaunchSequence() {
+    this._hangarSeq = { kind: 'launch', phase: 'warn', t: 0 };
+    this._dockLocked = true;
+    this._setLaunchBtnVisible(false);
+    this.hangarBay.beginOps(PLAYER_BAY, 'departing');
+    this.camera.targetUserZoom = HANGAR.ZOOM_LAUNCH;
+  }
+
+  _startLandingSequence() {
+    this._hangarSeq = { kind: 'land', phase: 'approach', t: 0 };
+    this._dockLocked = false;
+    this._setLaunchBtnVisible(false);
+    this.ship.position.set(HANGAR.PLAYER_PAD_X, HANGAR.LAND_START_Y);
+    this.ship.velocity.set(0, 55);
+    this.ship.angle = SHIP.SPAWN_ANGLE;
+    this.ship.turretAngle = SHIP.SPAWN_ANGLE;
+    this.hangarBay.beginOps(PLAYER_BAY, 'incoming');
+    this.hangarBay.setDoorOpen(PLAYER_BAY, 1);
+    this.hangarBay.setBeacon(PLAYER_BAY, 'open');
+    this.camera.targetUserZoom = HANGAR.ZOOM_LAUNCH;
+    this.camera.userZoom = HANGAR.ZOOM_LAUNCH;
+    this.camera.effectiveZoom = HANGAR.ZOOM_LAUNCH;
+    this.camera.position.set(this.ship.position.x, this.ship.position.y * 0.5);
+  }
+
+  _finishLaunchToSpace() {
+    const spawn = this.station.getExitSpawn();
+    const vx = (this.ship?.velocity.x || 0) * 0.25;
+    // Cap outbound speed so you stay near Jennings Station
+    let vy = this.ship?.velocity.y ?? -160;
+    if (vy > -80) vy = -80;
+    if (vy < -220) vy = -220;
+    this.hangarBay.clearOps();
+    this._hangarSeq = null;
+    this._dockLocked = true;
+
+    this.entityManager.clear();
+    this.particleSystem.clear();
+    this.ship = new Ship(spawn.x, spawn.y);
+    this.ship.angle = spawn.angle;
+    this.ship.turretAngle = spawn.angle;
+    this.ship.velocity.set(vx, vy);
+    this.entityManager.add(this.ship, 'ship');
+
+    this.mode = 'playing';
+    this.camera.position.set(spawn.x, spawn.y);
+    this.camera.userZoom = 1;
+    this.camera.targetUserZoom = 1;
+    this.camera.speedZoom = 1;
+    this.camera.effectiveZoom = 1;
+    this.asteroidSystem.update(spawn.x, spawn.y);
+
+    if (this._hangarHud) this._hangarHud.classList.add('hidden');
+    this._setLaunchBtnVisible(false);
+    if (typeof this.onLaunchComplete === 'function') this.onLaunchComplete();
+  }
+
+  _finishLanding() {
+    this._hangarSeq = null;
+    this._dockLocked = true;
+    this.ship.position.set(this._dockPos.x, this._dockPos.y);
+    this.ship.velocity.set(0, 0);
+    this.ship.angle = SHIP.SPAWN_ANGLE;
+    this._clearShipThrusters(this.ship);
+    this.hangarBay.clearOps();
+    this.camera.targetUserZoom = HANGAR.ZOOM_DEFAULT;
+    this._setLaunchBtnVisible(true);
+  }
+
+  _setLaunchBtnVisible(show) {
+    if (!this._hangarLaunchBtn) return;
+    this._hangarLaunchBtn.classList.toggle('hidden', !show);
+  }
+
+  _setDockHud(show) {
+    this._dockPrompt = show;
+    if (this._dockHud) this._dockHud.classList.toggle('hidden', !show);
+  }
+
+  _positionLaunchBtn() {
+    if (!this._hangarLaunchBtn || this.mode !== 'hangar') return;
+    if (this._hangarLaunchBtn.classList.contains('hidden')) return;
+    const anchor = this.hangarBay.getBayDoorAnchor(PLAYER_BAY);
+    const scr = this.camera.worldToScreen(
+      anchor.x,
+      anchor.y,
+      this.renderer.centerX,
+      this.renderer.centerY
+    );
+    const z = this.camera.effectiveZoom;
+    const margin = 36;
+    const x = Math.min(
+      this.renderer.width - margin,
+      Math.max(margin, scr.x)
+    );
+    // Pin to top when doors are off-screen (close zoom on pad)
+    let y = scr.y;
+    if (y < margin + 48) y = 72;
+    if (y > this.renderer.height - margin) y = this.renderer.height - margin;
+    this._hangarLaunchBtn.style.left = `${x}px`;
+    this._hangarLaunchBtn.style.top = `${y}px`;
+    this._hangarLaunchBtn.style.transform = `translate(-50%, -50%) scale(${Math.min(1.2, Math.max(0.85, z / 7))})`;
+  }
+
   _loop(timestamp) {
     if (!this.running) return;
 
@@ -207,9 +464,13 @@ export class GameEngine {
     if (this.mode === 'playing' && this.input.consumePauseToggle()) {
       this.togglePause();
     } else if (this.mode === 'hangar' && this.input.consumePauseToggle()) {
-      this.exitHangar();
-      // Caller (main.js) restores title UI via onHangarExit if set
-      if (typeof this.onHangarExit === 'function') this.onHangarExit();
+      if (!this._hangarSeq) {
+        this.exitHangar();
+        if (typeof this.onHangarExit === 'function') this.onHangarExit();
+      }
+    } else if (this.mode === 'controls' && this.input.consumePauseToggle()) {
+      const dest = this.exitControls();
+      if (typeof this.onControlsExit === 'function') this.onControlsExit(dest);
     }
 
     if (!this.paused) {
@@ -218,6 +479,8 @@ export class GameEngine {
         this._updateTitle(deltaTime);
       } else if (this.mode === 'hangar') {
         this._updateHangar(deltaTime);
+      } else if (this.mode === 'controls') {
+        this._updateControls(deltaTime);
       } else {
         this.update(deltaTime);
       }
@@ -226,6 +489,7 @@ export class GameEngine {
     }
 
     this.render();
+    if (this.mode === 'hangar') this._positionLaunchBtn();
     requestAnimationFrame((t) => this._loop(t));
   }
 
@@ -245,7 +509,6 @@ export class GameEngine {
     }
   }
 
-  /** Screen-corner cover radius so stars/nebulae fill the full window (not just the play circle). */
   _coverRadius() {
     return Math.hypot(this.renderer.centerX, this.renderer.centerY) + 40;
   }
@@ -253,42 +516,38 @@ export class GameEngine {
   _updateHangar(deltaTime) {
     if (!this.ship) return;
 
-    // Keep title-space chunk drifting (same systems as the title backdrop)
     this._titleHeading += TITLE_TURN_RATE * deltaTime;
     this._spaceCam.x += Math.cos(this._titleHeading) * TITLE_DRIFT_SPEED * deltaTime;
     this._spaceCam.y += Math.sin(this._titleHeading) * TITLE_DRIFT_SPEED * deltaTime;
     this.asteroidSystem.update(this._spaceCam.x, this._spaceCam.y);
 
-    const zoomWheel = this.input.consumeZoomDelta();
-
-    // Hangar: full thruster/engine authority (Precision off)
+    const zoomWheel = this._hangarSeq ? 0 : this.input.consumeZoomDelta();
     this.precisionActive = false;
 
-    // Full-frame hangar: weapons aim anywhere on the canvas
-    const pointerInViewport = true;
+    if (this._hangarSeq) {
+      this._updateHangarSequence(deltaTime);
+    } else {
+      const aimWorld = this.camera.screenToWorld(
+        this.input.mouseScreen.x,
+        this.input.mouseScreen.y,
+        this.renderer.centerX,
+        this.renderer.centerY
+      );
 
-    const aimWorld = this.camera.screenToWorld(
-      this.input.mouseScreen.x,
-      this.input.mouseScreen.y,
-      this.renderer.centerX,
-      this.renderer.centerY
-    );
+      this.shipController.update(this.ship, this.input, false, deltaTime);
+      this.ship.position.x = this._dockPos.x;
+      this.ship.position.y = this._dockPos.y;
+      this.ship.velocity.set(0, 0);
 
-    this.shipController.update(this.ship, this.input, false, deltaTime);
-
-    // Anchored: thrusters/yaw light and spin for inspection, but no translation
-    this.ship.position.x = this._dockPos.x;
-    this.ship.position.y = this._dockPos.y;
-    this.ship.velocity.set(0, 0);
-
-    this.weaponSystem.update(
-      this.ship,
-      this.input,
-      aimWorld,
-      pointerInViewport,
-      [],
-      deltaTime
-    );
+      this.weaponSystem.update(
+        this.ship,
+        this.input,
+        aimWorld,
+        true,
+        [],
+        deltaTime
+      );
+    }
 
     this.entityManager.update(deltaTime);
     this.particleSystem.update(deltaTime);
@@ -298,12 +557,13 @@ export class GameEngine {
       laserOn: !!this.ship.miningLaserFiring,
     });
 
-    // Real hangar cargo is destructible (turret + mining laser)
-    this.hangarBay.applyWeaponHits(
-      this.ship,
-      [...this.entityManager.getByType('projectile')],
-      deltaTime
-    );
+    if (!this._hangarSeq) {
+      this.hangarBay.applyWeaponHits(
+        this.ship,
+        [...this.entityManager.getByType('projectile')],
+        deltaTime
+      );
+    }
 
     this.camera.updateHangar(this.ship.position, deltaTime, zoomWheel);
     this.renderer.emitThrusterParticles(this.ship, this.particleSystem);
@@ -311,6 +571,143 @@ export class GameEngine {
     if (this._hudHangarZoom) {
       this._hudHangarZoom.textContent = this.camera.effectiveZoom.toFixed(1);
     }
+  }
+
+  _clearShipThrusters(ship) {
+    for (const key of Object.keys(ship.thrusters)) {
+      if (typeof ship.thrusters[key] === 'number') ship.thrusters[key] = 0;
+    }
+    ship.thrusters.retroBurn = false;
+  }
+
+  _updateHangarSequence(dt) {
+    const s = this._hangarSeq;
+    if (!s || !this.ship) return;
+    s.t += dt;
+    this._clearShipThrusters(this.ship);
+    this.input.mouseDown = false;
+    this.input.mouseRightDown = false;
+
+    if (s.kind === 'launch') this._tickLaunch(s, dt);
+    else this._tickLand(s, dt);
+  }
+
+  _tickLaunch(s, dt) {
+    const ship = this.ship;
+    switch (s.phase) {
+      case 'warn':
+        this.hangarBay.tickEvac(PLAYER_BAY);
+        if (s.t > 1.4) {
+          s.phase = 'clear';
+          s.t = 0;
+        }
+        break;
+      case 'clear':
+        this.hangarBay.tickEvac(PLAYER_BAY);
+        if (this.hangarBay.isBayDangerClear(PLAYER_BAY) || s.t > 3.5) {
+          s.phase = 'doors';
+          s.t = 0;
+          this.hangarBay.setBeacon(PLAYER_BAY, 'open');
+        }
+        break;
+      case 'doors':
+        this.hangarBay.setDoorOpen(PLAYER_BAY, Math.min(1, s.t / 1.6));
+        if (s.t > 1.75) {
+          s.phase = 'thrust';
+          s.t = 0;
+          this._dockLocked = false;
+          ship.velocity.set(0, 0);
+        }
+        break;
+      case 'thrust': {
+        ship.thrusters.mainEngine = Math.min(1.2, 0.45 + s.t * 0.5);
+        const forward = Vec2.fromAngle(ship.angle);
+        const force = forward.scale(PHYSICS.MAIN_ENGINE_THRUST * ship.thrusters.mainEngine);
+        this.physics.applyForce(ship, force, dt);
+        this.physics.integrate(ship, dt);
+        ship.angle = SHIP.SPAWN_ANGLE;
+        ship.angularVelocity = 0;
+        if (ship.position.y < HANGAR.LAUNCH_EXIT_Y || s.t > 5) {
+          this._finishLaunchToSpace();
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  _tickLand(s, dt) {
+    const ship = this.ship;
+    switch (s.phase) {
+      case 'approach':
+        ship.thrusters.nosePort = 0.85;
+        ship.thrusters.noseStarboard = 0.85;
+        {
+          const forward = Vec2.fromAngle(ship.angle);
+          const force = forward.scale(-PHYSICS.MANEUVER_THRUST * 1.8);
+          this.physics.applyForce(ship, force, dt);
+          const spd = ship.velocity.length();
+          if (spd > 90) ship.velocity.scale(90 / spd);
+          this.physics.integrate(ship, dt);
+          ship.angle = SHIP.SPAWN_ANGLE;
+          ship.angularVelocity = 0;
+          ship.position.x += (HANGAR.PLAYER_PAD_X - ship.position.x) * Math.min(1, dt * 3);
+        }
+        if (ship.position.y >= -8 || s.t > 6) {
+          s.phase = 'settle';
+          s.t = 0;
+        }
+        break;
+      case 'settle':
+        ship.position.x += (this._dockPos.x - ship.position.x) * Math.min(1, dt * 4);
+        ship.position.y += (this._dockPos.y - ship.position.y) * Math.min(1, dt * 4);
+        ship.velocity.scale(Math.exp(-dt * 6));
+        this.hangarBay.setDoorOpen(PLAYER_BAY, Math.max(0, 1 - s.t / 1.4));
+        if (s.t > 0.4) this.hangarBay.setBeacon(PLAYER_BAY, 'warning');
+        if (s.t > 1.5) {
+          this._finishLanding();
+        }
+        break;
+      default:
+        break;
+    }
+  }
+
+  _updateControls(deltaTime) {
+    const ship = this._sandboxShip;
+    if (!ship) return;
+
+    const zoomWheel = this.input.consumeZoomDelta();
+    const speed = ship.velocity.length();
+    const capsDesired = this.input.capsLockDesired;
+    if (!capsDesired) this.precisionActive = false;
+    else if (!this.precisionActive && speed < PHYSICS.PRECISION_ENGAGE_SPEED) {
+      this.precisionActive = true;
+    }
+
+    const dx = this.input.mouseScreen.x - this.renderer.centerX;
+    const dy = this.input.mouseScreen.y - this.renderer.centerY;
+    const pointerInViewport =
+      dx * dx + dy * dy <= this.renderer.viewportRadius * this.renderer.viewportRadius;
+
+    const aimWorld = this.camera.screenToWorld(
+      this.input.mouseScreen.x,
+      this.input.mouseScreen.y,
+      this.renderer.centerX,
+      this.renderer.centerY
+    );
+
+    this.shipController.update(ship, this.input, this.precisionActive, deltaTime);
+    ship.position.x += (0 - ship.position.x) * Math.min(1, deltaTime * 0.15);
+    ship.position.y += (0 - ship.position.y) * Math.min(1, deltaTime * 0.15);
+
+    this.weaponSystem.update(ship, this.input, aimWorld, pointerInViewport, [], deltaTime);
+    this.entityManager.update(deltaTime);
+    this.particleSystem.update(deltaTime);
+
+    this.camera.update(ship.position, ship.velocity, deltaTime, this.renderer.viewportRadius, zoomWheel);
+    this.renderer.emitThrusterParticles(ship, this.particleSystem);
   }
 
   update(deltaTime) {
@@ -325,11 +722,10 @@ export class GameEngine {
     if (!capsDesired) {
       this.precisionActive = false;
     } else if (this.precisionActive) {
-      // Stay active until Caps off; speed is capped while active
+      // stay active
     } else if (speed < PHYSICS.PRECISION_ENGAGE_SPEED) {
       this.precisionActive = true;
     }
-    // else: Caps on but too fast to engage → standby (HUD only)
 
     const dx = this.input.mouseScreen.x - this.renderer.centerX;
     const dy = this.input.mouseScreen.y - this.renderer.centerY;
@@ -360,8 +756,6 @@ export class GameEngine {
     this.entityManager.update(deltaTime);
     this.particleSystem.update(deltaTime);
 
-    // Camera must track post-physics ship pose; a stale position makes
-    // ship-local exhaust appear ahead of the hull under camera lead.
     this.camera.update(
       this.ship.position,
       this.ship.velocity,
@@ -381,13 +775,27 @@ export class GameEngine {
 
     this.renderer.emitThrusterParticles(this.ship, this.particleSystem);
     this._updateHUD(capsDesired);
+
+    const canDock = this.station.canRequestDock(
+      this.ship.position.x,
+      this.ship.position.y,
+      speedAfter
+    );
+    const near = this.station.inApproach(this.ship.position.x, this.ship.position.y);
+    this._setDockHud(near);
+    if (this._dockHud) {
+      this._dockHud.classList.toggle('ready', canDock);
+      this._dockHud.textContent = canDock
+        ? 'ENTER / CLICK — DOCK AT JENNINGS STATION'
+        : 'APPROACH BAY MOUTH · SLOW TO DOCK';
+    }
+    // Enter also handled in main.js (reliable vs browser automation)
   }
 
   _renderBackground({ fullscreen = false, includeWorldNebulae = true } = {}) {
     const cameraPos = this.camera.position;
     const time = this.gameTime;
     const zoom = this.camera.effectiveZoom;
-    // Extra margin so edge glows / star tiles exist before they enter the clip
     const coverRadius = fullscreen
       ? this._coverRadius()
       : this.renderer.viewportRadius + 200;
@@ -439,6 +847,11 @@ export class GameEngine {
       return;
     }
 
+    if (this.mode === 'controls') {
+      this._renderControls();
+      return;
+    }
+
     this.renderer.setupCircularClip();
     this._renderBackground({ fullscreen: false, includeWorldNebulae: true });
 
@@ -449,6 +862,10 @@ export class GameEngine {
     );
     this.speedStreaks.render(this.renderer.ctx);
     this.renderer.ctx.restore();
+
+    this.renderer.renderWorldLayer((ctx) => {
+      this.station.render(ctx);
+    }, this.camera);
 
     this.renderer.renderAsteroids(
       this.asteroidSystem.getActiveAsteroids(),
@@ -473,8 +890,54 @@ export class GameEngine {
     this.renderer.endCircularClip();
   }
 
+  _renderControls() {
+    this.renderer.setupCircularClip();
+    const ctx = this.renderer.ctx;
+    ctx.fillStyle = '#050810';
+    ctx.fillRect(
+      this.renderer.centerX - this.renderer.viewportRadius,
+      this.renderer.centerY - this.renderer.viewportRadius,
+      this.renderer.viewportRadius * 2,
+      this.renderer.viewportRadius * 2
+    );
+
+    const g = ctx.createRadialGradient(
+      this.renderer.centerX,
+      this.renderer.centerY,
+      20,
+      this.renderer.centerX,
+      this.renderer.centerY,
+      this.renderer.viewportRadius
+    );
+    g.addColorStop(0, 'rgba(20, 40, 60, 0.5)');
+    g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(
+      this.renderer.centerX,
+      this.renderer.centerY,
+      this.renderer.viewportRadius,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+
+    this.renderer.renderProjectiles(
+      [...this.entityManager.getByType('projectile')],
+      this.camera
+    );
+    this.renderer.renderParticles(
+      this.particleSystem.particles,
+      this.camera,
+      this._sandboxShip
+    );
+    if (this._sandboxShip) {
+      this.renderer.renderShip(this._sandboxShip, this.camera);
+    }
+    this.renderer.endCircularClip();
+  }
+
   _renderHangar() {
-    // Full-frame station bulk; bay shell + viewport glass paint over this
     const ctx = this.renderer.ctx;
     ctx.fillStyle = '#0a1018';
     ctx.fillRect(0, 0, this.renderer.width, this.renderer.height);
@@ -488,7 +951,6 @@ export class GameEngine {
       nebulae: this.asteroidSystem.getNebulae(),
     };
 
-    // Deck → crew (under hulls) → visitors → player ship → crane
     this.renderer.renderWorldLayer((worldCtx) => {
       this.hangarBay.renderDeck(worldCtx, space);
       this.hangarBay.renderCrew(worldCtx);

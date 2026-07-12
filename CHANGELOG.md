@@ -7,19 +7,29 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 ## [Unreleased]
 
 ### Planned
-- Home Base: launch from hangar into a run; extract/return to hangar
 - Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
 - Asteroid fragmentation on destroy
 - Fuel system for afterburner
 - Radar minimap in corner panel
-- Settings and main-menu flows
 - Audio
 - Resource drops (guns vs mining laser yield tradeoff)
 - Precision power-pip allocation for laser / scanner
 
 ---
 
-## [0.1.41] — 2026-07-11
+## [0.1.42] — 2026-07-11
+
+### Added
+- Title: **ENTER HANGAR**, **QUICK LAUNCH**, **SETTINGS** (controls moved off the title card)
+- Pause: **Return to Main Menu** and **Settings** wired
+- Settings → controls sandbox (ship-only viewport; no world/asteroids)
+- Jennings Station hangar HUD + B2 door **LAUNCH** with danger lights, crew evac, door open, main-engine exit into space
+- Overworld **Jennings Station** exterior; approach + **Enter** to dock with scripted reverse landing
+
+### Changed
+- Home Base hangar is the primary new-game entry; quick launch still skips to space near the station
+
+---
 
 ### Fixed
 - Mechanic blast-wall pathing: route via nearest inter-bay corridor (not job `bay` pad), sticky near→far→hold chain, same-side lateral dodge — stops wrong-wall marches and end-to-end ping-pong

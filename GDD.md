@@ -37,7 +37,7 @@ This prototype is **Layer 1** of the long-term *Hyperdrift Crewline* vision — 
 5. Fight with mounted weapons
 6. *(Future)* extract / return to Home Base between missions; mine, trade, upgrade ship
 
-**Current loop:** title → LAUNCH into space → fly → shoot asteroids → explore. Home Base hangar exists (title → VIEW SHIP) but is not yet the launch/return path.
+**Current loop:** title → ENTER HANGAR (or QUICK LAUNCH) → fly near Jennings Station → dock to return. Hangar B2 **LAUNCH** runs danger/evac/doors/main-engine exit into space.
 
 ---
 
@@ -47,13 +47,15 @@ The hangar bay is the prototype seed of **Home Base**: the place you start a new
 
 | Now | Not yet |
 |-----|---------|
-| Full-frame docked bay (B1 · B2 · B3; player on B2); lived-in industrial set dressing; blast backsplash + danger-lane floor lights | Launch into space from the hangar |
-| Live thrusters / engine / weapons (translation locked) | Extract / return from a run into the same bay |
-| 3×6 cargo grid (2 cols/bay: left=in, right=out), manned crane, stairs, bulkheads | Persistent inventory / loadout across sessions |
-| Forklift + mechanic logistics (ambient on all pads today) | Player-request job queue for **B2 only** (see below) |
-| Distinct upgrade parts + hold cargo; destructible | Mission board, shop UI, between-run meta |
+| Full-frame docked bay (B1 · B2 · B3; player on B2); lived-in industrial set dressing; blast backsplash + danger-lane floor lights | Persistent inventory / loadout across sessions |
+| Live thrusters / engine / weapons (translation locked until launch) | Mission board, shop UI, between-run meta |
+| 3×6 cargo grid (2 cols/bay: left=in, right=out), manned crane, stairs, bulkheads | Player-request job queue for **B2 only** (see below) |
+| Forklift + mechanic logistics (ambient on all pads today) | |
+| Distinct upgrade parts + hold cargo; destructible | |
+| B2 **LAUNCH** / dock landing sequences (evac, doors, thrust) | |
+| Jennings Station overworld exterior + approach dock | |
 
-Entered today from the title screen (**VIEW SHIP**). Design intent: this mode becomes the real start-of-run and between-mission surface — not a throwaway inspection tool.
+Entered from the title screen (**ENTER HANGAR**). **QUICK LAUNCH** skips straight to space near the station.
 
 ### Cargo hardpoints (3×6)
 
@@ -222,16 +224,16 @@ Foreground particles moving **opposite** ship velocity — length, brightness, a
 
 | Region | Purpose | Status |
 |--------|---------|--------|
-| Title screen | Fullscreen live starfield + nebula (same vibrancy as play); soft edge vignette; UI fades in with backdrop | Done |
-| Home Base hangar (title → VIEW SHIP) | Docked Home Base bay (full-frame); B1/B2/B3; industrial set dressing + per-bay door beacons; 3×6 cargo (in/out per bay); bridge crane; stairs + bulkhead doors; forklift/mechanic logistics; upgrade + hold-cargo silhouettes. Seed for between-mission hub + new-game start | In progress (bay done; launch/return not wired) |
+| Title screen | Fullscreen live starfield + nebula; ENTER HANGAR / QUICK LAUNCH / SETTINGS; soft vignette | Done |
+| Home Base hangar (Jennings Station) | Docked bay + B2 launch/land scripts; industrial set; danger lights; logistics | Done (job queue later) |
+| Jennings Station (overworld) | Industrial exterior; approach + Enter to dock | Done |
+| Settings / controls | Ship-only sandbox viewport with live bindings | Done |
 | Top-left | Radar | Placeholder |
 | Top-right | Systems (+ fullscreen) | Partial |
 | Bottom-left | Weapons | Placeholder |
 | Bottom-right | Navigation | Placeholder |
 | Center HUD | Speed, position, zoom | Done |
-| Pause (ESC) | Resume, fullscreen, settings*, main menu* | Partial |
-
-\* Placeholder buttons — not yet functional.
+| Pause (ESC) | Resume, fullscreen, settings, main menu | Done |
 
 ---
 
@@ -258,8 +260,8 @@ Prototype backlog (near-term) and long-term crew-game systems are tracked separa
 - [ ] Trading economy
 - [ ] Mining
 - [ ] Missions / quests
-- [ ] Home Base: launch from hangar into a run
-- [ ] Home Base: extract / return to hangar
+- [x] Home Base: launch from hangar into a run
+- [x] Home Base: extract / return to hangar
 - [ ] Home Base: persistent cargo / loadout between runs
 - [ ] Home Base: B2 player-request job queue (sell/unload, repair, buy/load, upgrade = cargo + weld); B1/B3 stay ambient sim
 - [ ] Equipment upgrades
@@ -269,8 +271,8 @@ Prototype backlog (near-term) and long-term crew-game systems are tracked separa
 - [ ] Save / load
 - [ ] Audio (engines, weapons, ambience)
 - [ ] Minimap / radar implementation
-- [ ] Settings menu (bindings, audio, graphics)
-- [ ] Main menu return flow
+- [x] Settings menu (controls sandbox; audio/graphics later)
+- [x] Main menu return flow
 
 ---
 
@@ -283,7 +285,7 @@ Prototype backlog (near-term) and long-term crew-game systems are tracked separa
 - [x] Speed readable via streaks + camera zoom
 - [x] Pause without losing session
 - [ ] Economy / progression loop
-- [ ] Home Base as start-of-run and between-mission hub
+- [x] Home Base as start-of-run and between-mission hub
 - [x] Combat variety: dorsal turret + mining laser (loot roles deferred)
 - [ ] Meaningful navigation UI
 

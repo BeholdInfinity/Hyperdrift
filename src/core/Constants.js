@@ -79,11 +79,34 @@ export const HANGAR = {
   ZOOM_MAX: 14,
   /** Enter wide enough to read door + neighbor pads */
   ZOOM_DEFAULT: 9,
+  /** Wider during launch/land so doors + path read clearly */
+  ZOOM_LAUNCH: 3.2,
   ZOOM_WHEEL_STEP: 0.35,
   /** Neighbor pad offset from center (B1 left / B3 right) */
   SIDE_PAD_X: 155,
   /** Player docks on bay B2 (center) */
   PLAYER_PAD_X: 0,
+  /** Bay half-height (must match HangarBay BAY.HALF_H) */
+  BAY_HALF_H: 200,
+  DOOR_H: 42,
+  /** North of doors = clear of hangar for launch handoff */
+  LAUNCH_EXIT_Y: -260,
+  /** Landing start: north of open B2 doors */
+  LAND_START_Y: -245,
+};
+
+/** Jennings Station overworld exterior */
+export const STATION = {
+  WORLD_X: 0,
+  WORLD_Y: 0,
+  RADIUS: 160,
+  /** Spawn distance north of station center after hangar exit */
+  EXIT_OFFSET: 210,
+  /** Dock face Y relative to station center (bay mouth) */
+  DOCK_FACE_Y: 150,
+  APPROACH_RADIUS: 420,
+  DOCK_RADIUS: 160,
+  DOCK_MAX_SPEED: 120,
 };
 
 export const RENDER = {

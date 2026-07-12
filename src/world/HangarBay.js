@@ -248,13 +248,17 @@ export class HangarBay {
     this._shipAngle = SHIP.SPAWN_ANGLE;
     this.crane = null;
     this._pressure = 0; // <0 need more cargo, >0 need less
-    /** Per-bay door beacons: 'idle' | 'warning' | 'open' (launch wiring later) */
+    /** Per-bay door beacons: 'idle' | 'warning' | 'open' */
     this.bayBeacons = ['idle', 'idle', 'idle'];
     /**
      * Per-bay danger-lane lights: 'idle' | 'danger' | 'incoming' | 'departing'
-     * (incoming/departing = chase flow on vertical strips for future launch/land)
+     * (incoming/departing = chase flow on vertical strips for launch/land)
      */
     this.bayLaneMode = ['idle', 'idle', 'idle'];
+    /** 0 = sealed, 1 = fully open (leaf slide) */
+    this.doorOpen = [0, 0, 0];
+    /** Bay index under launch/land ops lock (−1 = none); stops ambient spawn into zone */
+    this._opsBay = -1;
   }
 
   reset() {
@@ -266,6 +270,8 @@ export class HangarBay {
     this._hazard = { maneuver: 0, engine: 0, weapons: 0 };
     this.bayBeacons = ['idle', 'idle', 'idle'];
     this.bayLaneMode = ['idle', 'idle', 'idle'];
+    this.doorOpen = [0, 0, 0];
+    this._opsBay = -1;
     this.sidePads = [
       rollSidePad(-BAY.SIDE_PAD_X, 'B1'),
       rollSidePad(BAY.SIDE_PAD_X, 'B3'),
@@ -276,6 +282,106 @@ export class HangarBay {
     this._spawnMechanic();
     this._spawnMechanic();
     this._spawnForklift(Math.random() < 0.5 ? -1 : 1);
+  }
+
+  /** World anchor on B2 bay door face (for LAUNCH button). */
+  getBayDoorAnchor(bayIndex = 1) {
+    const cx = padCenters()[bayIndex] ?? 0;
+    return {
+      x: cx,
+      y: -BAY.HALF_H + BAY.DOOR_H * 0.55,
+      halfW: BAY.DOOR_HALF,
+      doorH: BAY.DOOR_H,
+    };
+  }
+
+  /**
+   * Start departure / arrival ops on a bay: warning beacons, lane mode, crew evac.
+   * @param {number} bayIndex
+   * @param {'departing'|'incoming'} laneMode
+   */
+  beginOps(bayIndex, laneMode = 'departing') {
+    this._opsBay = bayIndex;
+    this.bayBeacons[bayIndex] = 'warning';
+    this.bayLaneMode[bayIndex] = laneMode;
+    if (this.crane) this.crane.pause = 99;
+    this._evacBayCrew(bayIndex);
+  }
+
+  setBeacon(bayIndex, mode) {
+    this.bayBeacons[bayIndex] = mode;
+  }
+
+  setLaneMode(bayIndex, mode) {
+    this.bayLaneMode[bayIndex] = mode;
+  }
+
+  setDoorOpen(bayIndex, amount) {
+    this.doorOpen[bayIndex] = Math.max(0, Math.min(1, amount));
+  }
+
+  clearOps() {
+    if (this._opsBay >= 0) {
+      this.bayBeacons[this._opsBay] = 'idle';
+      this.bayLaneMode[this._opsBay] = 'idle';
+      this.doorOpen[this._opsBay] = 0;
+    }
+    this._opsBay = -1;
+    if (this.crane) this.crane.pause = 0.2;
+  }
+
+  _inBayDangerZone(npc, bayIndex) {
+    const cx = padCenters()[bayIndex];
+    const y0 = -BAY.HALF_H + BAY.DOOR_H;
+    const y1 = DANGER_ZONE_SOUTH + 36;
+    const half = BAY_LANE_HALF + 28;
+    return (
+      Math.abs(npc.x - cx) <= half &&
+      npc.y >= y0 - 10 &&
+      npc.y <= y1
+    );
+  }
+
+  _evacBayCrew(bayIndex) {
+    for (const npc of this.npcs) {
+      if (!this._inBayDangerZone(npc, bayIndex) && Math.abs(npc.x - (padCenters()[bayIndex] || 0)) > 90) {
+        continue;
+      }
+      this._clearTaskClaim(npc);
+      if (npc.kind === 'mechanic') {
+        npc.resumeState = 'toExit';
+        npc.state = 'flee';
+        npc.stateT = 1.5;
+        npc.taskMode = 'despawn';
+        npc.job = 'idle';
+        npc.exitArmed = false;
+      } else {
+        // Forklifts peel to apron / exit
+        npc.state = 'toExit';
+        npc.stateT = 0;
+        npc.taskMode = 'despawn';
+      }
+    }
+  }
+
+  /** Keep pushing anyone still in the danger zone out during ops. */
+  tickEvac(bayIndex) {
+    for (const npc of this.npcs) {
+      if (!this._inBayDangerZone(npc, bayIndex)) continue;
+      if (npc.kind === 'mechanic' && npc.state !== 'flee' && npc.state !== 'toExit' && npc.state !== 'descend') {
+        this._clearTaskClaim(npc);
+        npc.state = 'flee';
+        npc.taskMode = 'despawn';
+        npc.job = 'idle';
+      } else if (npc.kind === 'forklift' && npc.state !== 'toExit' && npc.state !== 'exitDoor') {
+        npc.state = 'toExit';
+        npc.taskMode = 'despawn';
+      }
+    }
+  }
+
+  isBayDangerClear(bayIndex) {
+    return !this.npcs.some((n) => this._inBayDangerZone(n, bayIndex));
   }
 
   _seedCargo() {
@@ -612,7 +718,7 @@ export class HangarBay {
     this._updateCrane(deltaTime);
 
     this._spawnTimer -= deltaTime;
-    if (this._spawnTimer <= 0 && this.npcs.length < 6) {
+    if (this._spawnTimer <= 0 && this.npcs.length < 6 && this._opsBay < 0) {
       const forks = this.npcs.filter((n) => n.kind === 'forklift').length;
       const mechs = this.npcs.filter((n) => n.kind === 'mechanic').length;
       // Mechanics first: cargo pressure used to starve pedestrians by always
@@ -627,6 +733,9 @@ export class HangarBay {
         this._spawnForklift(Math.random() < 0.5 ? -1 : 1);
       }
       this._spawnTimer = mechs < 2 ? rand(0.8, 1.6) : rand(1.6, 3.5);
+    } else if (this._opsBay >= 0) {
+      this._spawnTimer = 1.5;
+      this.tickEvac(this._opsBay);
     }
 
     const hazardLevel =
@@ -2116,6 +2225,7 @@ export class HangarBay {
     for (let i = 0; i < 3; i++) {
       const mode = this.bayLaneMode[i];
       if (mode === 'incoming' || mode === 'departing') continue;
+      if (this._opsBay === i) continue;
       if (i === 1) {
         const hot =
           this._hazard.engine > 0.28 || this._hazard.maneuver > 0.5;
@@ -2964,15 +3074,19 @@ export class HangarBay {
     const labels = bayLabels();
 
     padCenters().forEach((cx, i) => {
-      // Recessed pocket behind leaves
+      const open = this.doorOpen[i] || 0;
+      const slide = open * (dh + 4);
+
+      // Recessed pocket behind leaves (space visible when open)
       ctx.fillStyle = '#0a1018';
       ctx.fillRect(cx - dh - 6, doorTop - 2, dh * 2 + 12, doorH + 8);
 
-      // Leaf faces with paneling
-      for (const [lx, lw] of [
-        [cx - dh, dh - 1.5],
-        [cx + 1.5, dh - 1.5],
+      // Leaf faces with paneling — slide apart when open
+      for (const [baseLx, lw, side] of [
+        [cx - dh, dh - 1.5, -1],
+        [cx + 1.5, dh - 1.5, 1],
       ]) {
+        const lx = baseLx + side * slide;
         ctx.fillStyle = '#3a4a58';
         ctx.fillRect(lx, doorTop, lw, doorH);
         ctx.fillStyle = 'rgba(120, 150, 170, 0.12)';
@@ -2995,12 +3109,14 @@ export class HangarBay {
         }
       }
 
-      ctx.strokeStyle = 'rgba(20, 30, 40, 0.75)';
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.moveTo(cx, doorTop + 2);
-      ctx.lineTo(cx, doorTop + doorH - 2);
-      ctx.stroke();
+      if (open < 0.15) {
+        ctx.strokeStyle = 'rgba(20, 30, 40, 0.75)';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.moveTo(cx, doorTop + 2);
+        ctx.lineTo(cx, doorTop + doorH - 2);
+        ctx.stroke();
+      }
 
       for (const px of [cx - dh - 8, cx + dh]) {
         ctx.fillStyle = '#121a22';

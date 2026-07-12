@@ -58,6 +58,7 @@ src/
     SpeedStreaks.js       Velocity-opposed foreground streaks (screen-space)
     HangarBay.js          Home Base hangar (3×6 cargo lanes + logistics NPCs)
     HangarVisitorShips.js Placeholder neighbor-pad ship silhouettes
+    Station.js            Jennings Station overworld exterior + dock zones
   utils/
     MathUtils.js, SeededRandom.js
 ```
@@ -68,7 +69,7 @@ src/
 - **Chunk-based world** — deterministic seeds, load radius 3, unload radius 5 (`WORLD` in Constants)
 - **Thruster visuals driven by physics** — eight blue maneuvering thrusters + orange main engine; mounts from `ShipHardpoints.js`; exhaust is ship-local; camera pose must match post-physics ship
 - **Plume flow** (`Renderer._computePlumeFlow`) — leading cue/wash + crosswind lean from relative wind (`−velocity`) so plumes read AoA and speed; trailing stretch; ship-local particles
-- **Modes** — `title` (drifting backdrop), `playing` (flight), `hangar` (Home Base docked bay; seed for new-game start + between-mission hub)
+- **Modes** — `title` (drifting backdrop), `playing` (flight), `hangar` (Jennings Station / Home Base), `controls` (ship-only settings sandbox)
 - **Future-ready** for multiple ships, AI, trading, mining, missions, Home Base launch/extract, networking, save/load
 
 ## Current implementation status
@@ -85,14 +86,16 @@ src/
 | Ship-local exhaust particles; camera tracks post-physics pose | Done |
 | Dorsal 360° combat turret (LMB, 3/s) + nose mining laser (RMB) | Done |
 | Circular viewport + corner UI placeholders | Done |
-| Title screen (fullscreen backdrop drift, fade-in, version stamp) | Done |
-| Home Base hangar (full-frame; B1–B3; industrial dressing; blast walls + danger lanes; bridge crane; stairs; 3×6 cargo logistics) | Bay done; launch/return not wired |
+| Title screen (ENTER HANGAR / QUICK LAUNCH / SETTINGS; version stamp) | Done |
+| Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Bay + launch/land done |
+| Jennings Station overworld exterior + dock prompt | Done |
+| Settings controls sandbox (ship-only viewport) | Done |
 | Procedural asteroids + nebulae | Done |
 | 7-layer starfield, 3-layer nebulae | Done |
 | Speed streaks (velocity-opposed, screen-space) | Done |
 | Camera lead offset + scroll zoom + speed zoom | Done |
-| Fullscreen button + pause menu (ESC) | Done |
-| Sound, fuel, fragmentation, minimap, settings | Not started |
+| Fullscreen button + pause menu (ESC; resume / settings / main menu) | Done |
+| Sound, fuel, fragmentation, minimap | Not started |
 
 ## Key tuning (`src/core/Constants.js`)
 
@@ -132,13 +135,12 @@ src/
 
 ## Known gaps / next steps
 
-- Home Base: wire hangar as new-game start (launch from B2) and between-mission return/extract
 - Home Base: B2 logistics only on player request (queued; animation-gated); B1/B3 remain ambient sim (`GDD.md`)
 - Ship silhouette / hardpoint design pass (hangar is ready for close inspection)
-- Settings and Return to Main Menu are UI placeholders
 - Asteroids destroy but don't fragment into smaller pieces yet
 - No fuel consumption on afterburner
 - Corner panels (Radar, Weapons, Navigation) are empty shells
+- Settings beyond controls sandbox (audio/graphics bindings)
 
 ## Resuming in a new chat
 

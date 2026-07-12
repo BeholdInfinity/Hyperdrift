@@ -30,34 +30,50 @@
       <div id="start-screen">
         <h1>HYPERDRIFT</h1>
         <p class="subtitle">Procedural Universe Prototype</p>
-        <button id="start-btn">LAUNCH</button>
-        <button id="view-ship-btn" class="secondary-btn">VIEW SHIP</button>
-        <div class="controls-hint">
-          <p><kbd>WASD</kbd> Thrust · double-tap hold = burst</p>
-          <p><kbd>Q</kbd>/<kbd>E</kbd> Yaw · double-tap hold = fast</p>
-          <p><kbd>SPACE</kbd> Main engine &nbsp; <kbd>SHIFT</kbd> Afterburner &nbsp; <kbd>ALT</kbd> Brakes</p>
-          <p><kbd>CAPS</kbd> Precision (slow speeds) &nbsp; <kbd>LMB</kbd> Turret &nbsp; <kbd>RMB</kbd> Mining laser</p>
-          <p><kbd>SCROLL</kbd> Zoom &nbsp; <kbd>ESC</kbd> Pause</p>
-        </div>
+        <button id="start-btn">ENTER HANGAR</button>
+        <button id="quick-launch-btn" class="secondary-btn">QUICK LAUNCH</button>
+        <button id="settings-title-btn" class="secondary-btn">SETTINGS</button>
       </div>
-      <p id="build-stamp" class="build-stamp">v0.1.5 · Last edit: loading…</p>
+      <p id="build-stamp" class="build-stamp">v0.1.42 · Last edit: loading…</p>
     </div>
 
     <div id="hangar-hud" class="hidden">
       <div class="hangar-banner">
-        <span class="hangar-title">HANGAR · SHIP VIEW</span>
+        <span class="hangar-title">
+          <span class="home-icon" aria-hidden="true"></span>
+          JENNINGS STATION: HANGAR BAY · SHIP MAINTENANCE
+        </span>
         <span class="hangar-zoom">ZOOM <span id="hangar-zoom-value">9.0</span>x</span>
       </div>
       <p class="hangar-hint">Thrusters, engine &amp; weapons live · ship docked · scroll to zoom · <kbd>ESC</kbd> or Back</p>
       <button id="hangar-back-btn" class="menu-btn">Back to Title</button>
     </div>
 
+    <button id="hangar-launch-btn" class="hangar-launch-btn hidden" type="button">LAUNCH</button>
+
+    <div id="controls-hud" class="hidden">
+      <div class="controls-banner">
+        <span class="controls-title">SETTINGS · CONTROLS</span>
+        <span class="controls-sub">Live ship sandbox — no world</span>
+      </div>
+      <div class="controls-panel">
+        <p><kbd>WASD</kbd> Thrust · double-tap hold = burst</p>
+        <p><kbd>Q</kbd>/<kbd>E</kbd> Yaw · double-tap hold = fast</p>
+        <p><kbd>SPACE</kbd> Main engine &nbsp; <kbd>SHIFT</kbd> Afterburner &nbsp; <kbd>ALT</kbd> Brakes</p>
+        <p><kbd>CAPS</kbd> Precision &nbsp; <kbd>LMB</kbd> Turret &nbsp; <kbd>RMB</kbd> Mining laser</p>
+        <p><kbd>SCROLL</kbd> Zoom &nbsp; <kbd>ESC</kbd> Back</p>
+      </div>
+      <button id="controls-back-btn" class="menu-btn">Back</button>
+    </div>
+
+    <button id="dock-hud" class="hidden" type="button">APPROACH BAY MOUTH · SLOW TO DOCK</button>
+
     <div id="pause-menu" class="hidden">
       <h2>PAUSED</h2>
       <button id="resume-btn" class="menu-btn">Resume Game</button>
       <button id="pause-fullscreen-btn" class="menu-btn">Enter Fullscreen</button>
-      <button id="settings-btn" class="menu-btn disabled" disabled>Settings</button>
-      <button id="main-menu-btn" class="menu-btn disabled" disabled>Return to Main Menu</button>
+      <button id="settings-btn" class="menu-btn">Settings</button>
+      <button id="main-menu-btn" class="menu-btn">Return to Main Menu</button>
       <p class="pause-hint">Press ESC to resume</p>
     </div>
 
@@ -72,7 +88,7 @@
   <!-- Inline so the stamp does not depend on cached ES modules -->
   <script>
     (function () {
-      var VERSION = '0.1.26';
+      var VERSION = '0.1.42';
       var el = document.getElementById('build-stamp');
       if (!el) return;
 
