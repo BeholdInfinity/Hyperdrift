@@ -14,7 +14,7 @@ import { SpeedStreaks } from '../world/SpeedStreaks.js';
 import { HangarBay } from '../world/HangarBay.js';
 import { Station } from '../world/Station.js';
 import { PHYSICS, HANGAR, SHIP } from '../core/Constants.js';
-import { Vec2 } from '../utils/MathUtils.js';
+import { Vec2, angleDifference } from '../utils/MathUtils.js';
 
 /** Slow title-screen drift (world units / sec) */
 const TITLE_DRIFT_SPEED = 52;
@@ -22,6 +22,23 @@ const TITLE_DRIFT_SPEED = 52;
 const TITLE_TURN_RATE = 0.12;
 
 const PLAYER_BAY = 1; // B2
+
+const MANEUVER_THRUSTER_KEYS = [
+  'aftPort',
+  'aftStarboard',
+  'nosePort',
+  'noseStarboard',
+  'portFore',
+  'portAft',
+  'starboardFore',
+  'starboardAft',
+];
+
+/** Match ShipController yaw couples for scripted align. */
+const YAW_CCW = ['nosePort', 'portAft', 'aftStarboard', 'starboardFore'];
+const YAW_CW = ['noseStarboard', 'starboardAft', 'aftPort', 'portFore'];
+
+const FACE_SOUTH = Math.PI / 2;
 
 export class GameEngine {
   constructor(canvas) {
@@ -59,6 +76,8 @@ export class GameEngine {
     this._spaceCam = { x: 0, y: 0 };
     /** @type {null|{kind:'launch'|'land', phase:string, t:number}} */
     this._hangarSeq = null;
+    /** 0 = settled on pad, 1 = hovering (launch lift / land approach) */
+    this._hangarHover = 0;
     this._dockLocked = true;
     this._controlsReturn = 'title';
     this._dockPrompt = false;
@@ -141,7 +160,7 @@ export class GameEngine {
   }
 
   /** Home Base hangar (Jennings Station bay). */
-  beginHangar({ landing = false } = {}) {
+  beginHangar({ landing = false, entryAngle = null, entryTurret = null } = {}) {
     this._spaceCam.x = this.camera.position.x;
     this._spaceCam.y = this.camera.position.y;
 
@@ -154,6 +173,8 @@ export class GameEngine {
     this.hangarBay.reset();
     this._dockLocked = true;
     this._hangarSeq = null;
+    this._hangarHover = 0;
+    this.hangarBay.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
 
     this.camera.position.set(this._dockPos.x, this._dockPos.y);
     this.camera.offset.set(0, 0);
@@ -175,7 +196,7 @@ export class GameEngine {
     this._positionLaunchBtn();
 
     if (landing) {
-      this._startLandingSequence();
+      this._startLandingSequence(entryAngle, entryTurret);
     } else {
       this._setLaunchBtnVisible(true);
     }
@@ -347,29 +368,40 @@ export class GameEngine {
     if (!this.station.canRequestDock(this.ship.position.x, this.ship.position.y, speed)) {
       return;
     }
-    this.beginHangar({ landing: true });
+    const entryAngle = this.ship.angle;
+    const entryTurret = this.ship.turretAngle;
+    this.beginHangar({ landing: true, entryAngle, entryTurret });
     if (typeof this.onEnterHangar === 'function') this.onEnterHangar();
   }
 
   _startLaunchSequence() {
     this._hangarSeq = { kind: 'launch', phase: 'warn', t: 0 };
     this._dockLocked = true;
+    this._hangarHover = 0;
     this._setLaunchBtnVisible(false);
     this.hangarBay.beginOps(PLAYER_BAY, 'departing');
+    this.hangarBay.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
     this.camera.targetUserZoom = HANGAR.ZOOM_LAUNCH;
   }
 
-  _startLandingSequence() {
-    this._hangarSeq = { kind: 'land', phase: 'approach', t: 0 };
+  _startLandingSequence(entryAngle = FACE_SOUTH, entryTurret = null) {
+    const startAngle = Number.isFinite(entryAngle) ? entryAngle : FACE_SOUTH;
+    const startTurret = Number.isFinite(entryTurret) ? entryTurret : startAngle;
+    this._hangarSeq = { kind: 'land', phase: 'align', t: 0 };
     this._dockLocked = false;
+    this._hangarHover = 1;
     this._setLaunchBtnVisible(false);
     this.ship.position.set(HANGAR.PLAYER_PAD_X, HANGAR.LAND_START_Y);
-    this.ship.velocity.set(0, 55);
-    this.ship.angle = SHIP.SPAWN_ANGLE;
-    this.ship.turretAngle = SHIP.SPAWN_ANGLE;
+    this.ship.velocity.set(0, HANGAR.LAND_APPROACH_SPEED);
+    this.ship.angle = startAngle;
+    this.ship.turretAngle = startTurret;
+    this.ship.angularVelocity = 0;
+    this.ship.visualScale = HANGAR.HOVER_SCALE;
     this.hangarBay.beginOps(PLAYER_BAY, 'incoming');
     this.hangarBay.setDoorOpen(PLAYER_BAY, 1);
     this.hangarBay.setBeacon(PLAYER_BAY, 'open');
+    // Pad waits facing south for the settle; ship yaws onto it
+    this.hangarBay.setPlayerPadAngle(FACE_SOUTH);
     this.camera.targetUserZoom = HANGAR.ZOOM_LAUNCH;
     this.camera.userZoom = HANGAR.ZOOM_LAUNCH;
     this.camera.effectiveZoom = HANGAR.ZOOM_LAUNCH;
@@ -385,6 +417,7 @@ export class GameEngine {
     if (vy < -220) vy = -220;
     this.hangarBay.clearOps();
     this._hangarSeq = null;
+    this._hangarHover = 0;
     this._dockLocked = true;
 
     this.entityManager.clear();
@@ -411,10 +444,14 @@ export class GameEngine {
   _finishLanding() {
     this._hangarSeq = null;
     this._dockLocked = true;
+    this._hangarHover = 0;
     this.ship.position.set(this._dockPos.x, this._dockPos.y);
     this.ship.velocity.set(0, 0);
     this.ship.angle = SHIP.SPAWN_ANGLE;
+    this.ship.turretAngle = SHIP.SPAWN_ANGLE;
+    this.ship.visualScale = 1;
     this._clearShipThrusters(this.ship);
+    this.hangarBay.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
     this.hangarBay.clearOps();
     this.camera.targetUserZoom = HANGAR.ZOOM_DEFAULT;
     this._setLaunchBtnVisible(true);
@@ -580,6 +617,26 @@ export class GameEngine {
     ship.thrusters.retroBurn = false;
   }
 
+  /** Simultaneous 8-thruster burst (hover lift / lower cue). */
+  _fireManeuverBurst(ship, power) {
+    for (const key of MANEUVER_THRUSTER_KEYS) {
+      ship.thrusters[key] = power;
+    }
+  }
+
+  _applyHangarHoverVisual(hover) {
+    this._hangarHover = Math.max(0, Math.min(1, hover));
+    if (this.ship) {
+      this.ship.visualScale =
+        1 + this._hangarHover * (HANGAR.HOVER_SCALE - 1);
+    }
+  }
+
+  _smoothstep(t) {
+    const x = Math.max(0, Math.min(1, t));
+    return x * x * (3 - 2 * x);
+  }
+
   _updateHangarSequence(dt) {
     const s = this._hangarSeq;
     if (!s || !this.ship) return;
@@ -613,12 +670,29 @@ export class GameEngine {
       case 'doors':
         this.hangarBay.setDoorOpen(PLAYER_BAY, Math.min(1, s.t / 1.6));
         if (s.t > 1.75) {
+          s.phase = 'lift';
+          s.t = 0;
+        }
+        break;
+      case 'lift': {
+        // One short 8-thruster burst while the hull rises off the pad
+        const burst = s.t < 0.38 ? HANGAR.HOVER_BURST_POWER : Math.max(0, 0.55 - (s.t - 0.38));
+        if (burst > 0.02) this._fireManeuverBurst(ship, burst);
+        this._applyHangarHoverVisual(this._smoothstep(s.t / HANGAR.HOVER_LIFT_TIME));
+        ship.position.x = this._dockPos.x;
+        ship.position.y = this._dockPos.y;
+        ship.velocity.set(0, 0);
+        ship.angle = SHIP.SPAWN_ANGLE;
+        ship.angularVelocity = 0;
+        if (s.t >= HANGAR.HOVER_LIFT_TIME) {
+          this._applyHangarHoverVisual(1);
           s.phase = 'thrust';
           s.t = 0;
           this._dockLocked = false;
           ship.velocity.set(0, 0);
         }
         break;
+      }
       case 'thrust': {
         ship.thrusters.mainEngine = Math.min(1.2, 0.45 + s.t * 0.5);
         const forward = Vec2.fromAngle(ship.angle);
@@ -627,6 +701,7 @@ export class GameEngine {
         this.physics.integrate(ship, dt);
         ship.angle = SHIP.SPAWN_ANGLE;
         ship.angularVelocity = 0;
+        this._applyHangarHoverVisual(1);
         if (ship.position.y < HANGAR.LAUNCH_EXIT_Y || s.t > 5) {
           this._finishLaunchToSpace();
         }
@@ -640,31 +715,134 @@ export class GameEngine {
   _tickLand(s, dt) {
     const ship = this.ship;
     switch (s.phase) {
-      case 'approach':
-        ship.thrusters.nosePort = 0.85;
-        ship.thrusters.noseStarboard = 0.85;
-        {
-          const forward = Vec2.fromAngle(ship.angle);
-          const force = forward.scale(-PHYSICS.MANEUVER_THRUST * 1.8);
-          this.physics.applyForce(ship, force, dt);
-          const spd = ship.velocity.length();
-          if (spd > 90) ship.velocity.scale(90 / spd);
-          this.physics.integrate(ship, dt);
-          ship.angle = SHIP.SPAWN_ANGLE;
-          ship.angularVelocity = 0;
-          ship.position.x += (HANGAR.PLAYER_PAD_X - ship.position.x) * Math.min(1, dt * 3);
+      case 'align': {
+        // Keep inbound southbound path while yaw couples swing nose to south
+        ship.position.x += (HANGAR.PLAYER_PAD_X - ship.position.x) * Math.min(1, dt * 2.5);
+        if (ship.velocity.y < HANGAR.LAND_APPROACH_SPEED * 0.55) {
+          ship.velocity.y = Math.min(
+            HANGAR.LAND_APPROACH_SPEED,
+            ship.velocity.y + 40 * dt
+          );
         }
-        if (ship.position.y >= -8 || s.t > 6) {
-          s.phase = 'settle';
+
+        const err = angleDifference(ship.angle, FACE_SOUTH);
+        const yawSign = Math.abs(err) < 0.04 ? 0 : Math.sign(err);
+        const yawMult = 1.25;
+        const maxRate = PHYSICS.MAX_ROTATION_SPEED * yawMult;
+        const accel = PHYSICS.ROTATION_ACCEL * yawMult;
+        this.physics.applyYawInput(ship, yawSign, maxRate, accel, dt);
+        if (yawSign === 0) {
+          this.physics.dampRotation(ship, dt);
+          // Snap residual when nearly there so brake starts clean
+          if (Math.abs(err) < 0.08 && Math.abs(ship.angularVelocity) < 0.35) {
+            ship.angle = FACE_SOUTH;
+            ship.angularVelocity = 0;
+          }
+        } else {
+          const couple = yawSign > 0 ? YAW_CW : YAW_CCW;
+          for (const key of couple) ship.thrusters[key] = 0.9;
+        }
+
+        this.physics.integrate(ship, dt);
+
+        const aligned =
+          Math.abs(angleDifference(ship.angle, FACE_SOUTH)) < 0.1 &&
+          Math.abs(ship.angularVelocity) < 0.45;
+        // Don't overshoot the pad while still swinging
+        if (!aligned && ship.position.y > -50) {
+          ship.position.y = Math.min(ship.position.y, -48);
+          ship.velocity.y = Math.min(ship.velocity.y, 12);
+        }
+
+        this._applyHangarHoverVisual(1);
+
+        if ((aligned && ship.position.y >= -55) || s.t > 7) {
+          ship.angle = FACE_SOUTH;
+          ship.angularVelocity = 0;
+          s.phase = 'brake';
           s.t = 0;
         }
         break;
-      case 'settle':
-        ship.position.x += (this._dockPos.x - ship.position.x) * Math.min(1, dt * 4);
-        ship.position.y += (this._dockPos.y - ship.position.y) * Math.min(1, dt * 4);
-        ship.velocity.scale(Math.exp(-dt * 6));
+      }
+      case 'brake': {
+        // Nose-thruster retro only (no main-engine retroBurn plume)
+        ship.angle = FACE_SOUTH;
+        ship.angularVelocity = 0;
+        ship.thrusters.nosePort = 0.95;
+        ship.thrusters.noseStarboard = 0.95;
+        {
+          const forward = Vec2.fromAngle(ship.angle);
+          const force = forward.scale(-PHYSICS.MANEUVER_THRUST * 2.2);
+          this.physics.applyForce(ship, force, dt);
+          if (ship.velocity.y < 0) ship.velocity.y = 0;
+          this.physics.integrate(ship, dt);
+          ship.position.x += (this._dockPos.x - ship.position.x) * Math.min(1, dt * 4);
+          // Once nearly stopped, creep the rest of the way over B2
+          if (ship.velocity.y < 14) {
+            ship.position.y += (this._dockPos.y - ship.position.y) * Math.min(1, dt * 2.4);
+            ship.velocity.y = 0;
+          }
+        }
+        this._applyHangarHoverVisual(1);
+        if (
+          (Math.abs(ship.position.y - this._dockPos.y) < 3 && ship.velocity.y < 12) ||
+          s.t > 4
+        ) {
+          ship.position.x = this._dockPos.x;
+          ship.position.y = this._dockPos.y;
+          ship.velocity.set(0, 0);
+          s.phase = 'lower';
+          s.t = 0;
+        }
+        break;
+      }
+      case 'lower': {
+        const burst = s.t < 0.38 ? HANGAR.HOVER_BURST_POWER : Math.max(0, 0.55 - (s.t - 0.38));
+        if (burst > 0.02) this._fireManeuverBurst(ship, burst);
+        this._applyHangarHoverVisual(
+          1 - this._smoothstep(s.t / HANGAR.HOVER_LIFT_TIME)
+        );
+        ship.position.x = this._dockPos.x;
+        ship.position.y = this._dockPos.y;
+        ship.velocity.set(0, 0);
+        ship.angle = FACE_SOUTH;
+        ship.angularVelocity = 0;
+        this.hangarBay.setPlayerPadAngle(FACE_SOUTH);
+        if (s.t >= HANGAR.HOVER_LIFT_TIME) {
+          this._applyHangarHoverVisual(0);
+          s.phase = 'turn';
+          s.t = 0;
+        }
+        break;
+      }
+      case 'turn': {
+        // Pad turntable + ship: south → north (180°)
+        const u = this._smoothstep(s.t / HANGAR.PAD_TURN_TIME);
+        const angle = FACE_SOUTH + (SHIP.SPAWN_ANGLE - FACE_SOUTH) * u;
+        ship.angle = angle;
+        ship.turretAngle = angle;
+        ship.angularVelocity = 0;
+        ship.position.x = this._dockPos.x;
+        ship.position.y = this._dockPos.y;
+        ship.velocity.set(0, 0);
+        this.hangarBay.setPlayerPadAngle(angle);
+        this._applyHangarHoverVisual(0);
+        if (s.t >= HANGAR.PAD_TURN_TIME) {
+          ship.angle = SHIP.SPAWN_ANGLE;
+          ship.turretAngle = SHIP.SPAWN_ANGLE;
+          this.hangarBay.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
+          s.phase = 'doors';
+          s.t = 0;
+        }
+        break;
+      }
+      case 'doors':
+        ship.position.x = this._dockPos.x;
+        ship.position.y = this._dockPos.y;
+        ship.velocity.set(0, 0);
+        ship.angle = SHIP.SPAWN_ANGLE;
         this.hangarBay.setDoorOpen(PLAYER_BAY, Math.max(0, 1 - s.t / 1.4));
-        if (s.t > 0.4) this.hangarBay.setBeacon(PLAYER_BAY, 'warning');
+        if (s.t > 0.35) this.hangarBay.setBeacon(PLAYER_BAY, 'warning');
         if (s.t > 1.5) {
           this._finishLanding();
         }
@@ -955,6 +1133,7 @@ export class GameEngine {
       this.hangarBay.renderDeck(worldCtx, space);
       this.hangarBay.renderCrew(worldCtx);
       this.hangarBay.renderVisitors(worldCtx);
+      this._drawHangarHoverShadow(worldCtx);
     }, this.camera);
 
     this.renderer.renderProjectiles(
@@ -975,6 +1154,21 @@ export class GameEngine {
     this.renderer.renderWorldLayer((worldCtx) => {
       this.hangarBay.renderOverhead(worldCtx);
     }, this.camera);
+  }
+
+  _drawHangarHoverShadow(ctx) {
+    const h = this._hangarHover;
+    if (!this.ship || h < 0.02) return;
+    const s = this.ship;
+    const ox = 1.5 * h;
+    const oy = 3 + h * 6;
+    ctx.save();
+    ctx.translate(s.position.x + ox, s.position.y + oy);
+    ctx.fillStyle = `rgba(0, 0, 0, ${0.12 + h * 0.38})`;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 16 + h * 6, 9 + h * 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
   }
 
   _updateHUD(capsDesired = this.input?.capsLockDesired) {

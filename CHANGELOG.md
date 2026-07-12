@@ -17,6 +17,24 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.44] — 2026-07-11
+
+### Changed
+- Landing preserves dock-entry heading from space; yaw thruster couples swing nose-south before the retro brake
+
+### Fixed
+- Landing pad brake uses nose thrusters only (no main-engine retro plume)
+
+---
+
+## [0.1.43] — 2026-07-11
+
+### Changed
+- Launch: after doors open, all 8 maneuver thrusters burst once while the ship lifts (scale up + ground shadow), then main-engine exit north
+- Landing: enter B2 at dock-entry heading → yaw thrusters to nose-south → retro-brake over pad → 8-thruster settle (scale down, shadow fades) → pad turntable 180° to face north → doors close
+
+---
+
 ## [0.1.42] — 2026-07-11
 
 ### Added

@@ -37,7 +37,7 @@ This prototype is **Layer 1** of the long-term *Hyperdrift Crewline* vision — 
 5. Fight with mounted weapons
 6. *(Future)* extract / return to Home Base between missions; mine, trade, upgrade ship
 
-**Current loop:** title → ENTER HANGAR (or QUICK LAUNCH) → fly near Jennings Station → dock to return. Hangar B2 **LAUNCH** runs danger/evac/doors/main-engine exit into space.
+**Current loop:** title → ENTER HANGAR (or QUICK LAUNCH) → fly near Jennings Station → dock to return. Hangar B2 **LAUNCH** runs danger/evac/doors → 8-thruster lift → main-engine exit into space. Dock landing keeps entry heading, yaws nose-south, retro-brakes, settles, then the pad turns 180° to face north.
 
 ---
 
@@ -52,7 +52,7 @@ The hangar bay is the prototype seed of **Home Base**: the place you start a new
 | 3×6 cargo grid (2 cols/bay: left=in, right=out), manned crane, stairs, bulkheads | Player-request job queue for **B2 only** (see below) |
 | Forklift + mechanic logistics (ambient on all pads today) | |
 | Distinct upgrade parts + hold cargo; destructible | |
-| B2 **LAUNCH** / dock landing sequences (evac, doors, thrust) | |
+| B2 **LAUNCH** / dock landing (lift burst, pad turntable, doors, thrust) | |
 | Jennings Station overworld exterior + approach dock | |
 
 Entered from the title screen (**ENTER HANGAR**). **QUICK LAUNCH** skips straight to space near the station.
@@ -225,7 +225,7 @@ Foreground particles moving **opposite** ship velocity — length, brightness, a
 | Region | Purpose | Status |
 |--------|---------|--------|
 | Title screen | Fullscreen live starfield + nebula; ENTER HANGAR / QUICK LAUNCH / SETTINGS; soft vignette | Done |
-| Home Base hangar (Jennings Station) | Docked bay + B2 launch/land scripts; industrial set; danger lights; logistics | Done (job queue later) |
+| Home Base hangar (Jennings Station) | Docked bay + B2 launch/land (8-thruster lift/settle, pad 180° turn); industrial set; danger lights; logistics | Done (job queue later) |
 | Jennings Station (overworld) | Industrial exterior; approach + Enter to dock | Done |
 | Settings / controls | Ship-only sandbox viewport with live bindings | Done |
 | Top-left | Radar | Placeholder |

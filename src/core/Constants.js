@@ -93,6 +93,16 @@ export const HANGAR = {
   LAUNCH_EXIT_Y: -260,
   /** Landing start: north of open B2 doors */
   LAND_START_Y: -245,
+  /** Hover lift: ship draw scale when airborne over the pad */
+  HOVER_SCALE: 1.14,
+  /** Seconds for lift / lower (8-thruster burst + altitude cue) */
+  HOVER_LIFT_TIME: 0.7,
+  /** Peak intensity of the simultaneous 8-thruster burst */
+  HOVER_BURST_POWER: 1.05,
+  /** Pad turntable 180° (south → north) after landing settle */
+  PAD_TURN_TIME: 1.55,
+  /** Southbound entry speed into open bay */
+  LAND_APPROACH_SPEED: 78,
 };
 
 /** Jennings Station overworld exterior */

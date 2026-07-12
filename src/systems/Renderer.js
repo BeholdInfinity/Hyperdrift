@@ -80,11 +80,12 @@ export class Renderer {
       ship.position
     );
     const ctx = this.ctx;
+    const visualScale = ship.visualScale ?? 1;
 
     ctx.save();
     ctx.translate(screen.x, screen.y);
     ctx.rotate(ship.angle);
-    ctx.scale(camera.effectiveZoom, camera.effectiveZoom);
+    ctx.scale(camera.effectiveZoom * visualScale, camera.effectiveZoom * visualScale);
 
     this._drawShipHull(ctx);
     this._drawHardpointHardware(ctx, ship);

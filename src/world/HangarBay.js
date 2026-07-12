@@ -259,6 +259,8 @@ export class HangarBay {
     this.doorOpen = [0, 0, 0];
     /** Bay index under launch/land ops lock (−1 = none); stops ambient spawn into zone */
     this._opsBay = -1;
+    /** B2 turntable facing (matches docked ship nose; SHIP.SPAWN_ANGLE = north) */
+    this.playerPadAngle = SHIP.SPAWN_ANGLE;
   }
 
   reset() {
@@ -272,6 +274,7 @@ export class HangarBay {
     this.bayLaneMode = ['idle', 'idle', 'idle'];
     this.doorOpen = [0, 0, 0];
     this._opsBay = -1;
+    this.playerPadAngle = SHIP.SPAWN_ANGLE;
     this.sidePads = [
       rollSidePad(-BAY.SIDE_PAD_X, 'B1'),
       rollSidePad(BAY.SIDE_PAD_X, 'B3'),
@@ -318,6 +321,11 @@ export class HangarBay {
 
   setDoorOpen(bayIndex, amount) {
     this.doorOpen[bayIndex] = Math.max(0, Math.min(1, amount));
+  }
+
+  /** B2 turntable facing angle (ship nose when locked to pad). */
+  setPlayerPadAngle(angle) {
+    this.playerPadAngle = angle;
   }
 
   clearOps() {
@@ -2659,11 +2667,15 @@ export class HangarBay {
     this._drawBayDoors(ctx);
     this._drawBayBeacons(ctx);
     this._drawCargoPiles(ctx);
-    this._drawDockPad(ctx, 0, 0, 'B2', { active: true });
+    this._drawDockPad(ctx, 0, 0, 'B2', {
+      active: true,
+      angle: this.playerPadAngle,
+    });
     for (const pad of this.sidePads) {
       this._drawDockPad(ctx, pad.x, 0, pad.bayId, {
         active: false,
         occupied: !!pad.visitorId,
+        angle: SHIP.SPAWN_ANGLE,
       });
     }
   }
@@ -3766,6 +3778,7 @@ export class HangarBay {
   _drawDockPad(ctx, cx, cy, label, opts = {}) {
     const active = !!opts.active;
     const occupied = !!opts.occupied;
+    const angle = opts.angle ?? SHIP.SPAWN_ANGLE;
     ctx.save();
     ctx.translate(cx, cy);
 
@@ -3774,6 +3787,8 @@ export class HangarBay {
     ctx.beginPath();
     ctx.ellipse(0, 4, BAY.PAD_R + 2, BAY.PAD_R * 0.55, 0, 0, Math.PI * 2);
     ctx.fill();
+
+    ctx.rotate(angle);
 
     ctx.fillStyle = active ? '#10161c' : '#141a22';
     ctx.beginPath();
@@ -3807,6 +3822,17 @@ export class HangarBay {
       ctx.stroke();
     }
 
+    // Nose chevron — reads turntable facing (local +X = pad forward)
+    ctx.fillStyle = active
+      ? 'rgba(100, 180, 255, 0.55)'
+      : 'rgba(120, 140, 160, 0.28)';
+    ctx.beginPath();
+    ctx.moveTo(BAY.PAD_R * 0.72, 0);
+    ctx.lineTo(BAY.PAD_R * 0.42, -5);
+    ctx.lineTo(BAY.PAD_R * 0.42, 5);
+    ctx.closePath();
+    ctx.fill();
+
     if (active) {
       const pulse = 0.04 + 0.03 * Math.sin(this.time * 2.2);
       ctx.fillStyle = `rgba(70, 160, 200, ${pulse})`;
@@ -3814,6 +3840,9 @@ export class HangarBay {
       ctx.arc(0, 0, 10, 0, Math.PI * 2);
       ctx.fill();
     }
+
+    // Un-rotate for upright bay label
+    ctx.rotate(-angle);
 
     ctx.fillStyle = active
       ? 'rgba(100, 180, 255, 0.45)'
