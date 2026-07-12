@@ -64,14 +64,77 @@ const BACKSPLASH_BYPASS = 2;
 const DANGER_ZONE_PAD = 4;
 /** Crane reclaims unclaimed floor drops after this many seconds */
 const FLOOR_DROP_CRANE_AGE = 5;
-/** Under-deck stair hatches — south of backsplash (crew walk around wall ends) */
-const STAIR_Y = BACKSPLASH_Y + 34;
-const STAIRS = [-BAY.SIDE_PAD_X, 0, BAY.SIDE_PAD_X].map((x, bay) => ({
+/** Safe-side apron south of blast shield (was stair hatch Y — stairs removed) */
+const APRON_SAFE_Y = BACKSPLASH_Y + 28;
+/** Bay computer / service board stand points (south face of each shield) */
+const BAY_COMPUTERS = [-BAY.SIDE_PAD_X, 0, BAY.SIDE_PAD_X].map((x, bay) => ({
+  id: `bayComputer${bay}`,
   x,
-  y: STAIR_Y,
+  y: APRON_SAFE_Y + 8,
   bay,
-  col: bay * 2,
+  kind: 'computer',
 }));
+/** Forklift hub — south wall center, south of PATH_Y */
+const FORKLIFT_HUB_Y = BAY.PATH_Y + 32;
+const FORKLIFT_PARKS = [-36, -12, 12, 36].map((dx, i) => ({
+  id: `forkPark${i + 1}`,
+  x: dx,
+  y: FORKLIFT_HUB_Y,
+  index: i,
+}));
+/** Crane home — top-left of gantry travel (y clamped to bridge min in use) */
+const CRANE_HOME = { x: -BAY.HALF_W + 48, y: -BAY.HALF_H + 63 };
+/** Compat alias — flee/rally still uses apron points near each bay */
+const STAIRS = BAY_COMPUTERS.map((c) => ({
+  x: c.x,
+  y: c.y + 10,
+  bay: c.bay,
+  col: c.bay * 2,
+}));
+const STAIR_Y = APRON_SAFE_Y;
+
+/** Invisible gossip gather points (AI only) */
+const GOSSIP_WAYPOINTS = [
+  { id: 'gossipW1', x: -290, y: 160, capacity: 3 },
+  { id: 'gossipW2', x: 290, y: 160, capacity: 3 },
+  { id: 'gossipC1', x: -70, y: APRON_SAFE_Y + 18, capacity: 2 },
+  { id: 'gossipC2', x: 70, y: APRON_SAFE_Y + 18, capacity: 2 },
+  { id: 'gossipS1', x: -200, y: FORKLIFT_HUB_Y - 8, capacity: 3 },
+  { id: 'gossipS2', x: 200, y: FORKLIFT_HUB_Y - 8, capacity: 3 },
+];
+
+/**
+ * Set-dressing props with linger stand points.
+ * Drawn by `_drawSetDressing`; AI uses `linger` coords.
+ */
+const HANGAR_PROPS = [
+  // West wing
+  { id: 'shelfW1', kind: 'shelf', x: -310, y: 50, bay: 0, linger: [{ x: -295, y: 55 }] },
+  { id: 'shelfW2', kind: 'shelf', x: -310, y: -20, bay: 0, linger: [{ x: -295, y: -15 }] },
+  { id: 'deskW1', kind: 'desk', x: -285, y: 120, bay: 0, linger: [{ x: -270, y: 125 }] },
+  { id: 'benchW1', kind: 'toolbench', x: -250, y: 175, bay: 0, linger: [{ x: -250, y: 160 }] },
+  { id: 'barrelsW1', kind: 'barrels', x: -300, y: 95, bay: 0, linger: [{ x: -285, y: 100 }] },
+  // East wing
+  { id: 'shelfE1', kind: 'shelf', x: 310, y: 50, bay: 2, linger: [{ x: 295, y: 55 }] },
+  { id: 'shelfE2', kind: 'shelf', x: 310, y: -20, bay: 2, linger: [{ x: 295, y: -15 }] },
+  { id: 'deskE1', kind: 'desk', x: 285, y: 120, bay: 2, linger: [{ x: 270, y: 125 }] },
+  { id: 'benchE1', kind: 'toolbench', x: 250, y: 175, bay: 2, linger: [{ x: 250, y: 160 }] },
+  { id: 'barrelsE1', kind: 'barrels', x: 300, y: 95, bay: 2, linger: [{ x: 285, y: 100 }] },
+  // Center / B2 apron (avoid fork hub)
+  { id: 'benchC1', kind: 'toolbench', x: -95, y: 175, bay: 1, linger: [{ x: -95, y: 160 }] },
+  { id: 'benchC2', kind: 'toolbench', x: 95, y: 175, bay: 1, linger: [{ x: 95, y: 160 }] },
+  { id: 'deskC1', kind: 'desk', x: -55, y: APRON_SAFE_Y + 22, bay: 1, linger: [{ x: -55, y: APRON_SAFE_Y + 10 }] },
+  { id: 'deskC2', kind: 'desk', x: 55, y: APRON_SAFE_Y + 22, bay: 1, linger: [{ x: 55, y: APRON_SAFE_Y + 10 }] },
+  // Bay computers (also drawn on shield face)
+  ...BAY_COMPUTERS.map((c) => ({
+    id: c.id,
+    kind: 'computer',
+    x: c.x,
+    y: c.y,
+    bay: c.bay,
+    linger: [{ x: c.x, y: c.y + 14 }],
+  })),
+];
 /**
  * Half-width of per-bay danger-zone light lanes (door → DANGER_ZONE_SOUTH).
  * Must stay outside cargo pads (~±71) and inside half pad-spacing (77.5) so
@@ -286,7 +349,6 @@ export class HangarBay {
   constructor() {
     this.time = 0;
     this.npcs = [];
-    this._spawnTimer = 0.5;
     this._sparkle = [];
     this._debris = [];
     this._hazard = { maneuver: 0, engine: 0, weapons: 0 };
@@ -299,8 +361,8 @@ export class HangarBay {
     this._shipAngle = SHIP.SPAWN_ANGLE;
     this.crane = null;
     this._pressure = 0; // <0 need more cargo, >0 need less
-    /** Per-bay door beacons: 'idle' | 'warning' | 'open' | 'steady' */
-    this.bayBeacons = ['idle', 'idle', 'idle'];
+    /** Per-bay door beacons — computed each frame by `_syncDoorBeacons` */
+    this.bayBeacons = ['off', 'off', 'off'];
     /**
      * Per-bay danger-lane lights: 'idle' | 'danger' | 'incoming' | 'departing' | 'elevator'
      * (incoming/departing = chase; elevator = steady at chase brightness)
@@ -316,25 +378,27 @@ export class HangarBay {
     this.padRimMode = ['off', 'off', 'off'];
     /** B2 turntable facing (matches docked ship nose; SHIP.SPAWN_ANGLE = north) */
     this.playerPadAngle = SHIP.SPAWN_ANGLE;
+    /** Door-header ticker lines per bay [{ text, color }, ...] */
+    this.bayTicker = [[], [], []];
   }
 
   reset() {
     this.time = 0;
     this.npcs = [];
-    this._spawnTimer = 0.4;
     this._sparkle = [];
     this._debris = [];
     this.floorDrops = [];
     this._npcUid = 1;
     this._floorDropSeq = 1;
     this._hazard = { maneuver: 0, engine: 0, weapons: 0 };
-    this.bayBeacons = ['idle', 'idle', 'idle'];
+    this.bayBeacons = ['off', 'off', 'off'];
     this.bayLaneMode = ['idle', 'idle', 'idle'];
     this.doorOpen = [0, 0, 0];
     this._opsBays = new Set();
     this.bayClearing = [false, false, false];
     this.padRimMode = ['off', 'off', 'off'];
     this.playerPadAngle = SHIP.SPAWN_ANGLE;
+    this.bayTicker = [[], [], []];
     this.playerBay = {
       x: 0,
       bayId: 'B2',
@@ -355,9 +419,7 @@ export class HangarBay {
     for (const pad of this.sidePads) {
       if (pad.visitorId) this._beginCaptainService(pad);
     }
-    this._spawnMechanic();
-    this._spawnMechanic();
-    this._spawnForklift(Math.random() < 0.5 ? -1 : 1);
+    this._initStationCrew();
   }
 
   /** World anchor on B2 bay door face (for LAUNCH button). */
@@ -378,7 +440,6 @@ export class HangarBay {
    */
   beginOps(bayIndex, laneMode = 'departing') {
     this._opsBays.add(bayIndex);
-    this.bayBeacons[bayIndex] = laneMode === 'elevator' ? 'steady' : 'warning';
     this.bayLaneMode[bayIndex] = laneMode;
     // Arrival flashes rim; departure / elevator / pad motion hold rim on
     this.padRimMode[bayIndex] = laneMode === 'incoming' ? 'flash' : 'on';
@@ -389,6 +450,7 @@ export class HangarBay {
   }
 
   setBeacon(bayIndex, mode) {
+    // Door beacons are derived each frame; keep setter for callers/compat
     this.bayBeacons[bayIndex] = mode;
   }
 
@@ -410,6 +472,285 @@ export class HangarBay {
     this.playerPadAngle = angle;
   }
 
+  _bayHasShip(bayIndex) {
+    if (bayIndex === 1) return true;
+    const pad = this._sidePadForBay(bayIndex);
+    return !!(pad && pad.visitorId);
+  }
+
+  _bayWorkComplete(bayIndex) {
+    const pad = this._servicePad(bayIndex);
+    if (!pad?.visitorId) return false;
+    const svc = pad.service;
+    if (!svc) return true;
+    if (svc.phase === 'dwell' || svc.phase === 'done' || svc.phase === 'reroll') return true;
+    if (svc.phase === 'settle') return false;
+    return this._serviceAllDone(pad);
+  }
+
+  _isPadHardwareResting(bayIndex) {
+    const door = this.doorOpen[bayIndex] || 0;
+    if (door > 0.02) return false;
+    if (bayIndex === 1) {
+      const a = this.playerPadAngle;
+      const nearN = Math.abs(Math.atan2(Math.sin(a - FACE_NORTH), Math.cos(a - FACE_NORTH))) < 0.12;
+      const nearS = Math.abs(Math.atan2(Math.sin(a - FACE_SOUTH), Math.cos(a - FACE_SOUTH))) < 0.12;
+      if (!nearN && !nearS) return false;
+      // Elevator/launch ops with closed doors (pad turn / elevator) → not rest
+      if (this._opsBays.has(1) && this.bayLaneMode[1] === 'elevator') return false;
+      return true;
+    }
+    const pad = this._sidePadForBay(bayIndex);
+    if (!pad) return true;
+    if ((pad.padDrop || 0) > 0.02) return false;
+    if (pad.seq) {
+      const k = pad.seq.kind || '';
+      if (
+        k.includes('turn') ||
+        k === 'lower' ||
+        k === 'raiseLaunch' ||
+        k === 'raiseArrive' ||
+        k.startsWith('raise') ||
+        k.startsWith('lower')
+      ) {
+        return false;
+      }
+    }
+    if (this.bayLaneMode[bayIndex] === 'elevator' && this._opsBays.has(bayIndex)) return false;
+    return true;
+  }
+
+  _isPadRotatingOrElevator(bayIndex) {
+    if ((this.doorOpen[bayIndex] || 0) > 0.02) return false;
+    if (bayIndex === 1) {
+      const a = this.playerPadAngle;
+      const nearN = Math.abs(Math.atan2(Math.sin(a - FACE_NORTH), Math.cos(a - FACE_NORTH))) < 0.12;
+      const nearS = Math.abs(Math.atan2(Math.sin(a - FACE_SOUTH), Math.cos(a - FACE_SOUTH))) < 0.12;
+      if (!nearN && !nearS) return true;
+      if (this._opsBays.has(1) && this.bayLaneMode[1] === 'elevator') return true;
+      return false;
+    }
+    const pad = this._sidePadForBay(bayIndex);
+    if (!pad) return false;
+    if ((pad.padDrop || 0) > 0.02) return true;
+    if (pad.seq) {
+      const k = pad.seq.kind || '';
+      if (k.includes('turn') || k === 'lower' || k.startsWith('raise') || k.startsWith('lower')) {
+        return true;
+      }
+    }
+    return this.bayLaneMode[bayIndex] === 'elevator' && this._opsBays.has(bayIndex);
+  }
+
+  /**
+   * Unified B1–B3 door lights (pilot-facing).
+   * off | amber | amberFlash | greenBlink | green | redFlash
+   */
+  _syncDoorBeacons() {
+    for (let i = 0; i < 3; i++) {
+      const door = this.doorOpen[i] || 0;
+      if (door > 0.02 && door < 0.98) {
+        this.bayBeacons[i] = 'redFlash';
+        continue;
+      }
+      if (door >= 0.98) {
+        this.bayBeacons[i] = 'green';
+        continue;
+      }
+      // Doors closed
+      if (this._isPadRotatingOrElevator(i)) {
+        this.bayBeacons[i] = 'amberFlash';
+        continue;
+      }
+      if (!this._bayHasShip(i)) {
+        this.bayBeacons[i] = 'off';
+        continue;
+      }
+      if (!this._bayWorkComplete(i)) {
+        this.bayBeacons[i] = 'amber';
+        continue;
+      }
+      this.bayBeacons[i] = 'greenBlink';
+    }
+  }
+
+  _bayActiveJobLines(bayIndex) {
+    const lines = [];
+    const lane = this.bayLaneMode[bayIndex];
+    const door = this.doorOpen[bayIndex] || 0;
+    const pad = this._servicePad(bayIndex);
+    const seq = pad?.seq;
+
+    if (door > 0.02 && door < 0.98) {
+      lines.push({ text: 'DOORS OPENING', color: 'red' });
+    } else if (lane === 'incoming' || seq?.kind === 'arrive' || seq?.kind === 'approach') {
+      lines.push({ text: 'SHIP ARRIVING', color: 'red' });
+    } else if (lane === 'departing' || seq?.kind === 'depart' || seq?.kind === 'leave') {
+      lines.push({ text: 'SHIP DEPARTING', color: 'red' });
+    } else if (lane === 'elevator' || (pad?.padDrop || 0) > 0.02) {
+      const ascending =
+        seq?.kind === 'raiseArrive' ||
+        seq?.kind === 'raiseLaunch' ||
+        (seq?.kind || '').includes('rise');
+      lines.push({
+        text: ascending ? 'ELEVATOR ASCENDING' : 'ELEVATOR DESCENDING',
+        color: 'amber',
+      });
+    }
+
+    if (lines.length >= 2) return lines.slice(0, 2);
+
+    if (!this._bayHasShip(bayIndex)) {
+      if (!lines.length) lines.push({ text: 'STANDBY', color: 'dim' });
+      return lines.slice(0, 2);
+    }
+
+    if (this._bayWorkComplete(bayIndex)) {
+      if (door >= 0.98) lines.push({ text: 'CLEAR TO DEPART', color: 'green' });
+      else if (!lines.length) lines.push({ text: 'AWAITING EXIT', color: 'green' });
+      return lines.slice(0, 2);
+    }
+
+    // Active crew verbs
+    for (const npc of this.npcs) {
+      if (lines.length >= 2) break;
+      if (npc.kind === 'mechanic' && npc.homeBay === bayIndex) {
+        if (npc.job === 'weld' && npc.state?.startsWith('work')) {
+          lines.push({ text: 'REPAIRING HULL', color: 'blue' });
+        } else if (npc.job === 'installUpgrade' && npc.state !== 'idleFluff') {
+          lines.push({ text: 'INSTALLING UPGRADE', color: 'blue' });
+        } else if (npc.job === 'loadShip' && npc.state !== 'idleFluff') {
+          lines.push({ text: 'LOADING CARGO', color: 'blue' });
+        } else if (npc.job === 'unloadShip' && npc.state !== 'idleFluff') {
+          lines.push({ text: 'UNLOADING CARGO', color: 'blue' });
+        } else if (npc.job === 'removeUpgrade' && npc.state !== 'idleFluff') {
+          lines.push({ text: 'REMOVING UPGRADE', color: 'blue' });
+        }
+      }
+      if (npc.kind === 'forklift' && npc.targetPile?.bay === bayIndex) {
+        if (npc.job === 'bringIn') lines.push({ text: 'STAGING MATERIALS', color: 'yellow' });
+        else if (npc.job === 'takeOut') lines.push({ text: 'CLEARING BAY', color: 'yellow' });
+      }
+    }
+
+    if (this.crane?.pickup?.bay === bayIndex || this.crane?.dropoff?.bay === bayIndex) {
+      if (this.crane.phase !== 'idle' && this.crane.phase !== 'linger' && lines.length < 2) {
+        lines.push({ text: 'STAGING MATERIALS', color: 'yellow' });
+      }
+    }
+
+    if (this.bayClearing[bayIndex] && lines.length < 2) {
+      lines.push({ text: 'CLEARING BAY', color: 'yellow' });
+    }
+
+    const svc = pad?.service;
+    if (svc?.items?.length && lines.length < 2) {
+      const pending = svc.items.find((it) => it.status !== 'done');
+      if (pending) {
+        const map = {
+          refuel: 'REFUELING',
+          reload: 'RELOADING',
+          repair: 'REPAIRING HULL',
+          loadCargo: 'LOADING CARGO',
+          unloadCargo: 'UNLOADING CARGO',
+          upgrade: 'INSTALLING UPGRADE',
+        };
+        lines.push({
+          text: map[pending.type] || 'STAGING MATERIALS',
+          color: pending.status === 'staging' ? 'yellow' : 'blue',
+        });
+      }
+    }
+
+    if (!lines.length) lines.push({ text: 'STANDBY', color: 'dim' });
+    // Dedupe
+    const seen = new Set();
+    return lines.filter((l) => {
+      if (seen.has(l.text)) return false;
+      seen.add(l.text);
+      return true;
+    }).slice(0, 2);
+  }
+
+  _syncBayTickers() {
+    for (let i = 0; i < 3; i++) {
+      this.bayTicker[i] = this._bayActiveJobLines(i);
+    }
+  }
+
+  _boardTaskRows(bayIndex) {
+    const pad = this._servicePad(bayIndex);
+    const svc = pad?.service;
+    if (!this._bayHasShip(bayIndex) || !svc?.items?.length) {
+      return [{ label: 'STANDBY', color: 'dim', status: 'idle' }];
+    }
+    const labelOf = (it) => {
+      const map = {
+        refuel: 'FUEL',
+        reload: 'AMMO',
+        repair: 'HULL',
+        loadCargo: 'LOAD',
+        unloadCargo: 'UNLOAD',
+        upgrade: 'UP',
+        elevatorTransfer: 'XFER',
+      };
+      return map[it.type] || String(it.type || '?').toUpperCase().slice(0, 6);
+    };
+    const jobMap = {
+      repair: 'weld',
+      loadCargo: 'loadShip',
+      unloadCargo: 'unloadShip',
+      upgrade: 'installUpgrade',
+      refuel: 'loadShip',
+      reload: 'loadShip',
+    };
+    const rows = [];
+    for (const it of svc.items) {
+      if (it.type === 'elevatorTransfer') continue;
+      let color = 'yellow';
+      if (it.status === 'done') {
+        color = 'green';
+      } else {
+        const job = jobMap[it.type];
+        const assigned = this.npcs.some((n) => {
+          if (n.kind === 'mechanic' && n.homeBay === bayIndex && n.job === job) return true;
+          if (
+            n.kind === 'forklift' &&
+            n.targetPile?.bay === bayIndex &&
+            n.job === 'bringIn' &&
+            (it.type === 'refuel' || it.type === 'reload' || it.type === 'loadCargo' || it.type === 'upgrade')
+          ) {
+            return true;
+          }
+          return false;
+        });
+        // Soft OoO: upgrades stay grey until fuel/hull/ammo/cargo lines are done or in progress
+        if (it.type === 'upgrade') {
+          const blockers = svc.items.filter(
+            (o) =>
+              o !== it &&
+              o.status !== 'done' &&
+              (o.type === 'refuel' || o.type === 'repair' || o.type === 'reload' || o.type === 'loadCargo')
+          );
+          if (blockers.length && !assigned) color = 'grey';
+          else color = assigned ? 'blue' : 'yellow';
+        } else {
+          color = assigned ? 'blue' : 'yellow';
+        }
+      }
+      rows.push({ label: labelOf(it), color, status: it.status });
+    }
+    if (!rows.length) return [{ label: 'STANDBY', color: 'dim', status: 'idle' }];
+    return rows;
+  }
+
+  _boardHeaderLight(bayIndex) {
+    if (!this._bayHasShip(bayIndex)) return 'off';
+    if (this._opsBays.has(bayIndex) || (this.doorOpen[bayIndex] || 0) > 0.05) return 'redFlash';
+    if (this._bayWorkComplete(bayIndex)) return 'green';
+    return 'yellow';
+  }
+
   /**
    * Clear ops on one bay, or all bays when bayIndex is omitted.
    * @param {number} [bayIndex]
@@ -418,7 +759,6 @@ export class HangarBay {
     const clearOne = (i) => {
       if (!this._opsBays.has(i)) return;
       this._opsBays.delete(i);
-      this.bayBeacons[i] = 'idle';
       this.bayLaneMode[i] = 'idle';
       this.doorOpen[i] = 0;
       this.padRimMode[i] = 'off';
@@ -524,8 +864,8 @@ export class HangarBay {
       if (npc.targetPad && Math.abs(npc.targetPad.x - (padCenters()[bay] || 0)) < 20) {
         this._clearTaskClaim(npc);
         npc.job = 'idle';
-        npc.taskMode = 'despawn';
-        npc.state = 'toExit';
+        npc.taskMode = 'idle';
+        this._beginIdleFluff(npc);
       }
     }
   }
@@ -2022,7 +2362,7 @@ export class HangarBay {
       return { mode: 'linger', pickup: wait.pickup, dropoff: wait.dropoff };
     }
 
-    return { mode: 'idle', pickup: this._bayPile(1, 'in', ROW.M), dropoff: null };
+    return { mode: 'idle', pickup: null, dropoff: null };
   }
 
   _floorDropClaimedByMechanic(drop) {
@@ -2083,7 +2423,7 @@ export class HangarBay {
 
   _applyCraneJob(c, job) {
     if (!job || job.mode === 'idle') {
-      c.pickup = job?.pickup || this._bayPile(1, 'in', ROW.M);
+      c.pickup = { x: CRANE_HOME.x, y: CRANE_HOME.y + TROLLEY_NORTH, id: 'craneHome' };
       c.dropoff = c.pickup;
       c.phase = 'idle';
       c.pause = 0.6;
@@ -2198,26 +2538,9 @@ export class HangarBay {
     this._updateVisitorTraffic(deltaTime);
     this._updatePlayerBayService(deltaTime);
     this._updateBayClearing();
+    this._syncDoorBeacons();
+    this._syncBayTickers();
 
-    this._spawnTimer -= deltaTime;
-    if (this._spawnTimer <= 0 && this.npcs.length < 6 && !this._opsBays.has(1)) {
-      const forks = this.npcs.filter((n) => n.kind === 'forklift').length;
-      const mechs = this.npcs.filter((n) => n.kind === 'mechanic').length;
-      // Mechanics first: cargo pressure used to starve pedestrians by always
-      // preferring forklifts whenever forks < 2 and pressure ≠ 0.
-      if (mechs < 2) {
-        this._spawnMechanic();
-      } else if (forks < 2 && (this._pressure !== 0 || Math.random() < 0.4)) {
-        this._spawnForklift(Math.random() < 0.5 ? -1 : 1);
-      } else if (mechs < 3) {
-        this._spawnMechanic();
-      } else if (forks < 2) {
-        this._spawnForklift(Math.random() < 0.5 ? -1 : 1);
-      }
-      this._spawnTimer = mechs < 2 ? rand(0.8, 1.6) : rand(1.6, 3.5);
-    } else if (this._opsBays.has(1)) {
-      this._spawnTimer = 1.5;
-    }
     for (const b of this._opsBays) this.tickEvac(b);
 
     const hazardLevel =
@@ -2226,10 +2549,21 @@ export class HangarBay {
       this._hazard.weapons * 1.35;
 
     for (const npc of this.npcs) {
-      if (npc.kind === 'mechanic') this._updateMechanic(npc, deltaTime, hazardLevel);
-      else this._updateForklift(npc, deltaTime, hazardLevel);
+      if (npc.kind === 'mechanic') {
+        npc.secSinceLastBayTask = (npc.secSinceLastBayTask || 0) + deltaTime;
+        this._updateMechanic(npc, deltaTime, hazardLevel);
+      } else {
+        this._updateForklift(npc, deltaTime, hazardLevel);
+      }
     }
-    this.npcs = this.npcs.filter((n) => n.alive);
+    // Fixed roster — never cull by alive; revive if something goes wrong
+    for (const npc of this.npcs) {
+      if (!npc.alive) {
+        npc.alive = true;
+        if (npc.kind === 'mechanic') this._parkMechanicIdle(npc);
+        else this._parkForkliftAtHub(npc);
+      }
+    }
 
     if (act.engine > 0.2 && Math.random() < act.engine * 0.4) {
       const a = this._shipAngle + Math.PI;
@@ -2451,9 +2785,22 @@ export class HangarBay {
   }
 
   _craneParkXY(pile) {
+    if (!pile || pile.id === 'craneHome') {
+      return {
+        x: this._clampTrolleyX(CRANE_HOME.x),
+        y: this._clampBridgeY(CRANE_HOME.y),
+      };
+    }
     return {
       x: this._clampTrolleyX(pile.x),
       y: this._clampBridgeY(pile.y - TROLLEY_NORTH),
+    };
+  }
+
+  _craneHomeXY() {
+    return {
+      x: this._clampTrolleyX(CRANE_HOME.x),
+      y: this._clampBridgeY(CRANE_HOME.y),
     };
   }
 
@@ -2567,7 +2914,7 @@ export class HangarBay {
           c.hoist = Math.max(HOIST_RAISED, c.hoist - hoistSpeed * dt);
           break;
         }
-        const park = this._craneParkXY(c.pickup || this._bayPile(1, 'in', ROW.M));
+        const park = this._craneHomeXY();
         this._moveCraneXY(c, park.x, park.y, moveSpeed * 0.6, dt);
         c.pause = 0.5;
         this._applyCraneJob(c, this._pickCraneJob());
@@ -2826,25 +3173,36 @@ export class HangarBay {
   }
 
   /**
-   * @returns {{ mode: 'work'|'linger'|'despawn', job?, targetPad?, bay?, targetPile? }}
+   * @returns {{ mode: 'work'|'linger'|'idle', job?, targetPad?, bay?, targetPile? }}
    */
   _pickMechanicTask(npc) {
-    const pads = this._dockTargets();
-    if (!pads.length) return { mode: 'despawn' };
+    const homeBay = npc.homeBay ?? npc.bay ?? 1;
+    const pads = this._dockTargets().filter((p) => bayIndexFromX(p.x) === homeBay);
+    const servicePad = this._servicePad(homeBay);
 
     // Already carrying — must deliver to matching outbound pile (or linger if full)
     if (npc.cargo) {
-      const bay = npc.bay ?? bayIndexFromX(npc.targetPad?.x ?? npc.x);
-      const pad = pads.find((p) => bayIndexFromX(p.x) === bay) || pads[0];
+      const pad =
+        pads[0] ||
+        (servicePad
+          ? {
+              x: servicePad.x,
+              y: 0,
+              bayId: servicePad.bayId,
+              bayIndex: homeBay,
+              occupied: true,
+            }
+          : null);
+      if (!pad) return { mode: 'idle' };
       const row = npc.cargo.family === 'upgrade' ? ROW.N : ROW.M;
       const job = npc.cargo.family === 'upgrade' ? 'removeUpgrade' : 'unloadShip';
-      const dest = this._bayPile(bay, 'out', row);
+      const dest = this._bayPile(homeBay, 'out', row);
       if (dest && dest.items.length < PILE_CAP) {
         return {
           mode: 'work',
           job,
           targetPad: pad,
-          bay,
+          bay: homeBay,
           targetPile: dest,
           weight: 5,
         };
@@ -2854,27 +3212,38 @@ export class HangarBay {
           mode: 'linger',
           job,
           targetPad: pad,
-          bay,
+          bay: homeBay,
           targetPile: dest,
           weight: 3,
         };
       }
-      return { mode: 'despawn' };
+      return { mode: 'idle' };
+    }
+
+    if (!pads.length && !this.bayClearing[homeBay]) {
+      return { mode: 'idle' };
     }
 
     const all = [];
-    for (const pad of pads) {
-      const bay = bayIndexFromX(pad.x);
-      for (const t of this._enumerateMechanicTasks(bay, pad)) all.push(t);
+    if (pads.length) {
+      for (const pad of pads) {
+        for (const t of this._enumerateMechanicTasks(homeBay, pad)) all.push(t);
+      }
+    } else if (this.bayClearing[homeBay] && servicePad) {
+      const stub = {
+        x: servicePad.x,
+        y: 0,
+        bayId: servicePad.bayId,
+        bayIndex: homeBay,
+        occupied: false,
+      };
+      for (const t of this._enumerateMechanicTasks(homeBay, stub)) all.push(t);
     }
 
-    // Drop tasks already claimed by other crew
     const free = this._filterUnclaimed(all, npc);
     const doable = free.filter((t) => t.status === 'doable');
     const blocked = free.filter((t) => t.status === 'blocked');
 
-    // Prefer captain repair, then clearing full inbound, then load/install
-    // (never prioritize ambient/random weld — B2 has none now)
     let pool = doable.filter((t) => t.job === 'weld' && t.service);
     if (!pool.length) pool = doable.filter((t) => t.clears);
     if (!pool.length) {
@@ -2895,7 +3264,7 @@ export class HangarBay {
       return { mode: 'linger', ...wait };
     }
 
-    return { mode: 'despawn' };
+    return { mode: 'idle' };
   }
 
   _assignMechanicRoute(npc) {
@@ -2904,7 +3273,7 @@ export class HangarBay {
     npc.targetPile = null;
     npc.lingerPile = null;
 
-    if (pick.mode === 'despawn') {
+    if (pick.mode === 'idle' || pick.mode === 'despawn') {
       npc.job = 'idle';
       this._clearTaskClaim(npc);
       return false;
@@ -2912,7 +3281,7 @@ export class HangarBay {
 
     npc.job = pick.job;
     npc.targetPad = pick.targetPad;
-    npc.bay = pick.bay;
+    npc.bay = pick.bay ?? npc.homeBay;
     npc.targetPile = pick.targetPile;
     npc.tripsLeft = 2 + ((Math.random() * 3) | 0);
     npc.taskMode = pick.mode;
@@ -2934,45 +3303,57 @@ export class HangarBay {
     return this._bayWorkPiles(padX, 'in', ROW.M);
   }
 
-  /** Stairs only — bulkhead doors are forklift logistics. */
-  _spawnMechanic() {
-    const hotStairs = STAIRS.filter((s) => !this._isBayOpsHot(s.bay));
-    const stairPool = hotStairs.length ? hotStairs : STAIRS;
-    const stair = pick(stairPool);
-    // Prefer not emerging into an ops-hot bay's danger rect
-    if (this._isBayOpsHot(stair.bay) && this._opsBays.size) return;
+  /** Fixed station roster: 6 bay mechs + 4 forklifts (always on stage). */
+  _initStationCrew() {
+    this.npcs = [];
+    const labels = ['B1', 'B2', 'B3'];
+    for (let bay = 0; bay < 3; bay++) {
+      for (let slot = 1; slot <= 2; slot++) {
+        this._createMechanic(`${labels[bay]}Mechanic${slot}`, bay, slot);
+      }
+    }
+    for (let i = 0; i < 4; i++) {
+      this._createForklift(`forklift${i + 1}`, i);
+    }
+  }
 
-    const side = Math.random() < 0.5 ? -1 : 1;
-
+  _createMechanic(id, homeBay, slot) {
+    const comp = BAY_COMPUTERS[homeBay];
+    const ox = slot === 1 ? -10 : 10;
     const npc = {
+      id,
       kind: 'mechanic',
       uid: this._npcUid++,
       alive: true,
-      x: stair.x,
-      y: stair.y,
+      homeBay,
+      x: comp.x + ox,
+      y: comp.y + 16,
       vx: 0,
-      facing: stair.x < 0 ? 1 : -1,
+      facing: homeBay === 2 ? -1 : 1,
       phase: Math.random() * Math.PI * 2,
-      state: 'emerge',
-      stateT: 0.55,
-      side,
-      entry: 'stairs',
-      exit: 'stairs',
-      stair,
-      exitStair: stair,
+      state: 'idleFluff',
+      stateT: rand(0.4, 1.2),
+      side: homeBay === 0 ? -1 : 1,
+      entry: 'apron',
+      exit: 'apron',
+      stair: STAIRS[homeBay],
+      exitStair: STAIRS[homeBay],
       cargo: null,
       droppedCargoId: null,
       floorDropId: null,
       targetPile: null,
       lingerPile: null,
       targetPad: null,
-      bay: stair.bay,
-      job: 'loadShip',
-      taskMode: 'work',
-      tripsLeft: 2,
+      bay: homeBay,
+      job: 'idle',
+      taskMode: 'idle',
+      tripsLeft: 0,
       emergeT: 0,
-      exitArmed: false,
+      exitArmed: true,
       claimKey: null,
+      secSinceLastBayTask: rand(5, 40),
+      lingerTarget: null,
+      gossipWp: null,
       _crossing: false,
       _crossPhase: 0,
       _corridorX: null,
@@ -2981,20 +3362,76 @@ export class HangarBay {
       helmet: pick(['#c8d0d8', '#a8b8c8', '#d0c8b0']),
       _skirtWp: null,
     };
-
-    if (!this._assignMechanicRoute(npc)) {
-      // Nothing useful to do — don't surface just to weld B2
-      return;
+    if (this._assignMechanicRoute(npc)) {
+      this._startMechanicJob(npc);
+    } else {
+      this._beginIdleFluff(npc);
     }
-    npc.exitStair = this._nearestStair(npc.targetPad?.x ?? npc.x);
     this.npcs.push(npc);
   }
 
+  _createForklift(id, parkIndex) {
+    const park = FORKLIFT_PARKS[parkIndex] || FORKLIFT_PARKS[0];
+    const side = park.x < 0 ? -1 : 1;
+    const npc = {
+      id,
+      kind: 'forklift',
+      alive: true,
+      parkIndex,
+      x: park.x,
+      y: park.y,
+      vx: 0,
+      facing: -side,
+      phase: Math.random() * Math.PI * 2,
+      state: 'atHub',
+      stateT: rand(0.5, 2),
+      side,
+      job: 'idle',
+      cargo: null,
+      targetPile: null,
+      lingerPile: null,
+      claimKey: null,
+      body: pick(['#c87830', '#b86028', '#d08840', '#c07038']),
+    };
+    this.npcs.push(npc);
+  }
+
+  _parkMechanicIdle(npc) {
+    const comp = BAY_COMPUTERS[npc.homeBay ?? 0];
+    npc.x = comp.x + (Math.random() < 0.5 ? -8 : 8);
+    npc.y = comp.y + 14;
+    npc.cargo = null;
+    npc.job = 'idle';
+    npc.taskMode = 'idle';
+    this._clearTaskClaim(npc);
+    this._beginIdleFluff(npc);
+  }
+
+  _parkForkliftAtHub(npc) {
+    const park = FORKLIFT_PARKS[npc.parkIndex ?? 0] || FORKLIFT_PARKS[0];
+    npc.x = park.x;
+    npc.y = park.y;
+    npc.cargo = null;
+    npc.job = 'idle';
+    this._clearTaskClaim(npc);
+    npc.state = 'atHub';
+    npc.stateT = rand(0.8, 2.5);
+  }
+
+  /** @deprecated — use _initStationCrew */
+  _spawnMechanic() {
+    /* no-op: fixed roster */
+  }
+
+  /** @deprecated — use _initStationCrew */
+  _spawnForklift() {
+    /* no-op: fixed roster */
+  }
+
   _tryRerouteMechanicFromExit(npc) {
-    if (npc.cargo) return false; // finish delivering / dumping via toExit cargo drop
+    if (npc.cargo) return false;
     const pick = this._pickMechanicTask(npc);
     if (pick.mode !== 'work' && pick.mode !== 'linger') return false;
-    // Cargo / clearing / captain repair only — don't bounce leavers for fluff
     const useful =
       pick.clears ||
       pick.service ||
@@ -3007,12 +3444,12 @@ export class HangarBay {
     npc.tripsLeft = Math.max(1, npc.tripsLeft || 1);
     npc.job = pick.job;
     npc.targetPad = pick.targetPad;
-    npc.bay = pick.bay;
+    npc.bay = pick.bay ?? npc.homeBay;
     npc.targetPile = pick.targetPile;
     npc.taskMode = pick.mode;
     npc.lingerPile = pick.mode === 'linger' ? pick.targetPile : null;
     npc.exitArmed = true;
-    npc.exitStair = this._nearestStair(npc.targetPad?.x ?? npc.x);
+    npc.exitStair = STAIRS[npc.homeBay] || this._nearestStair(npc.x);
     npc.hullTarget = null;
     this._applyTaskClaim(npc, pick.job, pick.targetPile, pick.bay);
     this._startMechanicJob(npc);
@@ -3168,52 +3605,13 @@ export class HangarBay {
     const wait = this._pickWeighted(blocked);
     if (wait) return { mode: 'linger', ...wait };
 
-    return { mode: 'despawn' };
+    return { mode: 'idle' };
   }
 
   _hasOutboundCargo() {
     return this._pilesInRow(ROW.S).some(
       (p) => p.lane === 'out' && p.items.length > 0
     );
-  }
-
-  _spawnForklift(side = 1) {
-    const doorX = side < 0 ? -BAY.HALF_W : BAY.HALF_W;
-    const npc = {
-      kind: 'forklift',
-      alive: true,
-      x: doorX + side * 50,
-      y: BAY.PATH_Y + rand(-6, 6),
-      vx: 0,
-      facing: -side,
-      phase: Math.random() * Math.PI * 2,
-      state: 'enter',
-      stateT: 0,
-      side,
-      job: 'takeOut',
-      cargo: null,
-      targetPile: null,
-      lingerPile: null,
-      claimKey: null,
-      body: pick(['#c87830', '#b86028', '#d08840']),
-    };
-
-    // Prefer entering empty for takeOut when outbound is waiting
-    if (this._hasOutboundCargo() || this._pressure > 0) {
-      npc.job = 'takeOut';
-    } else if (this._anyBayNeedsInbound() && (this._pressure < 0 || Math.random() < 0.55)) {
-      npc.job = 'bringIn';
-      npc.cargo = this._makeSmartInboundCargo();
-      if (!npc.cargo) {
-        npc.job = 'takeOut';
-      } else if (npc.cargo.serviceBay != null) {
-        npc.targetPile = this._bayPile(npc.cargo.serviceBay, 'in', ROW.S);
-      }
-    } else {
-      npc.job = 'takeOut';
-    }
-
-    this.npcs.push(npc);
   }
 
   _makeSmartInboundCargo() {
@@ -3307,10 +3705,9 @@ export class HangarBay {
       return;
     }
 
-    // Only react to being shot — ignore thrusters / bay danger
     const weaponHot = this._hazard.weapons;
     if (
-      (npc.state === 'toPile' || npc.state === 'work' || npc.state === 'linger' || npc.state === 'enter') &&
+      (npc.state === 'toPile' || npc.state === 'work' || npc.state === 'linger' || npc.state === 'enter' || npc.state === 'atHub') &&
       weaponHot > 0.45 &&
       Math.hypot(npc.x - this._shipPos.x, npc.y - this._shipPos.y) < 110 &&
       Math.random() < weaponHot * 0.1
@@ -3322,20 +3719,43 @@ export class HangarBay {
     }
 
     switch (npc.state) {
+      case 'atHub': {
+        const park = FORKLIFT_PARKS[npc.parkIndex ?? 0] || FORKLIFT_PARKS[0];
+        this._moveToward(npc, park.x, park.y, 28, dt);
+        if (npc.stateT > 0) break;
+        const pick = this._pickForkliftJob(npc);
+        if (pick.mode === 'work' || pick.mode === 'linger') {
+          if (pick.job === 'bringIn' && !npc.cargo) {
+            npc.side = Math.random() < 0.5 ? -1 : 1;
+            npc.state = 'toDoor';
+            npc._fetchInbound = true;
+            break;
+          }
+          npc.job = pick.job;
+          npc.targetPile = pick.targetPile;
+          npc.lingerPile = pick.mode === 'linger' ? pick.targetPile : null;
+          if (pick.job === 'takeOut') npc.cargo = null;
+          this._applyTaskClaim(npc, pick.job, pick.targetPile, pick.targetPile?.bay);
+          npc.state = pick.mode === 'linger' ? 'linger' : 'toPile';
+          npc.stateT = 0.3;
+        } else {
+          npc.stateT = rand(0.6, 1.8);
+        }
+        break;
+      }
       case 'enter': {
         const ix = this._insideX(npc.side);
         if (this._moveToward(npc, ix, BAY.PATH_Y, 40, dt)) {
           const pick = this._pickForkliftJob(npc);
-          if (pick.mode === 'despawn') {
+          if (pick.mode === 'idle' || pick.mode === 'despawn') {
             this._clearTaskClaim(npc);
-            npc.state = 'toDoor';
+            npc.state = 'toHub';
             break;
           }
-          // Empty + only inbound waiting → leave to fetch. But if outbound exists,
-          // _pickForkliftJob already preferred takeOut.
           if (pick.job === 'bringIn' && !npc.cargo) {
             this._clearTaskClaim(npc);
             npc.state = 'toDoor';
+            npc._fetchInbound = true;
             break;
           }
           npc.job = pick.job;
@@ -3351,10 +3771,9 @@ export class HangarBay {
       case 'toPile': {
         let p = this._pileById(npc.targetPile?.id);
         if (!p) {
-          npc.state = 'toDoor';
+          npc.state = 'toHub';
           break;
         }
-        // Dest full while bringing in — linger or switch
         if (npc.job === 'bringIn' && p.items.length >= PILE_CAP) {
           const pick = this._pickForkliftJob(npc);
           if (pick.mode === 'work' && pick.job === 'bringIn') {
@@ -3370,6 +3789,7 @@ export class HangarBay {
             if (pick.job === 'bringIn' && !npc.cargo) {
               this._clearTaskClaim(npc);
               npc.state = 'toDoor';
+              npc._fetchInbound = true;
               break;
             }
             npc.job = pick.job;
@@ -3379,11 +3799,11 @@ export class HangarBay {
             p = this._pileById(npc.targetPile?.id);
           } else {
             this._clearTaskClaim(npc);
-            npc.state = 'toDoor';
+            npc.state = 'toHub';
             break;
           }
           if (!p) {
-            npc.state = 'toDoor';
+            npc.state = 'toHub';
             break;
           }
         }
@@ -3406,6 +3826,7 @@ export class HangarBay {
           if (pick.job === 'bringIn' && !npc.cargo) {
             this._clearTaskClaim(npc);
             npc.state = 'toDoor';
+            npc._fetchInbound = true;
             break;
           }
           npc.job = pick.job;
@@ -3421,7 +3842,7 @@ export class HangarBay {
           npc.stateT = 0.55;
         } else {
           this._clearTaskClaim(npc);
-          npc.state = 'toDoor';
+          npc.state = 'toHub';
         }
         break;
       }
@@ -3429,7 +3850,6 @@ export class HangarBay {
         if (npc.stateT > 0) break;
         const p = this._pileById(npc.targetPile?.id);
         if (npc.job === 'bringIn' && npc.cargo && p && p.items.length < PILE_CAP) {
-          // Dumping onto outbound during bay clear — drop checklist tags
           if (p.lane === 'out' && npc.cargo.serviceKey) {
             npc.cargo.serviceKey = null;
             npc.cargo.serviceBay = null;
@@ -3437,8 +3857,9 @@ export class HangarBay {
           p.items.push(npc.cargo);
           npc.cargo = null;
           this._clearTaskClaim(npc);
-          // Must exit to fetch the next inbound load — never spawn cargo in-bay
+          // Exit to fetch next inbound (fake offscreen cargo)
           npc.state = 'toDoor';
+          npc._fetchInbound = true;
           break;
         } else if (npc.job === 'bringIn' && npc.cargo && p && p.items.length >= PILE_CAP) {
           npc.lingerPile = p;
@@ -3447,23 +3868,32 @@ export class HangarBay {
           break;
         } else if (npc.job === 'takeOut' && !npc.cargo && p && p.items.length > 0) {
           npc.cargo = p.items.pop();
-          // Hauling checklist freight off-station → re-order that need
           if (npc.cargo?.serviceKey && p.lane === 'in') {
             this._restageServiceCargo(npc.cargo);
             npc.cargo.serviceKey = null;
             npc.cargo.serviceBay = null;
           }
           this._clearTaskClaim(npc);
+          npc.state = 'toDoor';
+          npc._haulOff = true;
+          break;
         }
         this._clearTaskClaim(npc);
-        npc.state = 'toDoor';
+        npc.state = 'toHub';
+        break;
+      }
+      case 'toHub': {
+        const park = FORKLIFT_PARKS[npc.parkIndex ?? 0] || FORKLIFT_PARKS[0];
+        if (this._moveToward(npc, park.x, park.y, 40, dt)) {
+          npc.state = 'atHub';
+          npc.stateT = rand(0.5, 2);
+        }
         break;
       }
       case 'toDoor': {
-        // Empty trucks check often so they don't drive past outbound piles
         const rerouteEvery = npc.cargo ? 0.35 : 0.12;
         npc._rerouteT = (npc._rerouteT || 0) + dt;
-        if (npc._rerouteT >= rerouteEvery) {
+        if (!npc._haulOff && !npc._fetchInbound && npc._rerouteT >= rerouteEvery) {
           npc._rerouteT = 0;
           if (this._tryRerouteForkliftFromExit(npc)) break;
         }
@@ -3474,27 +3904,40 @@ export class HangarBay {
         break;
       }
       case 'exit': {
-        const rerouteEvery = npc.cargo ? 0.35 : 0.12;
-        npc._rerouteT = (npc._rerouteT || 0) + dt;
-        if (npc._rerouteT >= rerouteEvery) {
-          npc._rerouteT = 0;
-          if (this._tryRerouteForkliftFromExit(npc)) break;
-        }
         const doorX = this._doorX(npc.side);
         if (this._moveToward(npc, doorX + npc.side * 55, BAY.PATH_Y, 42, dt)) {
-          if (npc.cargo) {
+          if (npc._haulOff && npc.cargo) {
+            // Fake offscreen vanish
             this._restageServiceCargo(npc.cargo);
             npc.cargo = null;
+            npc._haulOff = false;
+            npc.state = 'enter';
+            break;
           }
-          npc.alive = false;
+          if (npc._fetchInbound || (!npc.cargo && this._anyBayNeedsInbound())) {
+            npc.cargo = this._makeSmartInboundCargo();
+            npc._fetchInbound = false;
+            if (npc.cargo) {
+              npc.job = 'bringIn';
+              if (npc.cargo.serviceBay != null) {
+                npc.targetPile = this._bayPile(npc.cargo.serviceBay, 'in', ROW.S);
+              }
+              npc.state = 'enter';
+            } else {
+              npc.state = 'enter';
+              npc.job = 'idle';
+            }
+            break;
+          }
+          // No cargo fiction needed — return via enter then hub
+          npc.state = 'enter';
         }
         break;
       }
       default:
-        npc.state = 'toDoor';
+        npc.state = 'toHub';
     }
 
-    // Soft keep-out from pads
     const pushed = this._padKeepOut(npc.x, npc.y);
     if (pushed && npc.state !== 'flee') {
       npc.x = pushed.x;
@@ -3603,9 +4046,9 @@ export class HangarBay {
 
   _startMechanicJob(npc) {
     npc.hullTarget = null;
-    if (npc.taskMode === 'despawn' || npc.job === 'idle') {
+    if (npc.taskMode === 'despawn' || npc.taskMode === 'idle' || npc.job === 'idle') {
       this._clearTaskClaim(npc);
-      npc.state = 'toExit';
+      this._beginIdleFluff(npc);
       return;
     }
     if (npc.taskMode === 'linger') {
@@ -3614,11 +4057,10 @@ export class HangarBay {
       npc.stateT = 0.5;
       return;
     }
-    // Stale assignment (pile emptied) — one re-pick, then exit if still nothing
     if (!this._mechanicJobValid(npc)) {
       if (npc._revalidating) {
         this._clearTaskClaim(npc);
-        npc.state = 'toExit';
+        this._beginIdleFluff(npc);
         npc._revalidating = false;
         return;
       }
@@ -3632,12 +4074,13 @@ export class HangarBay {
       return;
     }
     if (npc.job === 'loadShip' || npc.job === 'installUpgrade') {
-      npc.state = npc.targetPile ? 'toPile' : 'toExit';
+      npc.state = npc.targetPile ? 'toPile' : 'idleFluff';
+      if (npc.state === 'idleFluff') this._beginIdleFluff(npc);
     } else if (npc.job === 'unloadShip' || npc.job === 'removeUpgrade') {
       npc.state = npc.cargo ? 'toPile' : 'toShip';
     } else {
       this._clearTaskClaim(npc);
-      npc.state = 'toExit';
+      this._beginIdleFluff(npc);
     }
   }
 
@@ -3647,10 +4090,11 @@ export class HangarBay {
     this._clearBacksplashCross(npc);
     npc._dodgeCorridorX = null;
     if (npc.job === 'weld') {
-      npc.tripsLeft -= 0; // weld uses trips in workWeld
+      npc.tripsLeft -= 0;
       if (npc.tripsLeft <= 0) {
+        this._noteBayTaskComplete(npc);
         this._clearTaskClaim(npc);
-        npc.state = 'toExit';
+        this._beginIdleFluff(npc);
         return;
       }
       npc.state = 'toShip';
@@ -3658,34 +4102,104 @@ export class HangarBay {
     }
 
     if (npc.tripsLeft <= 0) {
+      this._noteBayTaskComplete(npc);
       this._clearTaskClaim(npc);
-      npc.state = 'toExit';
+      this._beginIdleFluff(npc);
       return;
     }
 
     const pick = this._pickMechanicTask(npc);
-    if (pick.mode === 'despawn') {
+    if (pick.mode === 'idle' || pick.mode === 'despawn') {
+      this._noteBayTaskComplete(npc);
       this._clearTaskClaim(npc);
-      npc.state = 'toExit';
+      this._beginIdleFluff(npc);
       return;
     }
 
     npc.job = pick.job;
     npc.targetPad = pick.targetPad;
-    npc.bay = pick.bay;
+    npc.bay = pick.bay ?? npc.homeBay;
     npc.targetPile = pick.targetPile;
     npc.taskMode = pick.mode;
     npc.lingerPile = pick.mode === 'linger' ? pick.targetPile : null;
-    npc.exitStair = this._nearestStair(npc.targetPad?.x ?? npc.x);
+    npc.exitStair = STAIRS[npc.homeBay] || this._nearestStair(npc.targetPad?.x ?? npc.x);
     this._applyTaskClaim(npc, pick.job, pick.targetPile, pick.bay);
     this._startMechanicJob(npc);
   }
 
-  /** Step clear of a stair hatch onto the deck (around backsplash, toward ships). */
+  _noteBayTaskComplete(npc) {
+    npc.secSinceLastBayTask = 0;
+  }
+
+  _beginIdleFluff(npc) {
+    this._clearTaskClaim(npc);
+    npc.job = 'idle';
+    npc.taskMode = 'idle';
+    npc.hullTarget = null;
+    npc.lingerTarget = null;
+    npc.gossipWp = null;
+    const idleSec = npc.secSinceLastBayTask || 0;
+    // Fresh off a job → near-bay; long idle → wing / gossip
+    const wingBias = Math.min(1, idleSec / 60);
+    const roll = Math.random();
+    if (roll < 0.35 + wingBias * 0.35) {
+      this._assignGossipLinger(npc);
+    } else {
+      this._assignPiddleLinger(npc, wingBias);
+    }
+  }
+
+  _assignPiddleLinger(npc, wingBias = 0.5) {
+    const homeBay = npc.homeBay ?? 0;
+    const near = HANGAR_PROPS.filter(
+      (p) => p.bay === homeBay && p.kind === 'computer'
+    );
+    const wing = HANGAR_PROPS.filter(
+      (p) => (p.bay === homeBay || p.bay == null) && p.kind !== 'computer'
+    );
+    const pool = Math.random() < wingBias && wing.length ? wing : near.length ? near : wing;
+    const prop = pool.length ? pick(pool) : BAY_COMPUTERS[homeBay];
+    const spot = prop.linger?.[0] || { x: prop.x, y: prop.y + 12 };
+    npc.lingerTarget = { x: spot.x, y: spot.y, propId: prop.id };
+    npc.state = 'idleFluff';
+    npc.stateT = rand(2.5, 5.5);
+  }
+
+  _assignGossipLinger(npc) {
+    const occupied = GOSSIP_WAYPOINTS.map((wp) => ({
+      wp,
+      n: this.npcs.filter(
+        (o) =>
+          o.kind === 'mechanic' &&
+          o.alive &&
+          o !== npc &&
+          (o.state === 'idleFluff' || o.state === 'gossip') &&
+          o.gossipWp === wp.id
+      ).length,
+    }));
+    occupied.sort((a, b) => {
+      // Prefer joining a non-full group
+      const af = a.n > 0 && a.n < a.wp.capacity ? 0 : 1;
+      const bf = b.n > 0 && b.n < b.wp.capacity ? 0 : 1;
+      if (af !== bf) return af - bf;
+      return b.n - a.n;
+    });
+    const choice =
+      occupied.find((o) => o.n < o.wp.capacity)?.wp || GOSSIP_WAYPOINTS[0];
+    npc.gossipWp = choice.id;
+    const slot = (npc.uid % 3) - 1;
+    npc.lingerTarget = {
+      x: choice.x + slot * 7,
+      y: choice.y + ((npc.uid % 2) * 4 - 2),
+      propId: choice.id,
+    };
+    npc.state = 'idleFluff';
+    npc.stateT = rand(3, 7);
+  }
+
+  /** Step clear of apron rally toward ships (around backsplash). */
   _hatchRally(npc) {
-    const stair = npc.stair || npc.exitStair || this._nearestStair(npc.x);
-    // Corridor X — never the pad center. Center rallies sit inside pad keep-out
-    // and cause N/S ping-pong on the apron as soon as toPile starts.
+    const stair = npc.stair || npc.exitStair || STAIRS[npc.homeBay] || this._nearestStair(npc.x);
     const x = this._pickCorridorX(stair.x, npc.targetPad?.x ?? stair.x);
     return { x, y: BACKSPLASH_Y - BACKSPLASH_BAND - 24 };
   }
@@ -4041,34 +4555,51 @@ export class HangarBay {
     const walk = 27;
 
     switch (npc.state) {
-      case 'emerge': {
-        npc.emergeT = (npc.emergeT || 0) + dt;
-        if (npc.emergeT >= 0.55) {
-          // Idle/despawn must never walk north toward ships then reverse down the hatch
-          if (npc.taskMode === 'despawn' || npc.job === 'idle') {
-            this._clearTaskClaim(npc);
-            npc.state = 'descend';
-            npc.stateT = 0.45;
-            break;
-          }
-          npc.rally = this._hatchRally(npc);
-          npc.afterHatch = 'job';
-          npc.state = 'leaveHatch';
-          npc.exitArmed = false;
+      case 'emerge':
+      case 'leaveHatch': {
+        // Stairs removed — treat as idle fluff / job start
+        npc.exitArmed = true;
+        if (npc.taskMode === 'despawn' || npc.job === 'idle' || npc.taskMode === 'idle') {
+          this._beginIdleFluff(npc);
+        } else {
+          this._startMechanicJob(npc);
         }
         break;
       }
-      case 'leaveHatch': {
-        const rally = npc.rally || this._hatchRally(npc);
-        if (this._mechMove(npc, rally.x, rally.y, walk, dt)) {
-          npc.exitArmed = true;
-          if (npc.afterHatch === 'toExit' || npc.taskMode === 'despawn' || npc.job === 'idle') {
-            this._clearTaskClaim(npc);
-            npc.state = 'toExit';
-          } else {
-            this._startMechanicJob(npc);
+      case 'idleFluff': {
+        // Interrupt for real bay work
+        const wake = this._pickMechanicTask(npc);
+        if (wake.mode === 'work' || wake.mode === 'linger') {
+          npc.job = wake.job;
+          npc.targetPad = wake.targetPad;
+          npc.bay = wake.bay ?? npc.homeBay;
+          npc.targetPile = wake.targetPile;
+          npc.taskMode = wake.mode;
+          npc.lingerPile = wake.mode === 'linger' ? wake.targetPile : null;
+          npc.tripsLeft = 2 + ((Math.random() * 3) | 0);
+          this._applyTaskClaim(npc, wake.job, wake.targetPile, wake.bay);
+          this._startMechanicJob(npc);
+          break;
+        }
+        const tgt = npc.lingerTarget;
+        if (tgt) {
+          this._mechMove(npc, tgt.x, tgt.y, walk * 0.85, dt);
+          if (Math.hypot(npc.x - tgt.x, npc.y - tgt.y) < 4) {
+            npc.x += Math.sin(npc.phase) * 0.12;
+            if (npc.gossipWp) {
+              const mate = this.npcs.find(
+                (o) =>
+                  o !== npc &&
+                  o.kind === 'mechanic' &&
+                  o.gossipWp === npc.gossipWp &&
+                  Math.hypot(o.x - npc.x, o.y - npc.y) < 22
+              );
+              if (mate) npc.facing = Math.sign(mate.x - npc.x) || npc.facing;
+            }
           }
-          npc.afterHatch = null;
+        }
+        if (npc.stateT <= 0) {
+          this._beginIdleFluff(npc);
         }
         break;
       }
@@ -4126,7 +4657,7 @@ export class HangarBay {
           npc.stateT = 0.55;
         } else {
           this._clearTaskClaim(npc);
-          npc.state = 'toExit';
+          this._beginIdleFluff(npc);
         }
         break;
       }
@@ -4151,8 +4682,10 @@ export class HangarBay {
           p.items.push(npc.cargo);
           npc.cargo = null;
           npc.tripsLeft -= 1;
-          if (npc.tripsLeft <= 0) npc.state = 'toExit';
-          else this._beginNextMechanicTrip(npc);
+          if (npc.tripsLeft <= 0) {
+            this._noteBayTaskComplete(npc);
+            this._beginIdleFluff(npc);
+          } else this._beginNextMechanicTrip(npc);
         } else if (unloading && npc.cargo && p && p.items.length >= PILE_CAP) {
           // Dest blocked — try another task or linger
           this._beginNextMechanicTrip(npc);
@@ -4236,12 +4769,12 @@ export class HangarBay {
         this._clearTaskClaim(npc);
         const weldBay = npc.bay ?? bayIndexFromX(npc.targetPad?.x ?? npc.x);
         this._completeServiceType(weldBay, 'repair');
+        this._noteBayTaskComplete(npc);
         npc.tripsLeft -= 1;
         npc.hullTarget = null;
-        if (npc.tripsLeft <= 0 || weldBay !== 1) {
-          // Visitor repair is one checklist item; B2 may keep ambient multi-trip welds
-          if (weldBay !== 1) npc.tripsLeft = 0;
-          npc.state = 'toExit';
+        if (npc.tripsLeft <= 0 || weldBay !== npc.homeBay) {
+          npc.tripsLeft = 0;
+          this._beginIdleFluff(npc);
         } else npc.state = 'toShip';
         break;
       }
@@ -4253,7 +4786,6 @@ export class HangarBay {
         }
         const upgrading =
           npc.job === 'installUpgrade' || npc.job === 'removeUpgrade';
-        // Sparky weld during install / uninstall (same as hull repair)
         if (upgrading && Math.random() < 0.6) {
           this._sparkle.push({
             x: npc.x + rand(-4, 4),
@@ -4269,15 +4801,15 @@ export class HangarBay {
 
         if ((npc.job === 'loadShip' || npc.job === 'installUpgrade') && npc.cargo) {
           this._completeLoadService(bay, npc.cargo, npc.job);
+          this._noteBayTaskComplete(npc);
           npc.cargo = null;
           npc.tripsLeft -= 1;
           npc.hullTarget = null;
           if (npc.tripsLeft <= 0) {
             this._clearTaskClaim(npc);
-            npc.state = 'toExit';
+            this._beginIdleFluff(npc);
           } else this._beginNextMechanicTrip(npc);
         } else if ((npc.job === 'loadShip' || npc.job === 'installUpgrade') && !npc.cargo) {
-          // Arrived empty — don't no-op at the hull; find real work
           this._beginNextMechanicTrip(npc);
         } else if (npc.job === 'unloadShip' && !npc.cargo) {
           const dest = this._bayPile(bay, 'out', ROW.M);
@@ -4310,10 +4842,13 @@ export class HangarBay {
         }
         break;
       }
-      case 'toExit': {
+      case 'toExit':
+      case 'descend':
+      case 'exitDoor': {
+        // Stairs removed — dump cargo if any and idle on apron
         this._clearTaskClaim(npc);
         if (npc.cargo) {
-          const bay = npc.bay ?? bayIndexFromX(npc.x);
+          const bay = npc.homeBay ?? bayIndexFromX(npc.x);
           const row = npc.cargo.family === 'upgrade' ? ROW.N : ROW.M;
           const room = this._bayPile(bay, 'out', row);
           if (room && room.items.length < PILE_CAP) room.items.push(npc.cargo);
@@ -4323,63 +4858,12 @@ export class HangarBay {
           }
           npc.cargo = null;
         }
-        // New work appeared while walking off — jump back on it
-        npc._rerouteT = (npc._rerouteT || 0) + dt;
-        if (npc._rerouteT >= 0.35) {
-          npc._rerouteT = 0;
-          if (this._tryRerouteMechanicFromExit(npc)) break;
-        }
-        // Still on a hatch with no walk yet — step onto the deck first
-        if (!npc.exitArmed) {
-          npc.rally = this._hatchRally(npc);
-          npc.afterHatch = 'toExit';
-          npc.state = 'leaveHatch';
-          break;
-        }
-        if (npc.exit === 'door') {
-          if (npc.y < BAY.PATH_Y - 8) {
-            this._mechMove(npc, npc.x, BAY.PATH_Y, walk, dt);
-            break;
-          }
-          const doorX = this._doorX(npc.side);
-          if (this._moveToward(npc, doorX, BAY.PATH_Y, walk, dt)) {
-            npc.state = 'exitDoor';
-          }
-        } else {
-          const stair = npc.exitStair || this._nearestStair(npc.x);
-          // From north of the hatch, detour via a south approach so we don't
-          // "arrive" on the hatch without walking. Once at/south of the hatch,
-          // walk straight in — the old approach↔stair band oscillated forever
-          // (~3px from approach while still >10 from the hatch).
-          const approach = { x: stair.x, y: stair.y + 18 };
-          const northOfHatch = npc.y < stair.y - 2;
-          if (
-            northOfHatch &&
-            Math.hypot(npc.x - approach.x, npc.y - approach.y) > 2
-          ) {
-            this._mechMove(npc, approach.x, approach.y, walk, dt);
-            break;
-          }
-          if (this._mechMove(npc, stair.x, stair.y, walk, dt)) {
-            npc.state = 'descend';
-            npc.stateT = 0.55;
-          }
-        }
-        break;
-      }
-      case 'descend': {
-        if (npc.stateT <= 0) npc.alive = false;
-        break;
-      }
-      case 'exitDoor': {
-        const doorX = this._doorX(npc.side);
-        if (this._moveToward(npc, doorX + npc.side * 50, BAY.PATH_Y, walk + 2, dt)) {
-          npc.alive = false;
-        }
+        if (this._tryRerouteMechanicFromExit(npc)) break;
+        this._beginIdleFluff(npc);
         break;
       }
       default:
-        npc.state = 'toExit';
+        this._beginIdleFluff(npc);
     }
 
     if (
@@ -4519,10 +5003,12 @@ export class HangarBay {
     this._drawFloor(ctx);
     this._drawBayDangerLights(ctx);
     this._drawSetDressing(ctx);
+    this._drawForkliftHub(ctx);
     this._drawBacksplashWalls(ctx);
-    this._drawStairs(ctx);
+    this._drawBayServiceBoards(ctx);
     this._drawBayDoors(ctx);
     this._drawBayBeacons(ctx);
+    this._drawDoorTickers(ctx);
     this._drawCargoPiles(ctx);
 
     // B2 shaft well under the player pad (rim peeks around the pad edge)
@@ -4602,6 +5088,7 @@ export class HangarBay {
     // Leaves/jambs only — floor sill/hazard stays under ships from the deck pass
     this._drawBayDoors(ctx, { leavesOnly: true });
     this._drawBayBeacons(ctx, { wallOnly: true });
+    this._drawDoorTickers(ctx);
     for (const pad of inside) this._drawVisitor(ctx, pad);
     if (hooks.afterOcclusion) hooks.afterOcclusion(ctx);
   }
@@ -5373,33 +5860,45 @@ export class HangarBay {
   }
 
   /**
-   * Per-bay door beacons. Modes: idle (dim), warning (flash), steady (elevator),
-   * open (solid red).
-   * @param {{ wallOnly?: boolean }} [opts] — skip floor wash (restamp after ships)
+   * Per-bay door beacons (pilot-facing).
+   * Modes: off | amber | amberFlash | greenBlink | green | redFlash
    */
   _drawBayBeacons(ctx, opts = {}) {
     const wallOnly = !!opts.wallOnly;
     const doorTop = -BAY.HALF_H;
     padCenters().forEach((cx, i) => {
-      const mode = this.bayBeacons[i] || 'idle';
+      const mode = this.bayBeacons[i] || 'off';
       let on = false;
       let color = '255, 170, 40';
-      let glow = 0.15;
-      if (mode === 'idle') {
-        on = Math.sin(this.time * 1.4 + i) > 0.65;
-        glow = on ? 0.35 : 0.08;
-      } else if (mode === 'warning') {
+      let glow = 0.08;
+      if (mode === 'off') {
+        on = false;
+        glow = 0.05;
+        color = '80, 90, 100';
+      } else if (mode === 'amber') {
+        on = true;
+        glow = 0.55;
+        color = '255, 170, 40';
+      } else if (mode === 'amberFlash') {
         on = Math.sin(this.time * 10 + i) > 0;
         glow = on ? 0.85 : 0.12;
-        color = '255, 160, 20';
-      } else if (mode === 'steady') {
-        on = true;
-        glow = 0.55 + 0.08 * Math.sin(this.time * 1.6 + i);
-        color = '255, 190, 60';
-      } else if (mode === 'open') {
+        color = '255, 170, 40';
+      } else if (mode === 'greenBlink') {
+        on = Math.sin(this.time * 5 + i) > 0;
+        glow = on ? 0.8 : 0.15;
+        color = '60, 220, 100';
+      } else if (mode === 'green') {
         on = true;
         glow = 0.9;
-        color = '255, 60, 50';
+        color = '40, 230, 90';
+      } else if (mode === 'redFlash') {
+        on = Math.sin(this.time * 12 + i) > 0;
+        glow = on ? 0.9 : 0.12;
+        color = '255, 50, 45';
+      } else {
+        // Legacy fallbacks
+        on = mode !== 'idle';
+        glow = 0.4;
       }
 
       for (const dx of [-BAY.DOOR_HALF - 4, BAY.DOOR_HALF + 4]) {
@@ -5410,7 +5909,7 @@ export class HangarBay {
         ctx.strokeStyle = '#6a8498';
         ctx.lineWidth = 0.8;
         ctx.strokeRect(bx - 3, by - 2, 6, 5);
-        ctx.fillStyle = `rgba(${color}, ${0.25 + glow * 0.75})`;
+        ctx.fillStyle = `rgba(${color}, ${0.2 + glow * 0.8})`;
         ctx.beginPath();
         ctx.arc(bx, by + 1, 2.4, 0, Math.PI * 2);
         ctx.fill();
@@ -5422,16 +5921,55 @@ export class HangarBay {
         }
       }
 
-      if (!wallOnly && (mode === 'warning' || mode === 'open' || mode === 'steady')) {
-        const a =
-          mode === 'open' ? 0.1
-            : mode === 'steady' ? 0.05
-              : (on ? 0.08 : 0.02);
+      if (!wallOnly && (mode === 'redFlash' || mode === 'amberFlash' || mode === 'green')) {
+        const a = mode === 'green' ? 0.08 : on ? 0.07 : 0.02;
         ctx.fillStyle = `rgba(${color}, ${a})`;
         ctx.beginPath();
         ctx.ellipse(cx, doorTop + BAY.DOOR_H + 28, 36, 18, 0, 0, Math.PI * 2);
         ctx.fill();
       }
+    });
+  }
+
+  _drawDoorTickers(ctx) {
+    const doorTop = -BAY.HALF_H;
+    const y = doorTop + BAY.DOOR_H + 6;
+    const colorMap = {
+      red: '#ff5048',
+      amber: '#ffb028',
+      yellow: '#e8c040',
+      blue: '#58b0ff',
+      green: '#40e070',
+      dim: '#7a8898',
+    };
+    padCenters().forEach((cx, i) => {
+      const lines = this.bayTicker[i] || [];
+      const w = BAY.DOOR_HALF * 1.55;
+      const h = 11;
+      ctx.fillStyle = '#0c1218';
+      ctx.strokeStyle = '#4a6070';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.rect(cx - w / 2, y, w, h);
+      ctx.fill();
+      ctx.stroke();
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(cx - w / 2 + 1, y + 1, w - 2, h - 2);
+      ctx.clip();
+      const texts = lines.length ? lines : [{ text: 'STANDBY', color: 'dim' }];
+      texts.forEach((line, li) => {
+        const raw = line.text || 'STANDBY';
+        const scroll =
+          raw.length > 14 ? Math.sin(this.time * 0.7 + i) * (raw.length - 12) * 2.2 : 0;
+        ctx.fillStyle = colorMap[line.color] || colorMap.dim;
+        ctx.font = '4.2px monospace';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const ty = y + h / 2 + (texts.length > 1 ? (li === 0 ? -2.2 : 2.2) : 0);
+        ctx.fillText(raw, cx - scroll, ty);
+      });
+      ctx.restore();
     });
   }
 
@@ -5544,7 +6082,7 @@ export class HangarBay {
     ctx.fill();
   }
 
-  /** Static industrial props — tanks, hoses, tool stations, barrels (clear of pads/piles). */
+  /** Static industrial props — wing shelves/desks/benches + legacy tanks/hoses. */
   _drawSetDressing(ctx) {
     this._drawFuelTank(ctx, -305, 178, 1);
     this._drawFuelTank(ctx, 305, 178, 0.92);
@@ -5557,14 +6095,16 @@ export class HangarBay {
     this._drawHoseReel(ctx, -318, -70, -1);
     this._drawHoseReel(ctx, 318, -70, 1);
 
-    this._drawToolStation(ctx, -230, 172);
-    this._drawToolStation(ctx, 230, 172);
-    this._drawToolStation(ctx, 0, 178);
-
-    this._drawBarrel(ctx, -280, 100, '#4a5a40');
-    this._drawBarrel(ctx, -268, 108, '#3a4a58');
-    this._drawBarrel(ctx, 275, 95, '#5a4030');
-    this._drawBarrel(ctx, 288, 102, '#3a4a58');
+    for (const prop of HANGAR_PROPS) {
+      if (prop.kind === 'computer') continue; // drawn with service boards
+      if (prop.kind === 'shelf') this._drawShelf(ctx, prop.x, prop.y);
+      else if (prop.kind === 'desk') this._drawDesk(ctx, prop.x, prop.y);
+      else if (prop.kind === 'toolbench') this._drawToolStation(ctx, prop.x, prop.y);
+      else if (prop.kind === 'barrels') {
+        this._drawBarrel(ctx, prop.x - 6, prop.y, '#4a5a40');
+        this._drawBarrel(ctx, prop.x + 6, prop.y + 4, '#3a4a58');
+      }
+    }
 
     const lockerY = -BAY.HALF_H + BAY.DOOR_H + 18;
     this._drawWallLocker(ctx, -78, lockerY);
@@ -5582,9 +6122,41 @@ export class HangarBay {
     ctx.textAlign = 'center';
     ctx.fillText('KEEP CLEAR', -155, DANGER_ZONE_SOUTH - 8);
     ctx.fillText('KEEP CLEAR', 155, DANGER_ZONE_SOUTH - 8);
-    ctx.fillStyle = 'rgba(160, 180, 200, 0.25)';
-    ctx.font = '4px sans-serif';
-    ctx.fillText('FUEL · SOUTH', 0, 192);
+  }
+
+  _drawShelf(ctx, x, y) {
+    ctx.fillStyle = '#2a343c';
+    ctx.fillRect(x - 10, y - 16, 20, 28);
+    ctx.strokeStyle = '#6a8090';
+    ctx.lineWidth = 0.8;
+    ctx.strokeRect(x - 10, y - 16, 20, 28);
+    for (let i = 0; i < 3; i++) {
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(x - 9, y - 10 + i * 8, 18, 1.5);
+      ctx.fillStyle = '#4a5a48';
+      ctx.fillRect(x - 7, y - 8 + i * 8, 6, 4);
+      ctx.fillStyle = '#5a4a40';
+      ctx.fillRect(x + 1, y - 8 + i * 8, 6, 4);
+    }
+  }
+
+  _drawDesk(ctx, x, y) {
+    ctx.fillStyle = '#3a444c';
+    ctx.fillRect(x - 14, y - 4, 28, 10);
+    ctx.fillStyle = '#2a343c';
+    ctx.fillRect(x - 12, y + 6, 4, 8);
+    ctx.fillRect(x + 8, y + 6, 4, 8);
+    ctx.fillStyle = '#1a2830';
+    ctx.fillRect(x - 6, y - 10, 14, 8);
+    ctx.fillStyle = 'rgba(80, 180, 255, 0.35)';
+    ctx.fillRect(x - 4, y - 8, 10, 5);
+    ctx.strokeStyle = '#7a90a0';
+    ctx.strokeRect(x - 14, y - 4, 28, 10);
+  }
+
+  /** Stairs removed — apron crew stay on deck. */
+  _drawStairs(_ctx) {
+    /* no-op */
   }
 
   _drawFuelTank(ctx, x, y, scale = 1) {
@@ -6151,48 +6723,11 @@ export class HangarBay {
     ctx.restore();
   }
 
-  _drawStairs(ctx) {
+  /** @deprecated Stairs removed from hangar. */
+  _drawStairsLegacy(ctx) {
     for (const s of STAIRS) {
-      // Hatch lip + shadow
       ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
       ctx.fillRect(s.x - 12, s.y - 8, 24, 18);
-      ctx.fillStyle = '#0a121a';
-      ctx.strokeStyle = '#5a7088';
-      ctx.lineWidth = 1.3;
-      ctx.beginPath();
-      ctx.rect(s.x - 11, s.y - 9, 22, 18);
-      ctx.fill();
-      ctx.stroke();
-
-      // Caution hatch rim
-      for (let i = 0; i < 6; i++) {
-        ctx.fillStyle = i % 2 ? '#c9a020' : '#1a1a14';
-        ctx.fillRect(s.x - 11 + i * (22 / 6), s.y - 9, 22 / 6, 2);
-      }
-
-      // Stair treads (perspective: north = deeper)
-      for (let i = 0; i < 4; i++) {
-        const t = i / 4;
-        ctx.fillStyle = i % 2 ? '#1a2834' : '#243444';
-        ctx.fillRect(s.x - 8 + i, s.y - 6 + i * 3.2, 16 - i * 2, 2.8);
-        ctx.strokeStyle = `rgba(100, 140, 170, ${0.25 + t * 0.2})`;
-        ctx.strokeRect(s.x - 8 + i, s.y - 6 + i * 3.2, 16 - i * 2, 2.8);
-      }
-
-      // Handrail stubs
-      ctx.strokeStyle = '#6a8498';
-      ctx.lineWidth = 1.2;
-      ctx.beginPath();
-      ctx.moveTo(s.x - 10, s.y + 6);
-      ctx.lineTo(s.x - 10, s.y - 8);
-      ctx.moveTo(s.x + 10, s.y + 6);
-      ctx.lineTo(s.x + 10, s.y - 8);
-      ctx.stroke();
-
-      ctx.fillStyle = 'rgba(100, 180, 255, 0.35)';
-      ctx.font = '3.5px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(bayLabels()[s.bay] || 'STAIR', s.x, s.y + 14);
     }
   }
 
@@ -6286,55 +6821,142 @@ export class HangarBay {
     }
   }
 
-  /** Jet-blast backsplash behind each pad (solid — crew walk around the ends). */
+  /** Jet-blast backsplash behind each pad — taller for south-face boards. */
   _drawBacksplashWalls(ctx) {
     const y = BACKSPLASH_Y;
     const hw = BACKSPLASH_HALF_W;
+    const wallH = 28;
 
     padCenters().forEach((cx, bay) => {
       const x0 = cx - hw;
       const w = hw * 2;
 
-      // Ground shadow
       ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
       ctx.fillRect(x0 - 1, y + 4, w + 2, 5);
 
-      // 2.5D slab — dark north face (blast), lighter top
+      // Tall 2.5D slab
       ctx.fillStyle = '#1a1010';
-      ctx.fillRect(x0, y - 2, w, 8);
-      ctx.fillStyle = '#3a3230';
-      ctx.fillRect(x0, y - 6, w, 5);
-      ctx.fillStyle = 'rgba(160, 140, 120, 0.22)';
-      ctx.fillRect(x0, y - 6, w, 1.5);
+      ctx.fillRect(x0, y - 2, w, 10);
+      ctx.fillStyle = '#2a2420';
+      ctx.fillRect(x0, y - wallH, w, wallH - 2);
+      ctx.fillStyle = 'rgba(160, 140, 120, 0.2)';
+      ctx.fillRect(x0, y - wallH, w, 2);
       ctx.fillStyle = 'rgba(80, 40, 30, 0.35)';
       ctx.fillRect(x0, y - 2, w, 2);
       ctx.strokeStyle = '#6a5a50';
       ctx.lineWidth = 1;
-      ctx.strokeRect(x0, y - 6, w, 9);
+      ctx.strokeRect(x0, y - wallH, w, wallH + 3);
 
-      // Scorch / rivets on blast face
       ctx.fillStyle = 'rgba(20, 10, 8, 0.4)';
       ctx.fillRect(x0 + 2, y - 1, w - 4, 3);
       ctx.fillStyle = 'rgba(140, 130, 120, 0.35)';
       for (let rx = x0 + 4; rx < x0 + w - 3; rx += 8) {
         ctx.beginPath();
-        ctx.arc(rx, y - 4, 0.8, 0, Math.PI * 2);
+        ctx.arc(rx, y - wallH + 4, 0.8, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      // End posts
       ctx.fillStyle = '#2a3848';
-      ctx.fillRect(x0 - 2, y - 7, 4, 12);
-      ctx.fillRect(x0 + w - 2, y - 7, 4, 12);
+      ctx.fillRect(x0 - 2, y - wallH - 1, 4, wallH + 8);
+      ctx.fillRect(x0 + w - 2, y - wallH - 1, 4, wallH + 8);
       ctx.fillStyle = '#c9a020';
-      ctx.fillRect(x0 - 2, y - 7, 4, 2);
-      ctx.fillRect(x0 + w - 2, y - 7, 4, 2);
+      ctx.fillRect(x0 - 2, y - wallH - 1, 4, 2);
+      ctx.fillRect(x0 + w - 2, y - wallH - 1, 4, 2);
 
       ctx.fillStyle = 'rgba(160, 180, 200, 0.35)';
       ctx.font = '3.5px sans-serif';
       ctx.textAlign = 'center';
-      ctx.fillText(`${bayLabels()[bay]} · BLAST`, cx, y - 9);
+      ctx.fillText(`${bayLabels()[bay]} · BLAST`, cx, y - wallH - 3);
     });
+  }
+
+  _drawBayServiceBoards(ctx) {
+    const y = BACKSPLASH_Y;
+    const colorMap = {
+      green: '#3ce070',
+      blue: '#4aa8ff',
+      yellow: '#e8c040',
+      grey: '#8a9098',
+      dim: '#6a7888',
+    };
+    padCenters().forEach((cx, bay) => {
+      const boardX = cx - 22;
+      const boardY = y + 8;
+      const bw = 44;
+      const bh = 36;
+
+      // Console pedestal
+      ctx.fillStyle = '#2a3238';
+      ctx.fillRect(cx - 8, boardY + bh - 2, 16, 10);
+      ctx.fillStyle = '#3a4850';
+      ctx.fillRect(cx - 10, boardY + bh + 6, 20, 4);
+
+      // Board face
+      ctx.fillStyle = '#0a1014';
+      ctx.strokeStyle = '#5a7080';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.rect(boardX, boardY, bw, bh);
+      ctx.fill();
+      ctx.stroke();
+
+      // Header status light
+      const hl = this._boardHeaderLight(bay);
+      let hc = '80,90,100';
+      let hg = 0.15;
+      if (hl === 'yellow') {
+        hc = '232,192,64';
+        hg = 0.7;
+      } else if (hl === 'green') {
+        hc = '60,224,112';
+        hg = 0.75;
+      } else if (hl === 'redFlash') {
+        hc = '255,60,50';
+        hg = Math.sin(this.time * 10 + bay) > 0 ? 0.9 : 0.15;
+      }
+      ctx.fillStyle = `rgba(${hc}, ${hg})`;
+      ctx.beginPath();
+      ctx.arc(boardX + 5, boardY + 5, 2.2, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#8aa0b0';
+      ctx.font = '3.2px monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(`${bayLabels()[bay]} SVC`, boardX + 9, boardY + 6.5);
+
+      const rows = this._boardTaskRows(bay);
+      rows.slice(0, 5).forEach((row, ri) => {
+        ctx.fillStyle = colorMap[row.color] || colorMap.dim;
+        ctx.font = '3.6px monospace';
+        const mark = row.color === 'green' ? '✓' : row.color === 'blue' ? '●' : '○';
+        ctx.fillText(`${mark} ${row.label}`, boardX + 3, boardY + 14 + ri * 4.5);
+      });
+    });
+  }
+
+  _drawForkliftHub(ctx) {
+    const y = FORKLIFT_HUB_Y;
+    ctx.fillStyle = 'rgba(40, 48, 56, 0.55)';
+    ctx.fillRect(-48, y - 14, 96, 36);
+    ctx.strokeStyle = 'rgba(201, 160, 32, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-48, y - 14, 96, 36);
+    ctx.fillStyle = 'rgba(160, 180, 200, 0.4)';
+    ctx.font = '3.5px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('FORKLIFT HUB', 0, y - 8);
+
+    for (const park of FORKLIFT_PARKS) {
+      ctx.strokeStyle = 'rgba(180, 160, 80, 0.5)';
+      ctx.strokeRect(park.x - 7, park.y - 5, 14, 12);
+    }
+
+    // Small charger / desk props
+    ctx.fillStyle = '#3a4a38';
+    ctx.fillRect(-55, y + 10, 10, 8);
+    ctx.fillRect(45, y + 10, 10, 8);
+    ctx.fillStyle = '#4a5868';
+    ctx.fillRect(-20, y + 12, 40, 6);
   }
 
   /**

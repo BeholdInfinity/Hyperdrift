@@ -56,7 +56,7 @@ src/
     Starfield.js          7 parallax star layers (screen-fixed size, tiled when zoomed out)
     NebulaField.js        3 depth layers + ambient procedural nebulae
     SpeedStreaks.js       Velocity-opposed foreground streaks (screen-space)
-    HangarBay.js          Home Base hangar (3×6 cargo lanes + logistics NPCs)
+    HangarBay.js          Home Base hangar (fixed crew, boards, door tickers, logistics)
     HangarVisitorShips.js Neighbor-pad ship silhouettes (+ ambient traffic draws)
     Station.js            Jennings Station overworld exterior + dock zones
   utils/
@@ -87,7 +87,7 @@ src/
 | Dorsal 360° combat turret (LMB, 3/s) + nose mining laser (RMB) | Done |
 | Circular viewport + corner UI placeholders | Done |
 | Title screen (ENTER HANGAR / QUICK LAUNCH / SETTINGS; version stamp) | Done |
-| Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Bay + launch/land; B1–B3 captain checklists; B1/B3 door/elevator traffic |
+| Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Bay + launch/land; fixed crew roster; service boards; door lights/tickers; B1–B3 checklists |
 | Jennings Station overworld exterior + dock prompt | Done |
 | Settings controls sandbox (ship-only viewport) | Done |
 | Procedural asteroids + nebulae | Done |

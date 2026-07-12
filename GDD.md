@@ -47,13 +47,13 @@ The hangar bay is the prototype seed of **Home Base**: the place you start a new
 
 | Now | Not yet |
 |-----|---------|
-| Full-frame docked bay (B1 · B2 · B3; player on B2); lived-in industrial set dressing; blast backsplash + danger-lane floor lights | Persistent inventory / loadout across sessions |
+| Full-frame docked bay (B1 · B2 · B3; player on B2); lived-in industrial set dressing; taller blast shields + service boards; danger-lane floor lights | Persistent inventory / loadout across sessions |
 | Live thrusters / engine / weapons (translation locked until launch) | Mission board, shop UI, between-run meta |
-| 3×6 cargo grid (2 cols/bay: left=in, right=out), manned crane, stairs, bulkheads | Player-request job queue for **B2 only** (see below) |
-| Forklift + mechanic logistics (checklist-driven on B1–B3) | |
+| 3×6 cargo grid (2 cols/bay: left=in, right=out), manned crane, bulkheads; forklift hub south wall | Player-request job queue for **B2 only** (see below) |
+| Fixed station crew (4 forklifts + 6 bay mechs + crane); checklist-driven logistics | |
 | Distinct upgrade parts + hold cargo; destructible | |
 | B2 **LAUNCH** / dock landing (lift burst, pad turntable, doors, thrust) | |
-| B1–B3 captain service checklist (needs curve, parallel deck ops; B1/B3 exit + elevator; B2 rerolls, player owns launch); restage on destroy; empty-bay cargo sweep; elevator shafts | |
+| B1–B3 captain service checklist; pilot door lights + status tickers; B1/B3 exit + elevator; B2 rerolls; empty-bay cargo sweep; elevator shafts | |
 | Jennings Station overworld exterior + approach dock | |
 
 Entered from the title screen (**ENTER HANGAR**). **QUICK LAUNCH** skips straight to space near the station.
@@ -70,7 +70,20 @@ Each bay owns **two columns** flanking its pad: **left = inbound (load)**, **rig
 
 Vertical flow (example upgrade install): forklift → south-left → crane → top-left → mechanic installs; old mount → top-right → crane → south-right → forklift off-screen (sim vanish today; later crew stash/sell).
 
-Each hardpoint holds up to **4** items in a 2×2 slot grid. Hold cargo is rectangular; ship mounts use distinct silhouettes. Actors skip full destinations, linger on blocked jobs until space opens, prioritize clearing blockages they can help with, and despawn when idle.
+Each hardpoint holds up to **4** items in a 2×2 slot grid. Hold cargo is rectangular; ship mounts use distinct silhouettes. Actors skip full destinations, linger on blocked jobs until space opens, and prioritize clearing blockages they can help with.
+
+### Station crew (fixed roster)
+
+**11 crew always loaded** while in hangar: `forklift1–4`, `B1Mechanic1/2`, `B2Mechanic1/2`, `B3Mechanic1/2`, plus the crane operator.
+
+- **Mechanics** — bay-scoped: only their bay’s checklist / reclaim / clear work. Always on stage (no stair hatches). When idle, linger near their bay computer or in the wings / gossip groups; bias shifts from near-bay to far linger with time since their last bay task (~60s).
+- **Forklifts** — any bay. Idle at the **forklift hub** (south wall center, south of the east–west road). Exit the screen only to fake offscreen cargo pop-in / pop-out; the driver returns.
+- **Crane** — parks top-left on the gantry when idle.
+
+### Pilot readouts (door strip) vs crew board
+
+- **Blast-shield service board** (crew): checklist rows with colors — green done, blue assigned, yellow ready, grey gated; header light off / yellow / green / flash red for bay service mood.
+- **Door beacons + door-header ticker** (pilot / player): same rules on B1–B3 (player is the pilot on B2). Off (empty + pad rest) → amber steady (work not done) → green blink (work done, doors closed) → red flash (door moving) → green steady (doors open). Amber flash when elevator / pad turn / pad not seated. Ticker shows 1–2 activity lines (`SHIP ARRIVING`, `CLEAR TO DEPART`, `REPAIRING HULL`, …).
 
 ### Bay activity: captain checklists (B1–B3) vs player-request (future B2)
 
@@ -266,6 +279,7 @@ Prototype backlog (near-term) and long-term crew-game systems are tracked separa
 - [ ] Home Base: persistent cargo / loadout between runs
 - [ ] Home Base: B2 player-request job queue (sell/unload, repair, buy/load, upgrade = cargo + weld)
 - [x] Home Base: B1–B3 captain service checklist (B2 interim reroll; B1/B3 door/elevator traffic + empty-bay sweep)
+- [x] Home Base: fixed crew roster, bay service boards, pilot door lights/tickers, forklift hub
 - [ ] Equipment upgrades
 - [ ] Fuel and resource management
 - [ ] Asteroid fragmentation

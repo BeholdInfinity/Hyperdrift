@@ -17,6 +17,22 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.58] — 2026-07-12
+
+### Added
+- Fixed hangar crew roster (11): `forklift1–4`, `B1–B3Mechanic1/2`, crane — always on stage
+- Per-bay service boards on taller blast shields (checklist rows + header light)
+- Pilot-facing door beacons + door-header status tickers (unified B1–B3 light schema)
+- Forklift hub (south wall center); wing shelves/desks/toolbenches; gossip/piddle idle for mechanics
+
+### Changed
+- Mechanics are bay-scoped (own checklist only); stair hatches removed
+- Forklifts serve any bay; idle at hub; leave screen only for fake cargo pop in/out
+- Crane parks top-left when idle
+- Mechanic idle biases near-bay vs wing linger from time since last bay task
+
+---
+
 ## [0.1.57] — 2026-07-12
 
 ### Changed
