@@ -17,6 +17,20 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.59] — 2026-07-12
+
+### Fixed
+- Pilot door tickers sit above bay doors (below windows, between door lights)
+- Crane / mechanic dumps no longer park fuel·ammo on UP pads or upgrades on CG pads
+- Misshelved UP/CG freight is high-priority crane work (unsticks install loops)
+- Mechanic idle fluff stays north of the forklift road (wing linger only)
+
+### Changed
+- Blast-wall visual removed — service display boards use that exact footprint
+- Crane revalidates dropoff family after pickup and refuses mismatched shelves
+
+---
+
 ## [0.1.58] — 2026-07-12
 
 ### Added

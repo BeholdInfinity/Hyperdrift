@@ -87,7 +87,7 @@ src/
 | Dorsal 360° combat turret (LMB, 3/s) + nose mining laser (RMB) | Done |
 | Circular viewport + corner UI placeholders | Done |
 | Title screen (ENTER HANGAR / QUICK LAUNCH / SETTINGS; version stamp) | Done |
-| Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Bay + launch/land; fixed crew roster; service boards; door lights/tickers; B1–B3 checklists |
+| Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Bay + launch/land; fixed crew; service displays; pilot door tickers; family-safe crane |
 | Jennings Station overworld exterior + dock prompt | Done |
 | Settings controls sandbox (ship-only viewport) | Done |
 | Procedural asteroids + nebulae | Done |

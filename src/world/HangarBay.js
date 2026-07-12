@@ -53,20 +53,22 @@ const ROW_Y = [-78, 8, 118];
  * Floor running-lights end here; stairs moved further south past the backsplash.
  */
 const DANGER_ZONE_SOUTH = (ROW_Y[1] + ROW_Y[2]) / 2;
-/** Blast backsplash behind each ship (engines face south); stairs on safe/south side */
+/** Service display boards behind each pad (pathing obstacle; engines face south) */
 const BACKSPLASH_Y = DANGER_ZONE_SOUTH + 14;
 const BACKSPLASH_HALF_W = 50;
-/** Y half-thickness treated as blocked for crew pathing around the wall */
+/** Display board face height (north of BACKSPLASH_Y midline) */
+const SERVICE_BOARD_H = 28;
+/** Y half-thickness treated as blocked for crew pathing around the board */
 const BACKSPLASH_BAND = 11;
-/** Clearance past wall end when bypassing (hug shield edges; slight clip OK) */
+/** Clearance past board end when bypassing (hug edges; slight clip OK) */
 const BACKSPLASH_BYPASS = 2;
 /** Match danger lights; small pad for body radius */
 const DANGER_ZONE_PAD = 4;
 /** Crane reclaims unclaimed floor drops after this many seconds */
 const FLOOR_DROP_CRANE_AGE = 5;
-/** Safe-side apron south of blast shield (was stair hatch Y — stairs removed) */
+/** Safe-side apron south of service boards (was stair hatch Y — stairs removed) */
 const APRON_SAFE_Y = BACKSPLASH_Y + 28;
-/** Bay computer / service board stand points (south face of each shield) */
+/** Bay computer / service board stand points (south face of each display) */
 const BAY_COMPUTERS = [-BAY.SIDE_PAD_X, 0, BAY.SIDE_PAD_X].map((x, bay) => ({
   id: `bayComputer${bay}`,
   x,
@@ -93,46 +95,49 @@ const STAIRS = BAY_COMPUTERS.map((c) => ({
 }));
 const STAIR_Y = APRON_SAFE_Y;
 
-/** Invisible gossip gather points (AI only) */
+/** Invisible gossip gather points — north of forklift road, in wing fluff only */
 const GOSSIP_WAYPOINTS = [
-  { id: 'gossipW1', x: -290, y: 160, capacity: 3 },
-  { id: 'gossipW2', x: 290, y: 160, capacity: 3 },
-  { id: 'gossipC1', x: -70, y: APRON_SAFE_Y + 18, capacity: 2 },
-  { id: 'gossipC2', x: 70, y: APRON_SAFE_Y + 18, capacity: 2 },
-  { id: 'gossipS1', x: -200, y: FORKLIFT_HUB_Y - 8, capacity: 3 },
-  { id: 'gossipS2', x: 200, y: FORKLIFT_HUB_Y - 8, capacity: 3 },
+  { id: 'gossipW1', x: -295, y: -40, capacity: 3 },
+  { id: 'gossipW2', x: -280, y: 20, capacity: 3 },
+  { id: 'gossipE1', x: 295, y: -40, capacity: 3 },
+  { id: 'gossipE2', x: 280, y: 20, capacity: 3 },
+  { id: 'gossipWN', x: -300, y: -90, capacity: 2 },
+  { id: 'gossipEN', x: 300, y: -90, capacity: 2 },
 ];
 
 /**
  * Set-dressing props with linger stand points.
- * Drawn by `_drawSetDressing`; AI uses `linger` coords.
+ * Mech linger stays in north/side wings — never on or south of the forklift road.
  */
+const MECH_LINGER_Y_MAX = BAY.PATH_Y - 28; // stay clear of forklift corridor
 const HANGAR_PROPS = [
-  // West wing
-  { id: 'shelfW1', kind: 'shelf', x: -310, y: 50, bay: 0, linger: [{ x: -295, y: 55 }] },
-  { id: 'shelfW2', kind: 'shelf', x: -310, y: -20, bay: 0, linger: [{ x: -295, y: -15 }] },
-  { id: 'deskW1', kind: 'desk', x: -285, y: 120, bay: 0, linger: [{ x: -270, y: 125 }] },
-  { id: 'benchW1', kind: 'toolbench', x: -250, y: 175, bay: 0, linger: [{ x: -250, y: 160 }] },
-  { id: 'barrelsW1', kind: 'barrels', x: -300, y: 95, bay: 0, linger: [{ x: -285, y: 100 }] },
+  // West wing (north of road)
+  { id: 'shelfW1', kind: 'shelf', x: -310, y: 40, bay: 0, linger: [{ x: -295, y: 45 }] },
+  { id: 'shelfW2', kind: 'shelf', x: -310, y: -30, bay: 0, linger: [{ x: -295, y: -25 }] },
+  { id: 'shelfW3', kind: 'shelf', x: -310, y: -90, bay: 0, linger: [{ x: -295, y: -85 }] },
+  { id: 'deskW1', kind: 'desk', x: -280, y: 10, bay: 0, linger: [{ x: -265, y: 15 }] },
+  { id: 'benchW1', kind: 'toolbench', x: -275, y: -55, bay: 0, linger: [{ x: -260, y: -50 }] },
+  { id: 'barrelsW1', kind: 'barrels', x: -300, y: 70, bay: 0, linger: [{ x: -285, y: 75 }] },
   // East wing
-  { id: 'shelfE1', kind: 'shelf', x: 310, y: 50, bay: 2, linger: [{ x: 295, y: 55 }] },
-  { id: 'shelfE2', kind: 'shelf', x: 310, y: -20, bay: 2, linger: [{ x: 295, y: -15 }] },
-  { id: 'deskE1', kind: 'desk', x: 285, y: 120, bay: 2, linger: [{ x: 270, y: 125 }] },
-  { id: 'benchE1', kind: 'toolbench', x: 250, y: 175, bay: 2, linger: [{ x: 250, y: 160 }] },
-  { id: 'barrelsE1', kind: 'barrels', x: 300, y: 95, bay: 2, linger: [{ x: 285, y: 100 }] },
-  // Center / B2 apron (avoid fork hub)
-  { id: 'benchC1', kind: 'toolbench', x: -95, y: 175, bay: 1, linger: [{ x: -95, y: 160 }] },
-  { id: 'benchC2', kind: 'toolbench', x: 95, y: 175, bay: 1, linger: [{ x: 95, y: 160 }] },
-  { id: 'deskC1', kind: 'desk', x: -55, y: APRON_SAFE_Y + 22, bay: 1, linger: [{ x: -55, y: APRON_SAFE_Y + 10 }] },
-  { id: 'deskC2', kind: 'desk', x: 55, y: APRON_SAFE_Y + 22, bay: 1, linger: [{ x: 55, y: APRON_SAFE_Y + 10 }] },
-  // Bay computers (also drawn on shield face)
+  { id: 'shelfE1', kind: 'shelf', x: 310, y: 40, bay: 2, linger: [{ x: 295, y: 45 }] },
+  { id: 'shelfE2', kind: 'shelf', x: 310, y: -30, bay: 2, linger: [{ x: 295, y: -25 }] },
+  { id: 'shelfE3', kind: 'shelf', x: 310, y: -90, bay: 2, linger: [{ x: 295, y: -85 }] },
+  { id: 'deskE1', kind: 'desk', x: 280, y: 10, bay: 2, linger: [{ x: 265, y: 15 }] },
+  { id: 'benchE1', kind: 'toolbench', x: 275, y: -55, bay: 2, linger: [{ x: 260, y: -50 }] },
+  { id: 'barrelsE1', kind: 'barrels', x: 300, y: 70, bay: 2, linger: [{ x: 285, y: 75 }] },
+  // B2 side pockets (between bay columns, still north of road)
+  { id: 'benchC1', kind: 'toolbench', x: -100, y: -50, bay: 1, linger: [{ x: -100, y: -40 }] },
+  { id: 'benchC2', kind: 'toolbench', x: 100, y: -50, bay: 1, linger: [{ x: 100, y: -40 }] },
+  { id: 'deskC1', kind: 'desk', x: -90, y: 30, bay: 1, linger: [{ x: -90, y: 40 }] },
+  { id: 'deskC2', kind: 'desk', x: 90, y: 30, bay: 1, linger: [{ x: 90, y: 40 }] },
+  // Bay computers / service boards — stand just south of board face (apron, not road)
   ...BAY_COMPUTERS.map((c) => ({
     id: c.id,
     kind: 'computer',
     x: c.x,
     y: c.y,
     bay: c.bay,
-    linger: [{ x: c.x, y: c.y + 14 }],
+    linger: [{ x: c.x + (c.bay === 0 ? -14 : c.bay === 2 ? 14 : 0), y: Math.min(c.y + 16, MECH_LINGER_Y_MAX) }],
   })),
 ];
 /**
@@ -2278,6 +2283,21 @@ export class HangarBay {
         }
       }
 
+      // Fix misshelved freight: cargo on UP → CG (or south-out); upgrades on CG → UP
+      const fixMisshelf = (src, prefer, fallback, weight) => {
+        if (!src?.items.length) return;
+        const top = src.items[src.items.length - 1];
+        const wantUpgrade = top.family === 'upgrade';
+        const srcIsUpgrade = src.role === 'upgrade';
+        if (wantUpgrade === srcIsUpgrade) return;
+        if (prefer && prefer.items.length < PILE_CAP) push(src, prefer, weight);
+        else if (fallback && fallback.items.length < PILE_CAP) push(src, fallback, weight - 1);
+      };
+      fixMisshelf(inN, inM, outS, 22);
+      fixMisshelf(inM, inN, outS, 22);
+      fixMisshelf(outN, outM, outS, 20);
+      fixMisshelf(outM, outN, outS, 20);
+
       // Outbound lower to storage
       push(outN, outS, 4);
       push(outM, outS, 4);
@@ -2390,20 +2410,44 @@ export class HangarBay {
     const drop = aged[0];
     drop.claimNpc = 'crane';
     const bay = bayIndexFromX(drop.x);
-    const row = drop.cargo.family === 'upgrade' ? ROW.N : ROW.M;
-    let dest =
-      this._bayPile(bay, 'out', row) ||
-      this._bayPile(bay, 'in', ROW.S) ||
-      this.piles.find((p) => p.items.length < PILE_CAP && !this._isBayOpsHot(p.bay));
-    if (!dest || dest.items.length >= PILE_CAP) {
-      dest = this.piles.find((p) => p.items.length < PILE_CAP);
-    }
-    if (!dest || dest.items.length >= PILE_CAP) return null;
+    const dest = this._findSafePileForCargo(drop.cargo, bay);
+    if (!dest) return null;
     return {
       mode: 'work',
       pickup: this._makeFloorPickupProxy(drop),
       dropoff: dest,
     };
+  }
+
+  /**
+   * Family-safe shelf for a cargo piece. Never parks upgrades on CG pads or
+   * hold freight on UP pads. South I/O is last-resort transit only.
+   */
+  _findSafePileForCargo(cargo, preferBay = null) {
+    if (!cargo) return null;
+    const fromFinder = this._findCraneDropoffFor(cargo, preferBay);
+    if (fromFinder) return fromFinder;
+    const wantRole = cargo.family === 'upgrade' ? 'upgrade' : 'cargo';
+    const ranked = this.piles
+      .filter((p) => p.items.length < PILE_CAP && this._pileAcceptsFamily(p, cargo))
+      .map((p) => {
+        let w = 1;
+        if (preferBay != null && p.bay === preferBay) w += 8;
+        if (p.role === wantRole) w += 6;
+        if (p.lane === 'out' && p.role === wantRole) w += 2;
+        if (p.row === ROW.S) w -= 4;
+        return { p, w };
+      })
+      .sort((a, b) => b.w - a.w);
+    return ranked[0]?.p || null;
+  }
+
+  /** Deposit cargo onto a matching shelf; returns true if parked. */
+  _depositCargoSafe(cargo, preferBay = null) {
+    const dest = this._findSafePileForCargo(cargo, preferBay);
+    if (!dest) return false;
+    dest.items.push(cargo);
+    return true;
   }
 
   _makeFloorPickupProxy(drop) {
@@ -2469,34 +2513,39 @@ export class HangarBay {
     this._applyCraneJob(this.crane, job);
   }
 
-  /** Prefer a doable dropoff for carried cargo (same bay / matching family). */
+  /** True if this pile is a valid shelf for this cargo family. */
+  _pileAcceptsFamily(pile, cargo) {
+    if (!pile || !cargo) return false;
+    // South storage I/O is transit-only — never a final shelf for the wrong family
+    // when a matching N/M pad exists; still allowed as last-resort drop.
+    if (pile.row === ROW.S) return true;
+    if (cargo.family === 'upgrade') return pile.role === 'upgrade';
+    return pile.role === 'cargo';
+  }
+
+  /** Prefer matching N/M shelves; only use south I/O when those are full. */
   _findCraneDropoffFor(carried, preferBay = null) {
     if (!carried) return null;
     const homeBay =
       carried.serviceBay != null ? carried.serviceBay : preferBay;
-    const tasks = this._enumerateCraneTasks().filter((t) => t.status === 'doable');
+    const wantRole = carried.family === 'upgrade' ? 'upgrade' : 'cargo';
     const candidates = [];
     for (const p of this.piles) {
       if (p.items.length >= PILE_CAP) continue;
-      // Checklist freight must stay on its service bay
       if (carried.serviceKey != null && homeBay != null && p.bay !== homeBay) continue;
-      if (carried.family === 'upgrade' && p.role === 'upgrade' && p.lane === 'in') {
-        candidates.push({ p, w: homeBay === p.bay ? 8 : 2 });
-      } else if (carried.family === 'cargo' && p.role === 'cargo' && p.lane === 'in') {
-        candidates.push({ p, w: homeBay === p.bay ? 8 : 2 });
-      } else if (p.lane === 'out' && p.row === ROW.S) {
-        if (carried.serviceKey) continue; // don't export tagged inbound via alt drop
-        candidates.push({ p, w: homeBay === p.bay ? 4 : 1 });
-      } else if (p.items.length < PILE_CAP && !carried.serviceKey) {
-        candidates.push({ p, w: 0.3 });
-      }
-    }
-    for (const t of tasks) {
-      if (t.dropoff.items.length >= PILE_CAP) continue;
-      if (carried.serviceKey != null && homeBay != null && t.dropoff.bay !== homeBay) {
+      if (p.row === ROW.S) {
+        // Transit only when no service tag (sweep / reclaim)
+        if (carried.serviceKey) continue;
+        if (p.lane !== 'out') continue;
+        candidates.push({ p, w: homeBay === p.bay ? 1.2 : 0.3 });
         continue;
       }
-      candidates.push({ p: t.dropoff, w: homeBay === t.dropoff.bay ? 10 : 2 });
+      if (!this._pileAcceptsFamily(p, carried)) continue;
+      if (p.lane === 'in' && p.role === wantRole) {
+        candidates.push({ p, w: homeBay === p.bay ? 10 : 2 });
+      } else if (p.lane === 'out' && p.role === wantRole) {
+        candidates.push({ p, w: homeBay === p.bay ? 4 : 1 });
+      }
     }
     if (!candidates.length) return null;
     const total = candidates.reduce((s, c) => s + c.w, 0);
@@ -2987,6 +3036,24 @@ export class HangarBay {
         if (near(c.hoist, HOIST_RAISED, 2)) {
           c.hoist = HOIST_RAISED;
           c.hookTargetY = null;
+          // Re-target if planned dropoff doesn't match what we actually picked up
+          if (
+            c.carried &&
+            (!c.dropoff ||
+              c.dropoff.items.length >= PILE_CAP ||
+              !this._pileAcceptsFamily(c.dropoff, c.carried) ||
+              (c.dropoff.row !== ROW.S &&
+                c.dropoff.role !==
+                  (c.carried.family === 'upgrade' ? 'upgrade' : 'cargo')))
+          ) {
+            const alt = this._findCraneDropoffFor(c.carried, c.dropoff?.bay ?? c.pickup?.bay);
+            if (alt) c.dropoff = alt;
+            else {
+              c.phase = 'lingerLoaded';
+              c.pause = 0.2;
+              break;
+            }
+          }
           c.phase = 'travelDropoff';
         }
         break;
@@ -2997,6 +3064,22 @@ export class HangarBay {
           break;
         }
         c.hookTargetY = null;
+        if (
+          c.carried &&
+          c.dropoff &&
+          (!this._pileAcceptsFamily(c.dropoff, c.carried) ||
+            (c.dropoff.row !== ROW.S &&
+              c.dropoff.role !==
+                (c.carried.family === 'upgrade' ? 'upgrade' : 'cargo')))
+        ) {
+          const alt = this._findCraneDropoffFor(c.carried, c.dropoff.bay);
+          if (alt) c.dropoff = alt;
+          else {
+            c.phase = 'lingerLoaded';
+            c.pause = 0.25;
+            break;
+          }
+        }
         if (c.dropoff && c.dropoff.items.length >= PILE_CAP) {
           const alt = this._findCraneDropoffFor(c.carried, c.dropoff.bay);
           if (alt) {
@@ -3018,7 +3101,11 @@ export class HangarBay {
       case 'lingerLoaded': {
         const t = this._craneParkXY(c.dropoff);
         this._moveCraneXY(c, t.x, t.y, moveSpeed * 0.6, dt);
-        if (c.dropoff && c.dropoff.items.length < PILE_CAP) {
+        if (
+          c.dropoff &&
+          c.dropoff.items.length < PILE_CAP &&
+          this._pileAcceptsFamily(c.dropoff, c.carried)
+        ) {
           c.phase = 'travelDropoff';
           c.pause = 0.1;
           break;
@@ -3038,7 +3125,12 @@ export class HangarBay {
         c.hoist = Math.min(c.hoist + hoistSpeed * dt, HOIST_MAX);
         if (near(c.hoist, HOIST_MAX, 2)) {
           c.hoist = HOIST_MAX;
-          if (c.carried && c.dropoff.items.length < PILE_CAP) {
+          const canDrop =
+            c.carried &&
+            c.dropoff &&
+            c.dropoff.items.length < PILE_CAP &&
+            this._pileAcceptsFamily(c.dropoff, c.carried);
+          if (canDrop) {
             c.dropoff.items.push(c.carried);
             c.carried = null;
             c.pause = 0.3;
@@ -3129,8 +3221,12 @@ export class HangarBay {
       }
     }
     if (upIn?.items.length) {
+      const hasUpgradePart = upIn.items.some((c) => c.family === 'upgrade');
       const serviceInstall =
-        !svcActive || needs('upgrade') || upIn.items.some((c) => c.serviceKey);
+        hasUpgradePart &&
+        (!svcActive ||
+          needs('upgrade') ||
+          upIn.items.some((c) => c.family === 'upgrade' && c.serviceKey));
       if (serviceInstall) {
         tasks.push({
           job: 'installUpgrade',
@@ -4154,13 +4250,23 @@ export class HangarBay {
     const near = HANGAR_PROPS.filter(
       (p) => p.bay === homeBay && p.kind === 'computer'
     );
-    const wing = HANGAR_PROPS.filter(
-      (p) => (p.bay === homeBay || p.bay == null) && p.kind !== 'computer'
-    );
+    // Bay-scoped wing fluff: B1 west, B3 east, B2 center pockets — never south of road
+    const wing = HANGAR_PROPS.filter((p) => {
+      if (p.kind === 'computer') return false;
+      const ly = p.linger?.[0]?.y ?? p.y;
+      if (ly >= MECH_LINGER_Y_MAX) return false;
+      if (homeBay === 0) return p.bay === 0;
+      if (homeBay === 2) return p.bay === 2;
+      return p.bay === 1;
+    });
     const pool = Math.random() < wingBias && wing.length ? wing : near.length ? near : wing;
     const prop = pool.length ? pick(pool) : BAY_COMPUTERS[homeBay];
     const spot = prop.linger?.[0] || { x: prop.x, y: prop.y + 12 };
-    npc.lingerTarget = { x: spot.x, y: spot.y, propId: prop.id };
+    npc.lingerTarget = {
+      x: spot.x,
+      y: Math.min(spot.y, MECH_LINGER_Y_MAX),
+      propId: prop.id,
+    };
     npc.state = 'idleFluff';
     npc.stateT = rand(2.5, 5.5);
   }
@@ -4178,7 +4284,6 @@ export class HangarBay {
       ).length,
     }));
     occupied.sort((a, b) => {
-      // Prefer joining a non-full group
       const af = a.n > 0 && a.n < a.wp.capacity ? 0 : 1;
       const bf = b.n > 0 && b.n < b.wp.capacity ? 0 : 1;
       if (af !== bf) return af - bf;
@@ -4190,7 +4295,7 @@ export class HangarBay {
     const slot = (npc.uid % 3) - 1;
     npc.lingerTarget = {
       x: choice.x + slot * 7,
-      y: choice.y + ((npc.uid % 2) * 4 - 2),
+      y: Math.min(choice.y + ((npc.uid % 2) * 4 - 2), MECH_LINGER_Y_MAX),
       propId: choice.id,
     };
     npc.state = 'idleFluff';
@@ -4583,8 +4688,16 @@ export class HangarBay {
         }
         const tgt = npc.lingerTarget;
         if (tgt) {
-          this._mechMove(npc, tgt.x, tgt.y, walk * 0.85, dt);
-          if (Math.hypot(npc.x - tgt.x, npc.y - tgt.y) < 4) {
+          // Never route idle fluff across the forklift road
+          const lx = tgt.x;
+          const ly = Math.min(tgt.y, MECH_LINGER_Y_MAX);
+          if (npc.y > MECH_LINGER_Y_MAX) {
+            this._mechMove(npc, npc.x, MECH_LINGER_Y_MAX - 4, walk * 0.9, dt);
+          } else {
+            this._mechMove(npc, lx, ly, walk * 0.85, dt);
+          }
+          if (npc.y > MECH_LINGER_Y_MAX) npc.y = MECH_LINGER_Y_MAX;
+          if (Math.hypot(npc.x - lx, npc.y - ly) < 4) {
             npc.x += Math.sin(npc.phase) * 0.12;
             if (npc.gossipWp) {
               const mate = this.npcs.find(
@@ -4693,14 +4806,11 @@ export class HangarBay {
           // Failed pickup — try another logistics task
           if (npc.cargo) {
             const bay = npc.bay ?? bayIndexFromX(npc.x);
-            const row = npc.cargo.family === 'upgrade' ? ROW.N : ROW.M;
-            const room = this._bayPile(bay, 'out', row);
-            if (room && room.items.length < PILE_CAP) room.items.push(npc.cargo);
-            else {
-              const any = this.piles.find((q) => q.items.length < PILE_CAP);
-              if (any) any.items.push(npc.cargo);
+            if (!this._depositCargoSafe(npc.cargo, bay)) {
+              this._dropFloorCargo(npc);
+            } else {
+              npc.cargo = null;
             }
-            npc.cargo = null;
           }
           this._beginNextMechanicTrip(npc);
         }
@@ -4849,14 +4959,11 @@ export class HangarBay {
         this._clearTaskClaim(npc);
         if (npc.cargo) {
           const bay = npc.homeBay ?? bayIndexFromX(npc.x);
-          const row = npc.cargo.family === 'upgrade' ? ROW.N : ROW.M;
-          const room = this._bayPile(bay, 'out', row);
-          if (room && room.items.length < PILE_CAP) room.items.push(npc.cargo);
-          else {
-            const any = this.piles.find((p) => p.items.length < PILE_CAP);
-            if (any) any.items.push(npc.cargo);
+          if (!this._depositCargoSafe(npc.cargo, bay)) {
+            this._dropFloorCargo(npc);
+          } else {
+            npc.cargo = null;
           }
-          npc.cargo = null;
         }
         if (this._tryRerouteMechanicFromExit(npc)) break;
         this._beginIdleFluff(npc);
@@ -4952,12 +5059,9 @@ export class HangarBay {
         return;
       }
     }
-    // Sensible default: put it on a pile with room, then re-pick work
+    // Sensible default: put it on a matching-family pile, then re-pick work
     const bay = npc.bay ?? bayIndexFromX(npc.x);
-    const row = npc.cargo?.family === 'upgrade' ? ROW.N : ROW.M;
-    const dest =
-      this._bayPile(bay, 'out', row) ||
-      this.piles.find((p) => p.items.length < PILE_CAP);
+    const dest = this._findSafePileForCargo(npc.cargo, bay);
     if (dest && dest.items.length < PILE_CAP) {
       npc.targetPile = dest;
       npc.job = npc.cargo?.family === 'upgrade' ? 'removeUpgrade' : 'unloadShip';
@@ -5004,8 +5108,7 @@ export class HangarBay {
     this._drawBayDangerLights(ctx);
     this._drawSetDressing(ctx);
     this._drawForkliftHub(ctx);
-    this._drawBacksplashWalls(ctx);
-    this._drawBayServiceBoards(ctx);
+    this._drawServiceDisplayBoards(ctx);
     this._drawBayDoors(ctx);
     this._drawBayBeacons(ctx);
     this._drawDoorTickers(ctx);
@@ -5932,8 +6035,13 @@ export class HangarBay {
   }
 
   _drawDoorTickers(ctx) {
+    // Pilot channel: between viewport windows and bay doors, between door lights
+    const vpY = -BAY.HALF_H - 40;
+    const vpH = BAY.VIEWPORT_H;
     const doorTop = -BAY.HALF_H;
-    const y = doorTop + BAY.DOOR_H + 6;
+    const lightX = BAY.DOOR_HALF + 4;
+    const y = vpY + vpH + 5;
+    const h = Math.min(10, doorTop - 2 - y);
     const colorMap = {
       red: '#ff5048',
       amber: '#ffb028',
@@ -5944,8 +6052,7 @@ export class HangarBay {
     };
     padCenters().forEach((cx, i) => {
       const lines = this.bayTicker[i] || [];
-      const w = BAY.DOOR_HALF * 1.55;
-      const h = 11;
+      const w = lightX * 2 - 12;
       ctx.fillStyle = '#0c1218';
       ctx.strokeStyle = '#4a6070';
       ctx.lineWidth = 0.8;
@@ -6821,57 +6928,14 @@ export class HangarBay {
     }
   }
 
-  /** Jet-blast backsplash behind each pad — taller for south-face boards. */
-  _drawBacksplashWalls(ctx) {
+  /**
+   * Per-bay crew service displays — occupy the former blast-wall footprint
+   * (pathing still treats BACKSPLASH_* as solid).
+   */
+  _drawServiceDisplayBoards(ctx) {
     const y = BACKSPLASH_Y;
     const hw = BACKSPLASH_HALF_W;
-    const wallH = 28;
-
-    padCenters().forEach((cx, bay) => {
-      const x0 = cx - hw;
-      const w = hw * 2;
-
-      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-      ctx.fillRect(x0 - 1, y + 4, w + 2, 5);
-
-      // Tall 2.5D slab
-      ctx.fillStyle = '#1a1010';
-      ctx.fillRect(x0, y - 2, w, 10);
-      ctx.fillStyle = '#2a2420';
-      ctx.fillRect(x0, y - wallH, w, wallH - 2);
-      ctx.fillStyle = 'rgba(160, 140, 120, 0.2)';
-      ctx.fillRect(x0, y - wallH, w, 2);
-      ctx.fillStyle = 'rgba(80, 40, 30, 0.35)';
-      ctx.fillRect(x0, y - 2, w, 2);
-      ctx.strokeStyle = '#6a5a50';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(x0, y - wallH, w, wallH + 3);
-
-      ctx.fillStyle = 'rgba(20, 10, 8, 0.4)';
-      ctx.fillRect(x0 + 2, y - 1, w - 4, 3);
-      ctx.fillStyle = 'rgba(140, 130, 120, 0.35)';
-      for (let rx = x0 + 4; rx < x0 + w - 3; rx += 8) {
-        ctx.beginPath();
-        ctx.arc(rx, y - wallH + 4, 0.8, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      ctx.fillStyle = '#2a3848';
-      ctx.fillRect(x0 - 2, y - wallH - 1, 4, wallH + 8);
-      ctx.fillRect(x0 + w - 2, y - wallH - 1, 4, wallH + 8);
-      ctx.fillStyle = '#c9a020';
-      ctx.fillRect(x0 - 2, y - wallH - 1, 4, 2);
-      ctx.fillRect(x0 + w - 2, y - wallH - 1, 4, 2);
-
-      ctx.fillStyle = 'rgba(160, 180, 200, 0.35)';
-      ctx.font = '3.5px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(`${bayLabels()[bay]} · BLAST`, cx, y - wallH - 3);
-    });
-  }
-
-  _drawBayServiceBoards(ctx) {
-    const y = BACKSPLASH_Y;
+    const wallH = SERVICE_BOARD_H;
     const colorMap = {
       green: '#3ce070',
       blue: '#4aa8ff',
@@ -6879,28 +6943,37 @@ export class HangarBay {
       grey: '#8a9098',
       dim: '#6a7888',
     };
+
     padCenters().forEach((cx, bay) => {
-      const boardX = cx - 22;
-      const boardY = y + 8;
-      const bw = 44;
-      const bh = 36;
+      const x0 = cx - hw;
+      const w = hw * 2;
+      const faceY = y - wallH;
 
-      // Console pedestal
-      ctx.fillStyle = '#2a3238';
-      ctx.fillRect(cx - 8, boardY + bh - 2, 16, 10);
-      ctx.fillStyle = '#3a4850';
-      ctx.fillRect(cx - 10, boardY + bh + 6, 20, 4);
+      ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+      ctx.fillRect(x0 - 1, y + 4, w + 2, 5);
 
-      // Board face
+      // Frame / bezel (same footprint as old blast wall)
+      ctx.fillStyle = '#1a2228';
+      ctx.fillRect(x0, y - 2, w, 10);
       ctx.fillStyle = '#0a1014';
+      ctx.fillRect(x0, faceY, w, wallH - 2);
+      ctx.fillStyle = 'rgba(120, 150, 170, 0.25)';
+      ctx.fillRect(x0, faceY, w, 2);
+      ctx.fillStyle = 'rgba(40, 50, 60, 0.5)';
+      ctx.fillRect(x0, y - 2, w, 2);
       ctx.strokeStyle = '#5a7080';
       ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.rect(boardX, boardY, bw, bh);
-      ctx.fill();
-      ctx.stroke();
+      ctx.strokeRect(x0, faceY, w, wallH + 3);
 
-      // Header status light
+      // Side posts
+      ctx.fillStyle = '#2a3848';
+      ctx.fillRect(x0 - 2, faceY - 1, 4, wallH + 8);
+      ctx.fillRect(x0 + w - 2, faceY - 1, 4, wallH + 8);
+      ctx.fillStyle = '#c9a020';
+      ctx.fillRect(x0 - 2, faceY - 1, 4, 2);
+      ctx.fillRect(x0 + w - 2, faceY - 1, 4, 2);
+
+      // Header light + title
       const hl = this._boardHeaderLight(bay);
       let hc = '80,90,100';
       let hg = 0.15;
@@ -6916,20 +6989,20 @@ export class HangarBay {
       }
       ctx.fillStyle = `rgba(${hc}, ${hg})`;
       ctx.beginPath();
-      ctx.arc(boardX + 5, boardY + 5, 2.2, 0, Math.PI * 2);
+      ctx.arc(x0 + 8, faceY + 7, 2.4, 0, Math.PI * 2);
       ctx.fill();
 
       ctx.fillStyle = '#8aa0b0';
-      ctx.font = '3.2px monospace';
+      ctx.font = '4px monospace';
       ctx.textAlign = 'left';
-      ctx.fillText(`${bayLabels()[bay]} SVC`, boardX + 9, boardY + 6.5);
+      ctx.fillText(`${bayLabels()[bay]} SVC`, x0 + 13, faceY + 8.5);
 
       const rows = this._boardTaskRows(bay);
-      rows.slice(0, 5).forEach((row, ri) => {
+      rows.slice(0, 4).forEach((row, ri) => {
         ctx.fillStyle = colorMap[row.color] || colorMap.dim;
-        ctx.font = '3.6px monospace';
+        ctx.font = '3.8px monospace';
         const mark = row.color === 'green' ? '✓' : row.color === 'blue' ? '●' : '○';
-        ctx.fillText(`${mark} ${row.label}`, boardX + 3, boardY + 14 + ri * 4.5);
+        ctx.fillText(`${mark} ${row.label}`, x0 + 6, faceY + 15 + ri * 4.2);
       });
     });
   }
