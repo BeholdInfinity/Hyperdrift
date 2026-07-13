@@ -97,9 +97,14 @@ export class Renderer {
    * Used by hangar occlusion so the hull can sit behind the north wall.
    */
   drawShipInWorld(ctx, ship) {
+    this.drawShipBodyAt(ctx, ship, ship.position.x, ship.position.y);
+  }
+
+  /** Draw ship hull at a world offset (used by B2 elevator shaft clip pass). */
+  drawShipBodyAt(ctx, ship, x = 0, y = 0) {
     const visualScale = ship.visualScale ?? 1;
     ctx.save();
-    ctx.translate(ship.position.x, ship.position.y);
+    ctx.translate(x, y);
     ctx.rotate(ship.angle);
     ctx.scale(visualScale, visualScale);
     this._drawShipBody(ctx, ship);

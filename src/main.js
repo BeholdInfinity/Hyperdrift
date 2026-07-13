@@ -74,7 +74,7 @@ function startGame() {
 
 function openHangar() {
   showHangarUi();
-  engine.beginHangar();
+  engine.beginHangar({ fromMenu: true });
 }
 
 function leaveHangar() {

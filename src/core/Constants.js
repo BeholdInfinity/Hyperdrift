@@ -77,8 +77,8 @@ export const HANGAR = {
   ZOOM_MIN: 1.85,
   /** Close enough that the hull fills most of the play circle */
   ZOOM_MAX: 14,
-  /** Enter wide enough to read door + neighbor pads */
-  ZOOM_DEFAULT: 9,
+  /** ~1080p fallback — runtime uses hangarDefaultZoom(viewportRadius) */
+  ZOOM_DEFAULT: 5,
   /** Wider during launch/land so doors + path read clearly */
   ZOOM_LAUNCH: 3.2,
   ZOOM_WHEEL_STEP: 0.35,
@@ -125,10 +125,17 @@ export const HANGAR = {
   /** After B2 captain checklist finishes, wait before rolling a new list (player owns exit). */
   PLAYER_SERVICE_REROLL_MIN: 10,
   PLAYER_SERVICE_REROLL_MAX: 60,
+  /** Side-bay sim run before first hangar frame (B1/B3); B2 stays fresh */
+  WARMUP_SEC: 60,
+  WARMUP_STEP: 0.25,
   VISITOR_HOVER_SCALE: 1.12,
   VISITOR_LIFT_TIME: 0.65,
   VISITOR_SINK_TIME: 1.75,
   VISITOR_BELOW_TIME: 2.1,
+  /** Brief beat before player ship rises on title Home Base entry */
+  PLAYER_ELEVATOR_BELOW_TIME: 0.75,
+  /** Zoom-out after B2 pad seats at deck level (title elevator entry) */
+  PLAYER_ELEVATOR_ZOOM_TIME: 1.1,
   VISITOR_RISE_TIME: 1.35,
   VISITOR_DOOR_TIME: 1.5,
   VISITOR_APPROACH_SPEED: 95,

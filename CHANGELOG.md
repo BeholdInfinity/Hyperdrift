@@ -17,6 +17,91 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.68] — 2026-07-12
+
+### Changed
+- Telescoping bay doors: outer panel retracts too; nest tucks into the jamb so the mouth opens as wide as a full slide while staying in-bay
+
+---
+
+## [0.1.67] — 2026-07-12
+
+### Changed
+- Bay doors use three-segment telescoping leaves per side — panels nest at each bay's jamb instead of sliding into neighboring bays
+
+---
+
+## [0.1.66] — 2026-07-12
+
+### Fixed
+- Bay door arrivals on **B1/B3 only**: danger warn/clear, animated door open, green lights, then the visitor ship flies in (B2 player map landing unchanged)
+
+---
+
+## [0.1.65] — 2026-07-12
+
+### Changed
+- Hangar default zoom frames B2 with the service board bottom at the viewport rim (computed from viewport size)
+- Door landing stays wide through approach/brake, then zooms in during pad settle; title elevator entry starts fully zoomed in and zooms out after the pad seats at deck level
+
+### Fixed
+- Elevator entrance zoom-out no longer runs during the rise — only after the pad reaches its top position
+
+---
+
+## [0.1.64] — 2026-07-12
+
+### Added
+- Title **Home Base** entry raises the player ship from the B2 elevator (B2 stays unsimmed during warmup; map landing unchanged)
+
+### Fixed
+- B2 elevator raise no longer plays the 8-thruster landing-lower burst (reserved for door landing only)
+
+---
+
+## [0.1.63] — 2026-07-12
+
+### Added
+- Hangar headless warmup (~60s sim, B1/B3 visitor/logistics traffic) runs before the first frame; B2 stays fresh for title entry and map landing
+
+---
+
+## [0.1.62] — 2026-07-12
+
+### Fixed
+- Forklift creep aligns fork tines under cargo (not truck body center over the slot)
+- Crane locks onto a specific pile slot for pickup — trolley, aim shadow, and removal all match (no more SW aim / SE grab)
+- Mechanics step in with hands/cargo center over the slot, not body center over it
+- Forklifts keep fork-forward facing during pile work (travel direction no longer flips forks behind the driver on drop-off)
+- Forklifts drive forward to the approach, then turn into the slot on final approach (no moonwalk)
+- Crane aim/hoist shadows merged into one soft deck blob that grows as the arm lowers (raised baseline kept clearly visible)
+
+### Added
+- Mechanics use four slot approach lanes (two west / two east) at mid/north piles with smooth pickup and drop handoff
+
+---
+
+## [0.1.61] — 2026-07-12
+
+### Fixed
+- Forklifts no longer empty-trip the bulkheads: fetch claims + only leave when inbound cargo can spawn
+- Carrying forklifts queue at the destination pile instead of parking at the hub
+- Mechanics clear service-board faces (wider bypass, gate-first dodge) instead of clipping edges
+- Hot-zone skirts prefer the goal side of the boards (less south-then-north turnaround)
+- Crane hoist aims at the exact 2×2 pile slot for pick and drop; hook stops at fingertip height so cargo does not snap on pickup
+- Mechanics walk across dock pads instead of soft-repelling around them
+
+### Changed
+- Mechanic corridors use uid-stable dual lanes per gap (less identical robotic paths)
+- Bay-computer linger has multiple stand points with occupancy (less stacking)
+- Forklift inbound pop-in uses the left bulkhead; outbound haul-off uses the right
+
+### Added
+- Crane predictive ground aim shadow under the trolley (where the arm would land if dropped)
+- Forklifts use four slot approach lanes (two west / two east), lower forks, creep forward, and raise with smooth cargo transfer
+
+---
+
 ## [0.1.60] — 2026-07-12
 
 ### Added

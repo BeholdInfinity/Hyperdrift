@@ -11,7 +11,7 @@ import { PhysicsSystem } from '../systems/PhysicsSystem.js';
 import { Starfield } from '../world/Starfield.js';
 import { NebulaField } from '../world/NebulaField.js';
 import { SpeedStreaks } from '../world/SpeedStreaks.js';
-import { HangarBay } from '../world/HangarBay.js';
+import { HangarBay, hangarDefaultZoom } from '../world/HangarBay.js';
 import { Station } from '../world/Station.js';
 import { PHYSICS, HANGAR, SHIP } from '../core/Constants.js';
 import { Vec2, angleDifference } from '../utils/MathUtils.js';
@@ -160,7 +160,7 @@ export class GameEngine {
   }
 
   /** Home Base hangar (Jennings Station bay). */
-  beginHangar({ landing = false, entryAngle = null, entryTurret = null } = {}) {
+  beginHangar({ landing = false, fromMenu = false, entryAngle = null, entryTurret = null } = {}) {
     this._spaceCam.x = this.camera.position.x;
     this._spaceCam.y = this.camera.position.y;
 
@@ -171,6 +171,7 @@ export class GameEngine {
     this.precisionActive = false;
     this.entityManager.add(this.ship, 'ship');
     this.hangarBay.reset();
+    this.hangarBay.warmStartHeadless();
     this._dockLocked = true;
     this._hangarSeq = null;
     this._hangarHover = 0;
@@ -178,10 +179,11 @@ export class GameEngine {
 
     this.camera.position.set(this._dockPos.x, this._dockPos.y);
     this.camera.offset.set(0, 0);
-    this.camera.userZoom = HANGAR.ZOOM_DEFAULT;
-    this.camera.targetUserZoom = HANGAR.ZOOM_DEFAULT;
+    const hangarZoom = this._hangarDefaultZoom();
+    this.camera.userZoom = hangarZoom;
+    this.camera.targetUserZoom = hangarZoom;
     this.camera.speedZoom = 1;
-    this.camera.effectiveZoom = HANGAR.ZOOM_DEFAULT;
+    this.camera.effectiveZoom = hangarZoom;
 
     this.mode = 'hangar';
     this.paused = false;
@@ -197,6 +199,8 @@ export class GameEngine {
 
     if (landing) {
       this._startLandingSequence(entryAngle, entryTurret);
+    } else if (fromMenu) {
+      this._startElevatorArrivalSequence();
     } else {
       this._setLaunchBtnVisible(true);
     }
@@ -408,6 +412,43 @@ export class GameEngine {
     this.camera.position.set(this.ship.position.x, this.ship.position.y * 0.5);
   }
 
+  /** Title Home Base: ship was stored below B2 — rise on pad before service begins. */
+  _startElevatorArrivalSequence() {
+    this._hangarSeq = { kind: 'elevate', phase: 'below', t: 0 };
+    this._dockLocked = true;
+    this._hangarHover = 0;
+    this._setLaunchBtnVisible(false);
+    this.hangarBay.playerArrivalPending = true;
+    this.hangarBay.playerPadDrop = 1;
+    this.hangarBay.beginOps(PLAYER_BAY, 'elevator');
+    this.hangarBay.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
+    this.ship.position.set(this._dockPos.x, this._dockPos.y);
+    this.ship.velocity.set(0, 0);
+    this.ship.angle = SHIP.SPAWN_ANGLE;
+    this.ship.turretAngle = SHIP.SPAWN_ANGLE;
+    this.ship.angularVelocity = 0;
+    this.ship.visualScale = 1;
+    this._setHangarZoomImmediate(HANGAR.ZOOM_MAX);
+  }
+
+  _finishElevatorArrival() {
+    this._hangarSeq = null;
+    this._dockLocked = true;
+    this._hangarHover = 0;
+    this.hangarBay.playerPadDrop = 0;
+    this.hangarBay.playerArrivalPending = false;
+    this.ship.position.set(this._dockPos.x, this._dockPos.y);
+    this.ship.velocity.set(0, 0);
+    this.ship.angle = SHIP.SPAWN_ANGLE;
+    this.ship.turretAngle = SHIP.SPAWN_ANGLE;
+    this.ship.visualScale = 1;
+    this._clearShipThrusters(this.ship);
+    this.hangarBay.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
+    this.hangarBay.clearOps(PLAYER_BAY);
+    this._setHangarZoomImmediate(this._hangarDefaultZoom());
+    this._setLaunchBtnVisible(true);
+  }
+
   _finishLaunchToSpace() {
     const spawn = this.station.getExitSpawn();
     const vx = (this.ship?.velocity.x || 0) * 0.25;
@@ -453,7 +494,7 @@ export class GameEngine {
     this._clearShipThrusters(this.ship);
     this.hangarBay.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
     this.hangarBay.clearOps(PLAYER_BAY);
-    this.camera.targetUserZoom = HANGAR.ZOOM_DEFAULT;
+    this._setHangarZoomImmediate(this._hangarDefaultZoom());
     this._setLaunchBtnVisible(true);
   }
 
@@ -637,6 +678,25 @@ export class GameEngine {
     return x * x * (3 - 2 * x);
   }
 
+  _hangarDefaultZoom() {
+    return hangarDefaultZoom(this.renderer.viewportRadius);
+  }
+
+  _setHangarZoomImmediate(zoom) {
+    this.camera.userZoom = zoom;
+    this.camera.targetUserZoom = zoom;
+    this.camera.effectiveZoom = zoom;
+  }
+
+  /** Landing settle: wide launch zoom → board-framed default (lower → doors). */
+  _landSettleZoomProgress(settleT) {
+    const def = this._hangarDefaultZoom();
+    const dur = HANGAR.HOVER_LIFT_TIME + HANGAR.PAD_TURN_TIME + 1.5;
+    const u = this._smoothstep(settleT / dur);
+    this.camera.targetUserZoom =
+      HANGAR.ZOOM_LAUNCH + (def - HANGAR.ZOOM_LAUNCH) * u;
+  }
+
   _updateHangarSequence(dt) {
     const s = this._hangarSeq;
     if (!s || !this.ship) return;
@@ -646,6 +706,7 @@ export class GameEngine {
     this.input.mouseRightDown = false;
 
     if (s.kind === 'launch') this._tickLaunch(s, dt);
+    else if (s.kind === 'elevate') this._tickElevate(s, dt);
     else this._tickLand(s, dt);
   }
 
@@ -712,6 +773,58 @@ export class GameEngine {
     }
   }
 
+  _tickElevate(s, dt) {
+    const hb = this.hangarBay;
+    const ship = this.ship;
+    switch (s.phase) {
+      case 'below':
+        hb.tickEvac(PLAYER_BAY);
+        hb.playerPadDrop = 1;
+        ship.position.set(this._dockPos.x, this._dockPos.y);
+        ship.velocity.set(0, 0);
+        ship.angle = SHIP.SPAWN_ANGLE;
+        this.camera.targetUserZoom = HANGAR.ZOOM_MAX;
+        if (s.t >= HANGAR.PLAYER_ELEVATOR_BELOW_TIME) {
+          s.phase = 'rise';
+          s.t = 0;
+        }
+        break;
+      case 'rise': {
+        hb.tickEvac(PLAYER_BAY);
+        const u = this._smoothstep(s.t / HANGAR.VISITOR_RISE_TIME);
+        hb.playerPadDrop = 1 - u;
+        hb.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
+        ship.position.set(this._dockPos.x, this._dockPos.y);
+        ship.velocity.set(0, 0);
+        ship.angle = SHIP.SPAWN_ANGLE;
+        this._setHangarZoomImmediate(HANGAR.ZOOM_MAX);
+        if (s.t >= HANGAR.VISITOR_RISE_TIME) {
+          hb.playerPadDrop = 0;
+          s.phase = 'settleZoom';
+          s.t = 0;
+        }
+        break;
+      }
+      case 'settleZoom': {
+        hb.playerPadDrop = 0;
+        hb.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
+        ship.position.set(this._dockPos.x, this._dockPos.y);
+        ship.velocity.set(0, 0);
+        ship.angle = SHIP.SPAWN_ANGLE;
+        const def = this._hangarDefaultZoom();
+        const u = this._smoothstep(s.t / HANGAR.PLAYER_ELEVATOR_ZOOM_TIME);
+        const zoom = HANGAR.ZOOM_MAX + (def - HANGAR.ZOOM_MAX) * u;
+        this._setHangarZoomImmediate(zoom);
+        if (s.t >= HANGAR.PLAYER_ELEVATOR_ZOOM_TIME) {
+          this._finishElevatorArrival();
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
   _tickLand(s, dt) {
     const ship = this.ship;
     switch (s.phase) {
@@ -755,6 +868,7 @@ export class GameEngine {
         }
 
         this._applyHangarHoverVisual(1);
+        this.camera.targetUserZoom = HANGAR.ZOOM_LAUNCH;
 
         if ((aligned && ship.position.y >= -55) || s.t > 7) {
           ship.angle = FACE_SOUTH;
@@ -784,6 +898,7 @@ export class GameEngine {
           }
         }
         this._applyHangarHoverVisual(1);
+        this.camera.targetUserZoom = HANGAR.ZOOM_LAUNCH;
         if (
           (Math.abs(ship.position.y - this._dockPos.y) < 3 && ship.velocity.y < 12) ||
           s.t > 4
@@ -808,6 +923,7 @@ export class GameEngine {
         ship.angle = FACE_SOUTH;
         ship.angularVelocity = 0;
         this.hangarBay.setPlayerPadAngle(FACE_SOUTH);
+        this._landSettleZoomProgress(s.t);
         if (s.t >= HANGAR.HOVER_LIFT_TIME) {
           this._applyHangarHoverVisual(0);
           s.phase = 'turn';
@@ -828,6 +944,7 @@ export class GameEngine {
         ship.velocity.set(0, 0);
         this.hangarBay.setPlayerPadAngle(angle);
         this._applyHangarHoverVisual(0);
+        this._landSettleZoomProgress(HANGAR.HOVER_LIFT_TIME + s.t);
         if (s.t >= HANGAR.PAD_TURN_TIME) {
           ship.angle = SHIP.SPAWN_ANGLE;
           ship.turretAngle = SHIP.SPAWN_ANGLE;
@@ -842,6 +959,9 @@ export class GameEngine {
         ship.position.y = this._dockPos.y;
         ship.velocity.set(0, 0);
         ship.angle = SHIP.SPAWN_ANGLE;
+        this._landSettleZoomProgress(
+          HANGAR.HOVER_LIFT_TIME + HANGAR.PAD_TURN_TIME + s.t
+        );
         this.hangarBay.setDoorOpen(PLAYER_BAY, Math.max(0, 1 - s.t / 1.4));
         if (s.t > 0.35) this.hangarBay.setBeacon(PLAYER_BAY, 'warning');
         if (s.t > 1.5) {
@@ -1132,11 +1252,16 @@ export class GameEngine {
 
     const doorLip = this.hangarBay.getDoorLipY();
     const shipOutside = !!(this.ship && this.ship.position.y < doorLip - 2);
+    const playerInShaft = (this.hangarBay.playerPadDrop || 0) >= 0.02;
 
     this.renderer.renderWorldLayer((worldCtx) => {
       this.hangarBay.renderDeck(worldCtx, space);
       this.hangarBay.renderCrew(worldCtx);
-      this.hangarBay.renderElevatorTransits(worldCtx);
+      this.hangarBay.renderElevatorTransits(worldCtx, {
+        drawPlayerShip: (ctx) => {
+          if (this.ship) this.renderer.drawShipBodyAt(ctx, this.ship, 0, 0);
+        },
+      });
       this.hangarBay.renderVisitors(worldCtx, {
         beforeOcclusion: (wctx) => {
           if (this.ship && shipOutside) {
@@ -1145,7 +1270,7 @@ export class GameEngine {
           }
         },
         afterOcclusion: (wctx) => {
-          if (this.ship && !shipOutside) {
+          if (this.ship && !shipOutside && !playerInShaft) {
             this._drawHangarHoverShadow(wctx);
             this.renderer.drawShipInWorld(wctx, this.ship);
           }
