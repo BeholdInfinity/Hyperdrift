@@ -17,6 +17,27 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.92] — 2026-07-13
+
+### Fixed
+- Crane never drops checklist inbound freight (install / load) onto outbound uninstall pads — waits or retargets inbound instead
+
+---
+
+## [0.1.91] — 2026-07-13
+
+### Fixed
+- Mechanic outbound drops keep their claimed 2×2 quadrant — no more pop into another slot (or vanishing when the reserved slot was the only free one)
+
+---
+
+## [0.1.90] — 2026-07-13
+
+### Changed
+- Crane job picks keep priority tiers, but among peers prefer the nearer pickup — higher-weight work can still win a modest detour
+
+---
+
 ## [0.1.89] — 2026-07-13
 
 ### Fixed

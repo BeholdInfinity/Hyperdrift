@@ -89,6 +89,11 @@ const MECH_BODY_R = 4;
 const DANGER_ZONE_PAD = 4;
 /** Crane reclaims unclaimed floor drops after this many seconds */
 const FLOOR_DROP_CRANE_AGE = 5;
+/**
+ * Soft travel scale for crane job picks (~1 bay). Equal-weight scores halve
+ * around this distance; higher-weight work can still beat a modest detour.
+ */
+const CRANE_JOB_DIST_SCALE = 150;
 /** Safe-side apron south of service boards */
 const APRON_SAFE_Y = SERVICE_BOARD_BOTTOM + 14;
 /** Bay computer / service board stand points (south face of each display) */
@@ -2819,7 +2824,14 @@ export class HangarBay {
         n.targetPile?.id === pile.id || n.lingerPile?.id === pile.id;
       if (!onPile) continue;
       if (n.targetSlot != null && n.targetSlot >= 0) used.add(n.targetSlot);
-      if (n.cargo?.pileSlot != null && n.cargo.pileSlot >= 0 && n.job === 'bringIn') {
+      // In-flight deposits: forklift bring-in + mechanic unload/remove
+      if (
+        n.cargo?.pileSlot != null &&
+        n.cargo.pileSlot >= 0 &&
+        (n.job === 'bringIn' ||
+          n.job === 'unloadShip' ||
+          n.job === 'removeUpgrade')
+      ) {
         used.add(n.cargo.pileSlot);
       }
     }
@@ -3206,6 +3218,35 @@ export class HangarBay {
     return tasks[0];
   }
 
+  /** Trolley pose used when scoring the next crane job (home if not yet spawned). */
+  _craneJobOriginXY() {
+    if (this.crane) {
+      return { x: this.crane.trolleyX, y: this.crane.bridgeY };
+    }
+    return this._craneHomeXY();
+  }
+
+  /**
+   * Same-tier crane pick: nearer pickups win among equal weight; higher weight
+   * still beats a modest detour via score = weight / (1 + dist / scale).
+   */
+  _pickCraneTask(tasks) {
+    if (!tasks.length) return null;
+    const origin = this._craneJobOriginXY();
+    let best = null;
+    let bestScore = -Infinity;
+    for (const t of tasks) {
+      const park = this._craneParkXY(t.pickup);
+      const dist = Math.hypot(park.x - origin.x, park.y - origin.y);
+      const score = (t.weight || 1) / (1 + dist / CRANE_JOB_DIST_SCALE);
+      if (score > bestScore) {
+        bestScore = score;
+        best = t;
+      }
+    }
+    return best;
+  }
+
   /**
    * @returns {{ mode: 'work'|'linger'|'idle', pickup?: object, dropoff?: object }}
    */
@@ -3224,14 +3265,14 @@ export class HangarBay {
       .filter((t) => blockedDestIds.has(t.pickup.id))
       .map((t) => ({ ...t, weight: (t.weight || 1) * 4 }));
     if (unblock.length) {
-      const chosen = this._pickWeighted(unblock);
+      const chosen = this._pickCraneTask(unblock);
       return { mode: 'work', pickup: chosen.pickup, dropoff: chosen.dropoff };
     }
 
     // 2) Clear at-capacity piles before they cascade into more blocks
     const atCap = doable.filter((t) => t.clears);
     if (atCap.length) {
-      const chosen = this._pickWeighted(atCap);
+      const chosen = this._pickCraneTask(atCap);
       return { mode: 'work', pickup: chosen.pickup, dropoff: chosen.dropoff };
     }
 
@@ -3245,7 +3286,7 @@ export class HangarBay {
       if (inn.length) pool = inn;
     }
 
-    const chosen = this._pickWeighted(pool);
+    const chosen = this._pickCraneTask(pool);
     if (chosen) {
       return { mode: 'work', pickup: chosen.pickup, dropoff: chosen.dropoff };
     }
@@ -3275,8 +3316,22 @@ export class HangarBay {
       return true;
     });
     if (!aged.length) return null;
-    aged.sort((a, b) => a.droppedAt - b.droppedAt);
-    const drop = aged[0];
+    // Older drops preferred; soft distance bias so he doesn't cross the bay for a 1s-older crate
+    const origin = this._craneJobOriginXY();
+    let drop = null;
+    let bestScore = -Infinity;
+    for (const d of aged) {
+      const age = Math.max(0.5, this.time - d.droppedAt);
+      const parkY = this._clampBridgeY(d.y - TROLLEY_NORTH);
+      const parkX = this._clampTrolleyX(d.x);
+      const dist = Math.hypot(parkX - origin.x, parkY - origin.y);
+      const score = age / (1 + dist / CRANE_JOB_DIST_SCALE);
+      if (score > bestScore) {
+        bestScore = score;
+        drop = d;
+      }
+    }
+    if (!drop) return null;
     drop.claimNpc = 'crane';
     const bay = bayIndexFromX(drop.x);
     const dest = this._findSafePileForCargo(drop.cargo, bay);
@@ -3294,15 +3349,27 @@ export class HangarBay {
    */
   _findSafePileForCargo(cargo, preferBay = null) {
     if (!cargo) return null;
-    const fromFinder = this._findCraneDropoffFor(cargo, preferBay);
+    const fromFinder = this._findCraneDropoffFor(
+      cargo,
+      preferBay,
+      cargo.serviceKey != null ? 'in' : null
+    );
     if (fromFinder) return fromFinder;
     const wantRole = cargo.family === 'upgrade' ? 'upgrade' : 'cargo';
+    const forceIn = cargo.serviceKey != null;
     const ranked = this.piles
-      .filter((p) => p.items.length < PILE_CAP && this._pileAcceptsFamily(p, cargo))
+      .filter((p) => {
+        if (p.items.length >= PILE_CAP) return false;
+        if (!this._pileAcceptsFamily(p, cargo)) return false;
+        if (forceIn && p.lane !== 'in') return false;
+        if (forceIn && p.row === ROW.S) return false;
+        return true;
+      })
       .map((p) => {
         let w = 1;
         if (preferBay != null && p.bay === preferBay) w += 8;
         if (p.role === wantRole) w += 6;
+        if (p.lane === 'in' && p.role === wantRole) w += 4;
         if (p.lane === 'out' && p.role === wantRole) w += 2;
         if (p.row === ROW.S) w -= 4;
         return { p, w };
@@ -3312,10 +3379,10 @@ export class HangarBay {
   }
 
   /** Deposit cargo onto a matching shelf; returns true if parked. */
-  _depositCargoSafe(cargo, preferBay = null) {
+  _depositCargoSafe(cargo, preferBay = null, exceptNpc = null) {
     const dest = this._findSafePileForCargo(cargo, preferBay);
     if (!dest) return false;
-    return this._pilePush(dest, cargo);
+    return this._pilePush(dest, cargo, exceptNpc);
   }
 
   _makeFloorPickupProxy(drop) {
@@ -3400,11 +3467,15 @@ export class HangarBay {
   }
 
   /** Prefer matching N/M shelves; only use south I/O when those are full. */
-  _findCraneDropoffFor(carried, preferBay = null) {
+  _findCraneDropoffFor(carried, preferBay = null, preferLane = null) {
     if (!carried) return null;
     const homeBay =
       carried.serviceBay != null ? carried.serviceBay : preferBay;
     const wantRole = carried.family === 'upgrade' ? 'upgrade' : 'cargo';
+    // Checklist inbound freight (install / load) must stay on the in-lane —
+    // never the outbound uninstall / sell pads.
+    const forceIn = carried.serviceKey != null;
+    const lanePref = forceIn ? 'in' : preferLane;
     const candidates = [];
     for (const p of this.piles) {
       if (p.items.length >= PILE_CAP) continue;
@@ -3417,10 +3488,17 @@ export class HangarBay {
         continue;
       }
       if (!this._pileAcceptsFamily(p, carried)) continue;
+      if (forceIn && p.lane !== 'in') continue;
       if (p.lane === 'in' && p.role === wantRole) {
-        candidates.push({ p, w: homeBay === p.bay ? 10 : 2 });
+        let w = homeBay === p.bay ? 10 : 2;
+        if (lanePref === 'in') w *= 1.25;
+        candidates.push({ p, w });
       } else if (p.lane === 'out' && p.role === wantRole) {
-        candidates.push({ p, w: homeBay === p.bay ? 4 : 1 });
+        // Opposite-lane only as last resort for non-service freight
+        let w = homeBay === p.bay ? 4 : 1;
+        if (lanePref === 'in') w *= 0.15;
+        else if (lanePref === 'out') w *= 1.25;
+        candidates.push({ p, w });
       }
     }
     if (!candidates.length) return null;
@@ -3431,6 +3509,25 @@ export class HangarBay {
       if (r <= 0) return c.p;
     }
     return candidates[0].p;
+  }
+
+  /** True when a planned crane dropoff is wrong for this cargo (family / lane). */
+  _craneDropoffInvalid(dropoff, carried) {
+    if (!dropoff || !carried) return true;
+    if (dropoff.items.length >= PILE_CAP) return true;
+    if (!this._pileAcceptsFamily(dropoff, carried)) return true;
+    const wantRole = carried.family === 'upgrade' ? 'upgrade' : 'cargo';
+    if (dropoff.row !== ROW.S && dropoff.role !== wantRole) return true;
+    // Install / inbound service parts must not land on outbound uninstall pads
+    if (carried.serviceKey != null && dropoff.lane === 'out') return true;
+    return false;
+  }
+
+  /** Preferred shelf lane when retargeting a crane drop (service freight → in). */
+  _cranePreferLane(c) {
+    if (c?.carried?.serviceKey) return 'in';
+    if (c?.pickup?.lane === 'in' || c?.pickup?.lane === 'out') return c.pickup.lane;
+    return null;
   }
 
   /**
@@ -4078,16 +4175,12 @@ export class HangarBay {
           c.hoist = HOIST_RAISED;
           c.hookTargetY = null;
           // Re-target if planned dropoff doesn't match what we actually picked up
-          if (
-            c.carried &&
-            (!c.dropoff ||
-              c.dropoff.items.length >= PILE_CAP ||
-              !this._pileAcceptsFamily(c.dropoff, c.carried) ||
-              (c.dropoff.row !== ROW.S &&
-                c.dropoff.role !==
-                  (c.carried.family === 'upgrade' ? 'upgrade' : 'cargo')))
-          ) {
-            const alt = this._findCraneDropoffFor(c.carried, c.dropoff?.bay ?? c.pickup?.bay);
+          if (c.carried && this._craneDropoffInvalid(c.dropoff, c.carried)) {
+            const alt = this._findCraneDropoffFor(
+              c.carried,
+              c.dropoff?.bay ?? c.pickup?.bay,
+              this._cranePreferLane(c)
+            );
             if (alt) {
               c.dropoff = alt;
               c._dropSlot = null;
@@ -4107,24 +4200,27 @@ export class HangarBay {
           break;
         }
         c.hookTargetY = null;
-        if (
-          c.carried &&
-          c.dropoff &&
-          (!this._pileAcceptsFamily(c.dropoff, c.carried) ||
-            (c.dropoff.row !== ROW.S &&
-              c.dropoff.role !==
-                (c.carried.family === 'upgrade' ? 'upgrade' : 'cargo')))
-        ) {
-          const alt = this._findCraneDropoffFor(c.carried, c.dropoff.bay);
-          if (alt) c.dropoff = alt;
-          else {
+        if (c.carried && c.dropoff && this._craneDropoffInvalid(c.dropoff, c.carried)) {
+          const alt = this._findCraneDropoffFor(
+            c.carried,
+            c.dropoff.bay,
+            this._cranePreferLane(c)
+          );
+          if (alt) {
+            c.dropoff = alt;
+            c._dropSlot = null;
+          } else {
             c.phase = 'lingerLoaded';
             c.pause = 0.25;
             break;
           }
         }
         if (c.dropoff && c.dropoff.items.length >= PILE_CAP) {
-          const alt = this._findCraneDropoffFor(c.carried, c.dropoff.bay);
+          const alt = this._findCraneDropoffFor(
+            c.carried,
+            c.dropoff.bay,
+            this._cranePreferLane(c)
+          );
           if (alt) {
             c.dropoff = alt;
             c._dropSlot = null;
@@ -4151,16 +4247,16 @@ export class HangarBay {
         const dropSlot = this._craneEnsureDropSlot(c);
         const t = this._craneParkXY(c.dropoff, dropSlot);
         this._moveCraneXY(c, t.x, t.y, moveSpeed * 0.6, dt);
-        if (
-          c.dropoff &&
-          c.dropoff.items.length < PILE_CAP &&
-          this._pileAcceptsFamily(c.dropoff, c.carried)
-        ) {
+        if (c.dropoff && !this._craneDropoffInvalid(c.dropoff, c.carried)) {
           c.phase = 'travelDropoff';
           c.pause = 0.1;
           break;
         }
-        const alt = this._findCraneDropoffFor(c.carried, c.dropoff?.bay);
+        const alt = this._findCraneDropoffFor(
+          c.carried,
+          c.dropoff?.bay,
+          this._cranePreferLane(c)
+        );
         if (alt && alt.id !== c.dropoff?.id) {
           c.dropoff = alt;
           c._dropSlot = null;
@@ -4182,10 +4278,7 @@ export class HangarBay {
         if (near(c.hoist, HOIST_MAX, 2)) {
           c.hoist = HOIST_MAX;
           const canDrop =
-            c.carried &&
-            c.dropoff &&
-            c.dropoff.items.length < PILE_CAP &&
-            this._pileAcceptsFamily(c.dropoff, c.carried);
+            c.carried && c.dropoff && !this._craneDropoffInvalid(c.dropoff, c.carried);
           if (canDrop) {
             if (dropSlot != null && dropSlot >= 0) {
               c.carried.pileSlot = dropSlot;
@@ -4196,7 +4289,11 @@ export class HangarBay {
             c.pause = 0.3;
             c.phase = 'raiseDropoff';
           } else if (c.carried) {
-            const alt = this._findCraneDropoffFor(c.carried, c.dropoff?.bay);
+            const alt = this._findCraneDropoffFor(
+              c.carried,
+              c.dropoff?.bay,
+              this._cranePreferLane(c)
+            );
             if (alt) {
               c.dropoff = alt;
               c._dropSlot = null;
@@ -5581,9 +5678,34 @@ export class HangarBay {
       return -1;
     }
     if (unloading && npc.cargo) {
-      return this._pileFreeSlot(pile);
+      return this._mechClaimDropSlot(npc, pile);
     }
     return 0;
+  }
+
+  /**
+   * Claim an outbound drop slot as soon as the unload targets a pile.
+   * Stays reserved until deposit (mirrors forklift bring-in).
+   */
+  _mechClaimDropSlot(npc, pile) {
+    if (!npc?.cargo || !pile) return -1;
+    const used = this._pileReservedSlots(pile, npc);
+    let slot = npc.targetSlot;
+    if (slot == null || slot < 0) slot = npc.cargo.pileSlot;
+    if (slot != null && slot >= 0 && slot < PILE_SLOTS.length && !used.has(slot)) {
+      npc.targetSlot = slot;
+      npc.cargo.pileSlot = slot;
+      return slot;
+    }
+    slot = this._pileFreeSlot(pile, npc);
+    if (slot < 0) {
+      npc.targetSlot = null;
+      npc.cargo.pileSlot = null;
+      return -1;
+    }
+    npc.targetSlot = slot;
+    npc.cargo.pileSlot = slot;
+    return slot;
   }
 
   _mechCarryOffset(npc) {
@@ -5643,7 +5765,7 @@ export class HangarBay {
   }
 
   _mechCompleteDrop(npc, pile, slotIdx) {
-    if (!npc.cargo) return;
+    if (!npc.cargo) return false;
     if (npc.cargo?.unloadServiceBay != null) {
       const ubay = npc.cargo.unloadServiceBay;
       const already = !!npc.cargo._boardUnloadApplied;
@@ -5658,10 +5780,16 @@ export class HangarBay {
       }
     }
     npc.cargo.pileSlot = slotIdx;
-    this._pilePush(pile, npc.cargo);
+    npc.targetSlot = slotIdx;
+    // Pass npc so our own reservation doesn't force a quadrant reassignment
+    // (or fail the push and vanish the crate when the pile is nearly full).
+    if (!this._pilePush(pile, npc.cargo, npc)) {
+      return false;
+    }
     npc.cargo = null;
     npc._mechLift = null;
     npc.mechHandT = 0;
+    return true;
   }
 
   _mechAbortPileWork(npc) {
@@ -5677,7 +5805,7 @@ export class HangarBay {
     }
     if (npc.cargo) {
       const bay = npc.bay ?? bayIndexFromX(npc.x);
-      if (!this._depositCargoSafe(npc.cargo, bay)) {
+      if (!this._depositCargoSafe(npc.cargo, bay, npc)) {
         this._dropFloorCargo(npc);
       } else {
         npc.cargo = null;
@@ -5762,7 +5890,10 @@ export class HangarBay {
           npc._mechLift = null;
           npc.mechPhase = 'creepOut';
         } else if (unloading && npc.cargo && pile) {
-          this._mechCompleteDrop(npc, pile, slotIdx);
+          if (!this._mechCompleteDrop(npc, pile, slotIdx)) {
+            // Race / full pile — keep the crate on the deck instead of vanishing
+            this._dropFloorCargo(npc);
+          }
           npc.mechPhase = 'creepOut';
         } else {
           npc.mechPhase = 'creepOut';
@@ -7148,7 +7279,10 @@ export class HangarBay {
           this._beginNextMechanicTrip(npc);
           break;
         }
-        if (npc.targetSlot == null) {
+        if (unloading && npc.cargo) {
+          // Re-validate / lock claim each frame so approach lane matches deposit
+          npc.targetSlot = this._mechClaimDropSlot(npc, p);
+        } else if (npc.targetSlot == null) {
           npc.targetSlot = this._mechResolveSlot(npc, p);
         }
         if (npc.targetSlot < 0) {
