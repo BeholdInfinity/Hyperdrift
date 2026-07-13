@@ -17,6 +17,20 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.70] — 2026-07-12
+
+### Fixed
+- Forklifts no longer flip/moonwalk on approach: facing follows dominant travel (not tiny X corrections), and slot-facing locks only from the correct side of the lane
+
+---
+
+## [0.1.69] — 2026-07-12
+
+### Fixed
+- Forklifts no longer stall at drop-off: carried crates can deposit even when inbound soft-cap blocks new fetches; failed deposits requeue instead of eating cargo; full-pile queues no longer hold exclusive claims
+
+---
+
 ## [0.1.68] — 2026-07-12
 
 ### Changed

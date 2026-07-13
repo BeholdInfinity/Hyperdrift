@@ -4341,6 +4341,7 @@ export class HangarBay {
     const roomIn = southIn.filter(
       (p) => p.items.length < PILE_CAP && this._bayNeedsInbound(p.bay)
     );
+    const roomAnyIn = southIn.filter((p) => p.items.length < PILE_CAP);
     const fullIn = southIn.filter((p) => p.items.length >= PILE_CAP);
 
     // Service cargo must land on its checklist bay only (never into a clearing bay)
@@ -4359,6 +4360,17 @@ export class HangarBay {
             weight: 16,
             clears: true,
           });
+        } else if (roomAnyIn.length) {
+          // Ops/clear blocked the service bay — still put the crate down somewhere
+          const dest = pick(roomAnyIn);
+          tasks.push({
+            job: 'bringIn',
+            targetPile: dest,
+            bay: dest.bay,
+            status: 'doable',
+            weight: 10,
+            clears: true,
+          });
         }
       } else {
         const dest = this._bayPile(bay, 'in', ROW.S);
@@ -4374,9 +4386,10 @@ export class HangarBay {
         }
       }
     } else if (npc.cargo) {
-      // Untagged inbound — any south-in with room (or linger if full)
-      if (roomIn.length) {
-        const dest = pick(roomIn);
+      // Already carrying: soft-cap must not block deposit (only new fetches).
+      if (roomAnyIn.length) {
+        const prefer = roomIn.length ? roomIn : roomAnyIn;
+        const dest = pick(prefer);
         tasks.push({
           job: 'bringIn',
           targetPile: dest,
@@ -4501,13 +4514,16 @@ export class HangarBay {
     else if (npc?.job === 'takeOut' && pile) {
       cargo = this._forkItemAtSlot(pile, slotIdx);
     }
-    return this._forkTruckPosForCargoCenter(
+    const pos = this._forkTruckPosForCargoCenter(
       w.x,
       w.y,
       npc?.facing ?? ap.facing,
       cargo,
       FORK_LOWERED
     );
+    // Never back south of the approach lane — tine math can push tall crates past it.
+    pos.y = Math.min(pos.y, ap.y - 2);
+    return pos;
   }
 
   /** Item occupying a pile subquadrant (stable slot), not merely last in array. */
@@ -4587,11 +4603,17 @@ export class HangarBay {
       return;
     }
     npc.targetSlot = slotIdx;
+    // Reserve the slot so crane / other movers can't steal it mid-creep.
+    if (npc.job === 'bringIn' && npc.cargo) {
+      npc.cargo.pileSlot = slotIdx;
+    }
     const ap = this._forkApproachForSlot(pile, slotIdx);
     npc.facing = ap.facing;
     npc.forkH = FORK_RAISED;
     npc.forkPhase = 'lower';
     npc._forkLift = null;
+    npc._forkWorkT = 0;
+    npc._lockFacing = false;
     npc.state = 'work';
     npc.stateT = 0;
   }
@@ -4632,7 +4654,41 @@ export class HangarBay {
 
   _updateForkWork(npc, dt) {
     const pile = this._pileById(npc.targetPile?.id);
-    const slotIdx = npc.targetSlot ?? 0;
+    let slotIdx = npc.targetSlot;
+    if (slotIdx == null || slotIdx < 0 || slotIdx >= PILE_SLOTS.length) {
+      slotIdx = this._forkResolveSlot(npc, pile);
+      npc.targetSlot = slotIdx >= 0 ? slotIdx : null;
+    }
+    if (slotIdx == null || slotIdx < 0) {
+      if (npc.cargo) this._forkQueueAtDest(npc, pile);
+      else {
+        npc.forkPhase = null;
+        this._clearTaskClaim(npc);
+        npc.state = 'toHub';
+      }
+      return;
+    }
+
+    npc._forkWorkT = (npc._forkWorkT || 0) + dt;
+    // Watchdog: abort stuck lower/creep animations back to queue or hub
+    if (npc._forkWorkT > 5.5) {
+      npc.forkPhase = null;
+      npc._forkWorkT = 0;
+      if (npc.cargo) this._forkQueueAtDest(npc, pile);
+      else if (npc.job === 'takeOut' && (npc.cargo || npc._forkLift?.cargo)) {
+        if (npc._forkLift?.cargo) {
+          npc.cargo = npc._forkLift.cargo;
+          npc._forkLift = null;
+        }
+        this._forkFinishTakeOut(npc);
+      } else {
+        this._clearTaskClaim(npc);
+        npc._forkLift = null;
+        npc.state = 'toHub';
+      }
+      return;
+    }
+
     const creep = pile ? this._forkCreepForSlot(pile, slotIdx, npc) : null;
     const back = pile ? this._forkApproachForSlot(pile, slotIdx) : null;
 
@@ -4681,16 +4737,23 @@ export class HangarBay {
       }
       case 'drop': {
         if (back?.facing) npc.facing = back.facing;
-        if (pile && npc.cargo && pile.items.length < PILE_CAP) {
+        if (pile && npc.cargo) {
           if (pile.lane === 'out' && npc.cargo.serviceKey) {
             npc.cargo.serviceKey = null;
             npc.cargo.serviceBay = null;
           }
           npc.cargo.pileSlot = slotIdx;
-          this._pilePush(pile, npc.cargo);
-          npc.cargo = null;
+          if (this._pilePush(pile, npc.cargo)) {
+            npc.cargo = null;
+            npc.forkPhase = 'raise';
+          } else {
+            // Deposit failed (full / no free slot) — back out and requeue
+            npc.forkPhase = null;
+            this._forkQueueAtDest(npc, pile);
+          }
+        } else {
+          npc.forkPhase = 'raise';
         }
-        npc.forkPhase = 'raise';
         break;
       }
       case 'raise': {
@@ -4711,6 +4774,7 @@ export class HangarBay {
       case 'creepOut': {
         if (!back) {
           npc.forkPhase = null;
+          npc._forkWorkT = 0;
           if (npc.job === 'takeOut' && npc.cargo) this._forkFinishTakeOut(npc);
           else if (npc.job === 'bringIn') this._forkAfterBringInDrop(npc);
           else {
@@ -4723,6 +4787,7 @@ export class HangarBay {
         if (this._moveToward(npc, back.x, back.y, 26, dt)) {
           npc.forkPhase = null;
           npc.targetSlot = null;
+          npc._forkWorkT = 0;
           if (npc.job === 'takeOut' && npc.cargo) {
             this._forkFinishTakeOut(npc);
           } else if (npc.job === 'bringIn') {
@@ -4736,6 +4801,7 @@ export class HangarBay {
       }
       default:
         npc.forkPhase = null;
+        npc._forkWorkT = 0;
         this._clearTaskClaim(npc);
         npc.state = 'toHub';
     }
@@ -5065,13 +5131,17 @@ export class HangarBay {
     npc.job = 'bringIn';
     npc.targetPile = dest;
     npc.lingerPile = dest;
-    npc.targetSlot = dest ? this._forkResolveSlot(npc, dest) : null;
+    const free = dest ? this._pileFreeSlot(dest) : -1;
+    npc.targetSlot = free >= 0 ? free : null;
     npc.forkPhase = null;
     npc.forkH = FORK_RAISED;
     npc._forkLift = null;
+    npc._forkWorkT = 0;
+    npc._lockFacing = false;
     npc._fetchInbound = false;
     npc._haulOff = false;
-    if (dest) {
+    if (dest && free >= 0) {
+      // Only hold the exclusive bringIn claim when the pile can actually accept cargo.
       const key = this._taskClaimKey('bringIn', dest, dest.bay);
       const others = this._claimedTaskKeys(npc);
       if (!others.has(key)) {
@@ -5079,6 +5149,9 @@ export class HangarBay {
       } else if (npc.claimKey !== key) {
         npc.claimKey = null;
       }
+    } else {
+      // Full / missing dest — release claim so another truck (or crane clear) can proceed
+      this._clearTaskClaim(npc);
     }
     npc.state = 'linger';
     npc.stateT = 0.35;
@@ -5087,7 +5160,11 @@ export class HangarBay {
   /** After a successful drop, only fetch again if an unclaimed need remains. */
   _forkAfterBringInDrop(npc) {
     this._clearTaskClaim(npc);
-    npc.cargo = null;
+    // Cargo should already be deposited; never silently destroy a still-held crate
+    if (npc.cargo) {
+      this._forkQueueAtDest(npc);
+      return;
+    }
     const pick = this._pickForkliftJob(npc);
     if (pick.mode === 'work' && pick.job === 'fetchIn') {
       npc.side = this._forkInboundSide();
@@ -5150,12 +5227,39 @@ export class HangarBay {
     const lockFacing =
       npc.forkPhase ||
       npc.mechPhase ||
+      npc._lockFacing ||
       (npc.kind === 'mechanic' &&
         (npc.state === 'toPile' || npc.state === 'workPile' || npc.state === 'linger'));
     if (!lockFacing) {
-      npc.facing = Math.sign(dx) || npc.facing;
+      // Face along clearly horizontal travel only — tiny X corrections while
+      // driving N/S were flipping the truck and causing moonwalks.
+      if (Math.abs(dx) >= Math.abs(dy) * 0.45 && Math.abs(dx) > 1.25) {
+        const next = Math.sign(dx);
+        if (next) npc.facing = next;
+      }
     }
     return false;
+  }
+
+  /**
+   * Final approach: lock fork-into-slot facing only when on the correct side of
+   * the lane (west approach from the west, east from the east). Wrong-side lock
+   * made trucks moonwalk into the spot after an overshoot.
+   */
+  _forkSetApproachFacing(npc, ap) {
+    if (!ap) {
+      npc._lockFacing = false;
+      return;
+    }
+    const dist = Math.hypot(npc.x - ap.x, npc.y - ap.y);
+    const correctSide =
+      ap.facing > 0 ? npc.x <= ap.x + 3 : npc.x >= ap.x - 3;
+    if (dist < 14 && correctSide) {
+      npc.facing = ap.facing;
+      npc._lockFacing = true;
+    } else {
+      npc._lockFacing = false;
+    }
   }
 
   _pickSouthPileForFork(wantCargo) {
@@ -5348,30 +5452,29 @@ export class HangarBay {
             break;
           }
         }
-        if (npc.targetSlot == null) {
+        if (npc.targetSlot == null || npc.targetSlot < 0) {
           npc.targetSlot = this._forkResolveSlot(npc, p);
         }
-        const slot = npc.targetSlot ?? 0;
+        const slot = npc.targetSlot >= 0 ? npc.targetSlot : 0;
         const ap = this._forkApproach(p, slot);
+        this._forkSetApproachFacing(npc, ap);
         const arrived = this._moveToward(npc, ap.x, ap.y, 38, dt);
-        // Drive forward en route; turn fork-into-slot only on final approach
-        if (Math.hypot(npc.x - ap.x, npc.y - ap.y) < 18) {
-          npc.facing = ap.facing;
-        }
         if (arrived) {
           npc.facing = ap.facing;
+          npc._lockFacing = false;
           this._forkBeginPileWork(npc, p);
         }
         break;
       }
       case 'linger': {
         const p = this._pileById(npc.lingerPile?.id || npc.targetPile?.id);
-        const slot = npc.targetSlot ?? (p ? this._forkResolveSlot(npc, p) : 0);
-        const ap = this._forkApproach(p, slot >= 0 ? slot : 0);
-        this._moveToward(npc, ap.x, ap.y, 28, dt);
-        if (Math.hypot(npc.x - ap.x, npc.y - ap.y) < 18) {
-          npc.facing = ap.facing;
+        if (npc.targetSlot == null || npc.targetSlot < 0) {
+          npc.targetSlot = p ? this._forkResolveSlot(npc, p) : null;
         }
+        const slot = npc.targetSlot >= 0 ? npc.targetSlot : 0;
+        const ap = this._forkApproach(p, slot);
+        this._forkSetApproachFacing(npc, ap);
+        this._moveToward(npc, ap.x, ap.y, 28, dt);
         if (npc.stateT > 0) break;
         const pick = this._pickForkliftJob(npc);
         if (npc.cargo) {
@@ -5426,6 +5529,7 @@ export class HangarBay {
         break;
       }
       case 'toHub': {
+        npc._lockFacing = false;
         if (npc.cargo) {
           this._forkQueueAtDest(npc);
           break;
@@ -5438,6 +5542,7 @@ export class HangarBay {
         break;
       }
       case 'toDoor': {
+        npc._lockFacing = false;
         const rerouteEvery = npc.cargo ? 0.35 : 0.12;
         npc._rerouteT = (npc._rerouteT || 0) + dt;
         if (!npc._haulOff && !npc._fetchInbound && npc._rerouteT >= rerouteEvery) {
