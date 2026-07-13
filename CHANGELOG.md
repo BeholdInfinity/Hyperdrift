@@ -17,6 +17,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.93] — 2026-07-13
+
+### Added
+- Title screen Changelog link (underlined, same font as the build stamp) opens an opaque newest-first reader of `CHANGELOG.md` over the live starfield (title UI hidden while open)
+
+---
+
 ## [0.1.92] — 2026-07-13
 
 ### Fixed

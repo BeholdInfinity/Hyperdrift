@@ -84,7 +84,8 @@ export class GameEngine {
     this._dockKeyHeld = false;
 
     this._startScreen = document.getElementById('start-screen');
-    this._buildStamp = document.getElementById('build-stamp');
+    this._buildMeta =
+      document.getElementById('build-meta') || document.getElementById('build-stamp');
     this._hangarHud = document.getElementById('hangar-hud');
     this._overlay = document.getElementById('overlay');
     this._controlsHud = document.getElementById('controls-hud');
@@ -112,7 +113,7 @@ export class GameEngine {
     this._titleFade = opacity;
     this.canvas.style.opacity = String(opacity);
     if (this._startScreen) this._startScreen.style.opacity = String(opacity);
-    if (this._buildStamp) this._buildStamp.style.opacity = String(opacity);
+    if (this._buildMeta) this._buildMeta.style.opacity = String(opacity);
   }
 
   /** Begin the title-screen loop (fullscreen starfield + nebula drift). */

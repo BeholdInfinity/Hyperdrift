@@ -238,7 +238,7 @@ Foreground particles moving **opposite** ship velocity — length, brightness, a
 
 | Region | Purpose | Status |
 |--------|---------|--------|
-| Title screen | Fullscreen live starfield + nebula; ENTER HANGAR / QUICK LAUNCH / SETTINGS; soft vignette | Done |
+| Title screen | Fullscreen live starfield + nebula; ENTER HANGAR / QUICK LAUNCH / SETTINGS; build stamp + Changelog reader; soft vignette | Done |
 | Home Base hangar (Jennings Station) | Docked bay + B2 launch/land; industrial set; danger lights; B1–B3 captain checklists | Done (B2 request queue later) |
 | Jennings Station (overworld) | Industrial exterior; approach + Enter to dock | Done |
 | Settings / controls | Ship-only sandbox viewport with live bindings | Done |

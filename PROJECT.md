@@ -8,7 +8,7 @@ Browser-based 2D spaceflight prototype. Top-down semi-Newtonian physics, procedu
 
 **Easiest:** double-click [`start-game.bat`](start-game.bat) in the project folder. It starts a local server, **waits until the page is actually ready**, then opens your browser.
 
-Uses `start-game.ps1` under the hood so Python is found reliably when launched from Explorer (not only from a dev terminal). Serves via `dev-server.py` with **no-cache** headers (plain `http.server` can leave browsers stuck on old JS modules). Title screen bottom-left shows **vX.Y.Z · Last edit:** from `/build-info.json` (version in `src/version.js`, newest project file mtime).
+Uses `start-game.ps1` under the hood so Python is found reliably when launched from Explorer (not only from a dev terminal). Serves via `dev-server.py` with **no-cache** headers (plain `http.server` can leave browsers stuck on old JS modules). Title screen bottom-left shows **vX.Y.Z · Last edit:** from `/build-info.json` (version in `src/version.js`, newest project file mtime), plus an underlined **Changelog** link that opens `CHANGELOG.md` newest-first.
 
 **Manual:**
 

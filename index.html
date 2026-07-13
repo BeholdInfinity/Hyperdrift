@@ -34,7 +34,20 @@
         <button id="quick-launch-btn" class="secondary-btn">QUICK LAUNCH</button>
         <button id="settings-title-btn" class="secondary-btn">SETTINGS</button>
       </div>
-      <p id="build-stamp" class="build-stamp">v0.1.42 · Last edit: loading…</p>
+      <div id="build-meta" class="build-meta">
+        <p id="build-stamp" class="build-stamp">v0.1.42 · Last edit: loading…</p>
+        <button type="button" id="changelog-btn" class="changelog-btn">Changelog</button>
+      </div>
+
+      <div id="changelog-panel" class="changelog-panel hidden" role="dialog" aria-modal="true" aria-labelledby="changelog-title">
+        <div class="changelog-card">
+          <header class="changelog-header">
+            <h2 id="changelog-title">Changelog</h2>
+            <button type="button" id="changelog-close" class="changelog-close">Close</button>
+          </header>
+          <div id="changelog-body" class="changelog-body">Loading…</div>
+        </div>
+      </div>
     </div>
 
     <div id="hangar-hud" class="hidden">
@@ -85,12 +98,17 @@
     </div>
   </div>
 
-  <!-- Inline so the stamp does not depend on cached ES modules -->
+  <!-- Inline so the stamp / changelog do not depend on cached ES modules -->
   <script>
     (function () {
       var VERSION = '0.1.42';
       var el = document.getElementById('build-stamp');
-      if (!el) return;
+      var changelogBtn = document.getElementById('changelog-btn');
+      var changelogPanel = document.getElementById('changelog-panel');
+      var changelogBody = document.getElementById('changelog-body');
+      var changelogClose = document.getElementById('changelog-close');
+      var overlayEl = document.getElementById('overlay');
+      var changelogLoaded = false;
 
       function formatStamp(date) {
         return date.toLocaleString(undefined, {
@@ -104,9 +122,133 @@
       }
 
       function setStamp(version, when, file) {
+        if (!el) return;
         el.textContent = 'v' + version + ' · Last edit: ' + formatStamp(when);
         el.title = file ? 'Newest file: ' + file : '';
       }
+
+      function escapeHtml(s) {
+        return String(s)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;');
+      }
+
+      /** Parse Keep-a-Changelog sections; file order is already newest-first. */
+      function parseChangelog(md) {
+        var sections = [];
+        var current = null;
+        var lines = String(md || '').split(/\r?\n/);
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i];
+          var ver = line.match(/^## \[([^\]]+)\](?:\s*[—–-]\s*(.+))?/);
+          if (ver) {
+            if (current) sections.push(current);
+            current = { version: ver[1], date: (ver[2] || '').trim(), items: [] };
+            continue;
+          }
+          if (!current) continue;
+          if (/^###\s+/.test(line)) {
+            current.items.push({ kind: 'h', text: line.replace(/^###\s+/, '') });
+          } else if (/^-\s+/.test(line)) {
+            current.items.push({ kind: 'li', text: line.replace(/^-\s+/, '') });
+          }
+        }
+        if (current) sections.push(current);
+        return sections;
+      }
+
+      function renderChangelog(sections) {
+        if (!sections.length) {
+          changelogBody.innerHTML = '<p class="changelog-empty">No changelog entries yet.</p>';
+          return;
+        }
+        var html = '';
+        for (var i = 0; i < sections.length; i++) {
+          var s = sections[i];
+          html += '<section class="changelog-entry">';
+          html += '<h3 class="changelog-ver">';
+          html += '<span class="changelog-ver-id">' + escapeHtml(s.version) + '</span>';
+          if (s.date) {
+            html += '<span class="changelog-ver-date">' + escapeHtml(s.date) + '</span>';
+          }
+          html += '</h3>';
+          var openList = false;
+          for (var j = 0; j < s.items.length; j++) {
+            var it = s.items[j];
+            if (it.kind === 'h') {
+              if (openList) {
+                html += '</ul>';
+                openList = false;
+              }
+              html += '<h4 class="changelog-cat">' + escapeHtml(it.text) + '</h4>';
+            } else {
+              if (!openList) {
+                html += '<ul class="changelog-list">';
+                openList = true;
+              }
+              html += '<li>' + escapeHtml(it.text) + '</li>';
+            }
+          }
+          if (openList) html += '</ul>';
+          html += '</section>';
+        }
+        changelogBody.innerHTML = html;
+      }
+
+      function openChangelog() {
+        if (!changelogPanel) return;
+        changelogPanel.classList.remove('hidden');
+        if (overlayEl) overlayEl.classList.add('changelog-open');
+        if (changelogClose) changelogClose.focus();
+        if (changelogLoaded) return;
+        changelogBody.textContent = 'Loading…';
+        fetch('/CHANGELOG.md?t=' + Date.now(), { cache: 'no-store' })
+          .then(function (res) {
+            if (!res.ok) throw new Error('changelog missing');
+            return res.text();
+          })
+          .then(function (md) {
+            changelogLoaded = true;
+            renderChangelog(parseChangelog(md));
+          })
+          .catch(function () {
+            changelogBody.innerHTML =
+              '<p class="changelog-empty">Could not load CHANGELOG.md.</p>';
+          });
+      }
+
+      function closeChangelog() {
+        if (changelogPanel) changelogPanel.classList.add('hidden');
+        if (overlayEl) overlayEl.classList.remove('changelog-open');
+      }
+
+      window.__hyperdriftCloseChangelog = closeChangelog;
+
+      if (changelogBtn) {
+        changelogBtn.addEventListener('click', function (e) {
+          e.preventDefault();
+          openChangelog();
+        });
+      }
+      if (changelogClose) {
+        changelogClose.addEventListener('click', closeChangelog);
+      }
+      if (changelogPanel) {
+        changelogPanel.addEventListener('click', function (e) {
+          if (e.target === changelogPanel) closeChangelog();
+        });
+      }
+      document.addEventListener('keydown', function (e) {
+        if (e.key !== 'Escape') return;
+        if (changelogPanel && !changelogPanel.classList.contains('hidden')) {
+          e.preventDefault();
+          closeChangelog();
+        }
+      });
+
+      if (!el) return;
 
       fetch('/build-info.json?t=' + Date.now(), { cache: 'no-store' })
         .then(function (res) {

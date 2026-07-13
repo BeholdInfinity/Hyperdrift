@@ -399,19 +399,166 @@ html, body {
   line-height: 1.8;
 }
 
-.build-stamp {
+.build-meta {
   position: absolute;
   left: 18px;
   bottom: 16px;
-  margin: 0;
   z-index: 11;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.build-stamp {
+  margin: 0;
   font-size: 0.7rem;
   letter-spacing: 1px;
   color: rgba(200, 214, 229, 0.35);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
   user-select: none;
-  opacity: 0;
+}
+
+.changelog-btn {
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  font: inherit;
+  font-size: 0.7rem;
+  letter-spacing: 1px;
+  color: rgba(200, 214, 229, 0.35);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+  pointer-events: auto;
+  user-select: none;
+}
+
+.changelog-btn:hover {
+  color: rgba(200, 214, 229, 0.7);
+}
+
+.changelog-panel {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  /* Keep title starfield visible around the card — no heavy dim */
+  background: transparent;
+  pointer-events: auto;
+}
+
+.changelog-panel.hidden {
+  display: none;
+}
+
+.changelog-card {
+  width: min(560px, 100%);
+  max-height: min(70vh, 640px);
+  display: flex;
+  flex-direction: column;
+  background: #080e16;
+  border: 1px solid rgba(100, 180, 255, 0.28);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.45),
+    0 16px 48px rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+}
+
+.changelog-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px 12px;
+  border-bottom: 1px solid rgba(100, 180, 255, 0.18);
+}
+
+.changelog-header h2 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 400;
+  letter-spacing: 4px;
+  color: #64b4ff;
+}
+
+.changelog-close {
+  padding: 6px 12px;
+  font-size: 0.7rem;
+  letter-spacing: 2px;
+  background: transparent;
+  border: 1px solid rgba(100, 180, 255, 0.35);
+  color: rgba(200, 214, 229, 0.75);
+  cursor: pointer;
+}
+
+.changelog-close:hover {
+  border-color: #64b4ff;
+  color: #64b4ff;
+}
+
+.changelog-body {
+  padding: 14px 18px 20px;
+  overflow-y: auto;
+  color: rgba(200, 214, 229, 0.78);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.changelog-entry + .changelog-entry {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(100, 180, 255, 0.12);
+}
+
+.changelog-ver {
+  margin: 0 0 8px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 1px;
+  color: rgba(100, 180, 255, 0.95);
+}
+
+.changelog-ver-date {
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: 0.5px;
+  color: rgba(200, 214, 229, 0.4);
+  font-variant-numeric: tabular-nums;
+}
+
+.changelog-cat {
+  margin: 10px 0 4px;
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: rgba(100, 180, 255, 0.55);
+}
+
+.changelog-list {
+  margin: 0 0 4px;
+  padding-left: 1.15em;
+}
+
+.changelog-list li {
+  margin: 0.2em 0;
+}
+
+.changelog-empty {
+  margin: 8px 0;
+  color: rgba(200, 214, 229, 0.45);
 }
 
 .controls-hint kbd {
@@ -508,6 +655,12 @@ html, body {
 
 #overlay.hidden {
   display: none;
+}
+
+#overlay.changelog-open #start-screen,
+#overlay.changelog-open #build-meta {
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .hidden {

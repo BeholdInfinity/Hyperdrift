@@ -24,6 +24,12 @@ const dockHud = document.getElementById('dock-hud');
 const engine = new GameEngine(canvas);
 engine.startTitle();
 
+function closeChangelogPanel() {
+  if (typeof window.__hyperdriftCloseChangelog === 'function') {
+    window.__hyperdriftCloseChangelog();
+  }
+}
+
 function showTitleUi() {
   overlay.classList.remove('hidden');
   startScreen.classList.remove('hidden');
@@ -36,6 +42,7 @@ function showTitleUi() {
 }
 
 function showPlayingUi() {
+  closeChangelogPanel();
   startScreen.classList.add('hidden');
   overlay.classList.add('hidden');
   if (hangarHud) hangarHud.classList.add('hidden');
@@ -46,6 +53,7 @@ function showPlayingUi() {
 }
 
 function showHangarUi() {
+  closeChangelogPanel();
   startScreen.classList.add('hidden');
   overlay.classList.add('hidden');
   hud.classList.add('hidden');
@@ -57,6 +65,7 @@ function showHangarUi() {
 }
 
 function showControlsUi() {
+  closeChangelogPanel();
   startScreen.classList.add('hidden');
   overlay.classList.add('hidden');
   hud.classList.add('hidden');
