@@ -17,6 +17,37 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.74] — 2026-07-12
+
+### Changed
+- Service checklist: labels shifted left for 5 pips; 6+ units of one type wrap to another labeled row; cargo load/unload can request up to 8 units
+
+---
+
+## [0.1.73] — 2026-07-12
+
+### Changed
+- Service checklist labels (`Hull` / `Fuel` / `Bullet` / `Shells` / `Install` / `Load` / `Unload`); circles left-align to a fixed column locked to the widest label
+
+---
+
+## [0.1.72] — 2026-07-12
+
+### Changed
+- Service checklist: one row per job type with status circles for each unit; checkmark when all units for that type are done
+
+---
+
+## [0.1.71] — 2026-07-12
+
+### Changed
+- Captain service requests: red meters always queue work; yellow uses curved chance; green skips
+- Deficit depth scales units (1–3) for fuel, hull, bullets, shells, load, and unload — checklist shows multiple rows; each unit fills a chunk
+- Ammo split into separate `BULLETS` / `SHELLS` checklist lines (shared AMMO crate art)
+- Upgrades capped at 0–2; light visitor-type bias (combat → ammo/hull, freighters → cargo)
+
+---
+
 ## [0.1.70] — 2026-07-12
 
 ### Fixed

@@ -135,7 +135,7 @@ src/
 
 ## Known gaps / next steps
 
-- Home Base: B2 player-request job queue still future; interim B2 uses the same captain checklist as B1/B3 (reroll 10–60s after complete; player owns launch) — see `GDD.md`
+- Home Base: B2 player-request job queue still future; interim B2 uses the same captain checklist as B1/B3 (red floors + multi-unit requests; reroll 10–60s after complete; player owns launch) — see `GDD.md`
 - **Ship component Mk variants** (hull, fuel, weapons, etc.): board shows random Mk 1–3 labels + size-based cargo Mk ladder only — lock real tiers / effects later (`OPEN_QUESTIONS.md` §12)
 - Ship silhouette / hardpoint design pass (hangar is ready for close inspection)
 - Asteroids destroy but don't fragment into smaller pieces yet

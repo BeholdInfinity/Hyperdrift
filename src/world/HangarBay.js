@@ -527,6 +527,79 @@ function needRequestChance(need) {
   return n ** 2.2;
 }
 
+/** Board meter bands — red always requests; green never does. */
+const STAT_RED = 0.4;
+const STAT_GREEN = 0.7;
+
+/** Map need 0–1 → 1–3 work units (caller handles 0 / no-request). */
+function unitsFromNeed(need) {
+  const n = Math.max(0, Math.min(1, need));
+  if (n <= 0) return 0;
+  return Math.max(1, Math.min(3, 1 + Math.floor(n * 2)));
+}
+
+/**
+ * How many service units for a 0–1 meter (fuel/hull/ammo).
+ * Red (&lt;0.4): always ≥1. Yellow: curved roll. Green (≥0.7): none.
+ * @param {number} meter01
+ * @param {number} [bias=1] multiplies deficit before banding
+ */
+function meterServiceUnits(meter01, bias = 1) {
+  const m = Math.max(0, Math.min(1, meter01));
+  if (m >= STAT_GREEN) return 0;
+  const need = Math.min(1, (1 - m) * Math.max(0.5, bias));
+  if (m < STAT_RED) return Math.max(1, unitsFromNeed(need));
+  if (Math.random() >= needRequestChance(need)) return 0;
+  return unitsFromNeed(need);
+}
+
+/** Cargo bring-in / take-out unit count from free or filled slots (board wraps every 5 pips). */
+function cargoServiceUnits(slotCount, fraction01, bias = 1) {
+  const slots = Math.max(0, slotCount | 0);
+  if (slots <= 0) return 0;
+  const frac = Math.max(0, Math.min(1, fraction01 * Math.max(0.5, bias)));
+  if (frac <= 0.05) return 0;
+  const cap = Math.min(slots, 8);
+  if (frac < 0.35 && Math.random() >= needRequestChance(frac)) return 0;
+  if (frac >= 0.7) {
+    return Math.max(1, Math.min(cap, Math.round(slots * frac)));
+  }
+  if (Math.random() >= needRequestChance(frac)) return 0;
+  return Math.max(1, Math.min(cap, Math.round(slots * Math.max(0.35, frac))));
+}
+
+/** Light visitor personality — combat leans ammo/hull; freighters lean cargo. */
+function visitorServiceBias(visitorId) {
+  const combat = ['scout', 'interceptor', 'patrol', 'gunship'];
+  const cargoHeavy = ['hauler', 'freighter', 'tanker'];
+  if (combat.includes(visitorId)) return { ammo: 1.15, hull: 1.1, fuel: 1, cargo: 0.85 };
+  if (cargoHeavy.includes(visitorId)) return { ammo: 0.9, hull: 1, fuel: 1, cargo: 1.2 };
+  return { ammo: 1, hull: 1, fuel: 1, cargo: 1 };
+}
+
+const SERVICE_STAGING_TYPES = [
+  'refuel',
+  'reloadBullets',
+  'reloadShells',
+  'loadCargo',
+  'upgrade',
+];
+
+/** Compact service-board labels (colon added when drawn). Widest locks the circle column. */
+const SERVICE_BOARD_LABELS = {
+  repair: 'Hull',
+  refuel: 'Fuel',
+  reloadBullets: 'Bullet',
+  reloadShells: 'Shells',
+  upgrade: 'Install',
+  loadCargo: 'Load',
+  unloadCargo: 'Unload',
+};
+/** Includes colon — circle column starts after this width for every row. */
+const SERVICE_BOARD_LABEL_WIDEST = 'Install:';
+/** Max status pips per checklist row; overflow repeats the label on the next row. */
+const SERVICE_BOARD_PIPS_PER_ROW = 5;
+
 let _serviceSeq = 1;
 
 function smoothstep(t) {
@@ -960,7 +1033,8 @@ export class HangarBay {
       if (pending) {
         const map = {
           refuel: 'REFUELING',
-          reload: 'RELOADING',
+          reloadBullets: 'RELOADING BULLETS',
+          reloadShells: 'RELOADING SHELLS',
           repair: 'REPAIRING HULL',
           loadCargo: 'LOADING CARGO',
           unloadCargo: 'UNLOADING CARGO',
@@ -989,69 +1063,107 @@ export class HangarBay {
     }
   }
 
-  _boardTaskRows(bayIndex) {
-    const pad = this._servicePad(bayIndex);
-    const svc = pad?.service;
-    if (!this._bayHasShip(bayIndex) || !svc?.items?.length) {
-      return [{ label: 'STANDBY', color: 'dim', status: 'idle' }];
+  _boardUnitColor(bayIndex, svc, it) {
+    if (it.status === 'done') return 'green';
+    if (it.status === 'staging' || it.status === 'ready' || it.status === 'active') {
+      return 'blue';
     }
-    const labelOf = (it) => {
-      const map = {
-        refuel: 'FUEL',
-        reload: 'AMMO',
-        repair: 'HULL',
-        loadCargo: 'LOAD',
-        unloadCargo: 'UNLOAD',
-        upgrade: 'UP',
-        elevatorTransfer: 'XFER',
-      };
-      return map[it.type] || String(it.type || '?').toUpperCase().slice(0, 6);
-    };
+
     const jobMap = {
       repair: 'weld',
       loadCargo: 'loadShip',
       unloadCargo: 'unloadShip',
       upgrade: 'installUpgrade',
       refuel: 'loadShip',
-      reload: 'loadShip',
+      reloadBullets: 'loadShip',
+      reloadShells: 'loadShip',
     };
-    const rows = [];
+    const job = jobMap[it.type];
+    const assigned = this.npcs.some((n) => {
+      if (n.kind === 'mechanic' && n.homeBay === bayIndex && n.job === job) {
+        if (n.cargo?.serviceKey) return n.cargo.serviceKey === it.id;
+        return true;
+      }
+      if (
+        n.kind === 'forklift' &&
+        n.targetPile?.bay === bayIndex &&
+        n.job === 'bringIn' &&
+        SERVICE_STAGING_TYPES.includes(it.type)
+      ) {
+        if (n.cargo?.serviceKey) return n.cargo.serviceKey === it.id;
+        return true;
+      }
+      return false;
+    });
+
+    if (it.type === 'upgrade') {
+      const blockers = svc.items.filter(
+        (o) =>
+          o !== it &&
+          o.status !== 'done' &&
+          (o.type === 'refuel' ||
+            o.type === 'repair' ||
+            o.type === 'reloadBullets' ||
+            o.type === 'reloadShells' ||
+            o.type === 'loadCargo')
+      );
+      if (blockers.length && !assigned) return 'grey';
+    }
+
+    // Only the lead pending unit of this type lights blue when crew is assigned
+    if (assigned) {
+      const lead = svc.items.find((o) => o.type === it.type && o.status !== 'done');
+      if (lead?.id === it.id) return 'blue';
+    }
+    return 'yellow';
+  }
+
+  /**
+   * Service column rows — one row per job type (chunks of ≤5 pips; overflow repeats label).
+   */
+  _boardTaskRows(bayIndex) {
+    const pad = this._servicePad(bayIndex);
+    const svc = pad?.service;
+    if (!this._bayHasShip(bayIndex) || !svc?.items?.length) {
+      return [{ label: 'STANDBY', color: 'dim', status: 'idle', units: [], complete: false }];
+    }
+    const labelOf = (it) =>
+      SERVICE_BOARD_LABELS[it.type] || String(it.type || '?').slice(0, 7);
+
+    const order = [];
+    const byType = new Map();
     for (const it of svc.items) {
       if (it.type === 'elevatorTransfer') continue;
-      let color = 'yellow';
-      if (it.status === 'done') {
-        color = 'green';
-      } else {
-        const job = jobMap[it.type];
-        const assigned = this.npcs.some((n) => {
-          if (n.kind === 'mechanic' && n.homeBay === bayIndex && n.job === job) return true;
-          if (
-            n.kind === 'forklift' &&
-            n.targetPile?.bay === bayIndex &&
-            n.job === 'bringIn' &&
-            (it.type === 'refuel' || it.type === 'reload' || it.type === 'loadCargo' || it.type === 'upgrade')
-          ) {
-            return true;
-          }
-          return false;
-        });
-        // Soft OoO: upgrades stay grey until fuel/hull/ammo/cargo lines are done or in progress
-        if (it.type === 'upgrade') {
-          const blockers = svc.items.filter(
-            (o) =>
-              o !== it &&
-              o.status !== 'done' &&
-              (o.type === 'refuel' || o.type === 'repair' || o.type === 'reload' || o.type === 'loadCargo')
-          );
-          if (blockers.length && !assigned) color = 'grey';
-          else color = assigned ? 'blue' : 'yellow';
-        } else {
-          color = assigned ? 'blue' : 'yellow';
-        }
+      if (!byType.has(it.type)) {
+        byType.set(it.type, { type: it.type, label: labelOf(it), units: [] });
+        order.push(it.type);
       }
-      rows.push({ label: labelOf(it), color, status: it.status });
+      byType.get(it.type).units.push({
+        color: this._boardUnitColor(bayIndex, svc, it),
+        status: it.status,
+      });
     }
-    if (!rows.length) return [{ label: 'STANDBY', color: 'dim', status: 'idle' }];
+
+    const rows = [];
+    const chunk = SERVICE_BOARD_PIPS_PER_ROW;
+    for (const type of order) {
+      const group = byType.get(type);
+      for (let i = 0; i < group.units.length; i += chunk) {
+        const units = group.units.slice(i, i + chunk);
+        const complete = units.length > 0 && units.every((u) => u.color === 'green');
+        rows.push({
+          label: group.label,
+          type: group.type,
+          units,
+          complete,
+          color: complete ? 'green' : 'white',
+          status: complete ? 'done' : 'pending',
+        });
+      }
+    }
+    if (!rows.length) {
+      return [{ label: 'STANDBY', color: 'dim', status: 'idle', units: [], complete: false }];
+    }
     return rows;
   }
 
@@ -1614,22 +1726,29 @@ export class HangarBay {
   _beginCaptainService(pad) {
     if (!pad?.visitorId) return;
     const cargoMk = cargoMkForVisitor(pad.visitorId);
-    const ammo = rand(0.05, 1);
+    const bias = visitorServiceBias(pad.visitorId);
+    const ammoBase = rand(0.05, 1);
     const cargoSpace = rand(0.05, 1);
+    const fuel = rand(0.05, 1);
+    const hull = rand(0.05, 1);
+    const bullets = Math.max(0.05, Math.min(1, ammoBase + rand(-0.12, 0.12)));
+    const shells = Math.max(0.05, Math.min(1, ammoBase + rand(-0.12, 0.12)));
+    const cargoHold = packCargoHold(cargoMk, cargoSpace);
     const shipState = {
-      fuel: rand(0.05, 1),
-      hull: rand(0.05, 1),
-      ammo,
-      bullets: Math.max(0.05, Math.min(1, ammo + rand(-0.12, 0.12))),
-      shells: Math.max(0.05, Math.min(1, ammo + rand(-0.12, 0.12))),
-      cargoSpace,
+      fuel,
+      hull,
+      bullets,
+      shells,
+      ammo: Math.min(bullets, shells),
+      cargoSpace: cargoMk > 0 ? cargoSpaceFromHold(cargoHold) : 1,
       // Display-only Mk stubs (1–3); real component tiers TBD later
       hullMk: randInt(1, 3),
       fuelMk: randInt(1, 3),
       bulletsMk: randInt(1, 3),
       shellsMk: randInt(1, 3),
       cargoMk,
-      cargoHold: packCargoHold(cargoMk, cargoSpace),
+      cargoHold,
+      _svcStart: { fuel, hull, bullets, shells },
     };
     pad.shipState = shipState;
     const items = [];
@@ -1643,29 +1762,40 @@ export class HangarBay {
         ...extra,
       });
     };
+    const pushN = (n, type, extra = {}) => {
+      for (let i = 0; i < n; i++) push(type, extra);
+    };
 
-    if (Math.random() < needRequestChance(1 - shipState.fuel)) {
-      push('refuel', { kindLabel: 'FUEL', priority: 2 });
-    }
-    if (Math.random() < needRequestChance(1 - shipState.hull)) {
-      push('repair', { priority: 3 });
-    }
-    if (Math.random() < needRequestChance(1 - shipState.ammo)) {
-      push('reload', { kindLabel: 'AMMO', priority: 2 });
-    }
+    pushN(meterServiceUnits(shipState.fuel, bias.fuel), 'refuel', {
+      kindLabel: 'FUEL',
+      priority: 2,
+    });
+    pushN(meterServiceUnits(shipState.hull, bias.hull), 'repair', { priority: 3 });
+    pushN(meterServiceUnits(shipState.bullets, bias.ammo), 'reloadBullets', {
+      kindLabel: 'AMMO',
+      priority: 2,
+    });
+    pushN(meterServiceUnits(shipState.shells, bias.ammo), 'reloadShells', {
+      kindLabel: 'AMMO',
+      priority: 2,
+    });
+
     // No cargo bay → never request load/unload
-    if (cargoMk > 0) {
-      if (Math.random() < needRequestChance(shipState.cargoSpace)) {
-        push('loadCargo', {
-          kindLabel: pick(['CRATE', 'ORE', 'INGOT', 'BARREL', 'COIL', 'TANK']),
-          priority: 2,
-        });
+    if (cargoMk > 0 && cargoHold?.slots) {
+      let used = 0;
+      for (const c of cargoHold.cells || []) used += (c.w || 1) * (c.h || 1);
+      const freeSlots = Math.max(0, cargoHold.slots - used);
+      const filledSlots = used;
+      const loadN = cargoServiceUnits(freeSlots, shipState.cargoSpace, bias.cargo);
+      const unloadN = cargoServiceUnits(filledSlots, 1 - shipState.cargoSpace, bias.cargo);
+      const loadKinds = ['CRATE', 'ORE', 'INGOT', 'BARREL', 'COIL', 'TANK'];
+      for (let i = 0; i < loadN; i++) {
+        push('loadCargo', { kindLabel: pick(loadKinds), priority: 2 });
       }
-      if (Math.random() < needRequestChance(1 - shipState.cargoSpace)) {
-        push('unloadCargo', { priority: 1 });
-      }
+      pushN(unloadN, 'unloadCargo', { priority: 1 });
     }
-    const upgradeCount = (Math.random() * 4) | 0; // 0–3
+
+    const upgradeCount = (Math.random() * 3) | 0; // 0–2
     for (let i = 0; i < upgradeCount; i++) {
       push('upgrade', { kindLabel: pick(UPGRADE_KINDS).label, priority: 2 });
     }
@@ -1722,7 +1852,7 @@ export class HangarBay {
     return pad.service.items.filter(
       (it) =>
         it.status !== 'done' &&
-        ['refuel', 'reload', 'loadCargo', 'upgrade'].includes(it.type) &&
+        SERVICE_STAGING_TYPES.includes(it.type) &&
         (it.status === 'pending' || it.status === 'staging' || it.status === 'ready')
     );
   }
@@ -1784,7 +1914,7 @@ export class HangarBay {
     const wantTypes =
       job === 'installUpgrade'
         ? ['upgrade']
-        : ['refuel', 'reload', 'loadCargo'];
+        : ['refuel', 'reloadBullets', 'reloadShells', 'loadCargo'];
     const pending = svc.items.filter(
       (it) => wantTypes.includes(it.type) && it.status !== 'done'
     );
@@ -1807,8 +1937,15 @@ export class HangarBay {
       return;
     }
     if (cargo?.label === 'FUEL') this._completeServiceType(bay, 'refuel');
-    else if (cargo?.label === 'AMMO') this._completeServiceType(bay, 'reload');
-    else this._completeServiceType(bay, 'loadCargo');
+    else if (cargo?.label === 'AMMO') {
+      const pad = this._servicePad(bay);
+      const item = pad?.service?.items?.find(
+        (it) =>
+          (it.type === 'reloadBullets' || it.type === 'reloadShells') &&
+          it.status !== 'done'
+      );
+      if (item) this._completeServiceItem(pad, item);
+    } else this._completeServiceType(bay, 'loadCargo');
   }
 
   _completeServiceItem(pad, item) {
@@ -1818,18 +1955,31 @@ export class HangarBay {
     this._applyServiceToShipState(pad, item.type);
   }
 
-  /** Nudge / finalize board readouts when a checklist line finishes. */
+  /** Partial / finalize board readouts when a checklist line finishes. */
   _applyServiceToShipState(pad, type) {
     const st = pad?.shipState;
+    const svc = pad?.service;
     if (!st) return;
+
+    const stepMeter = (key) => {
+      const items = (svc?.items || []).filter((it) => it.type === type);
+      const total = items.length || 1;
+      const done = items.filter((it) => it.status === 'done').length;
+      const start = st._svcStart?.[key] ?? st[key] ?? 0;
+      if (done >= total) st[key] = 1;
+      else st[key] = Math.min(1, start + ((1 - start) * done) / total);
+    };
+
     if (type === 'refuel') {
-      st.fuel = 1;
+      stepMeter('fuel');
     } else if (type === 'repair') {
-      st.hull = 1;
-    } else if (type === 'reload') {
-      st.ammo = 1;
-      st.bullets = 1;
-      st.shells = 1;
+      stepMeter('hull');
+    } else if (type === 'reloadBullets') {
+      stepMeter('bullets');
+      st.ammo = Math.min(st.bullets ?? 1, st.shells ?? 1);
+    } else if (type === 'reloadShells') {
+      stepMeter('shells');
+      st.ammo = Math.min(st.bullets ?? 1, st.shells ?? 1);
     } else if (type === 'loadCargo' && st.cargoMk > 0) {
       if (!st.cargoHold) st.cargoHold = packCargoHold(st.cargoMk, st.cargoSpace ?? 1);
       addCargoHoldBlock(st.cargoHold);
@@ -1843,7 +1993,7 @@ export class HangarBay {
 
   /**
    * Start lerping a board meter while a mechanic works the hull.
-   * @param {'repair'|'refuel'|'reload'|'loadCargo'|'unloadCargo'} type
+   * @param {'repair'|'refuel'|'reloadBullets'|'reloadShells'|'loadCargo'|'unloadCargo'} type
    */
   _beginBoardProgress(npc, type) {
     const bay = npc.bay ?? bayIndexFromX(npc.targetPad?.x ?? npc.x);
@@ -1855,9 +2005,21 @@ export class HangarBay {
     }
     let from = 0;
     let to = 1;
-    if (type === 'repair') from = st.hull ?? 0;
-    else if (type === 'refuel') from = st.fuel ?? 0;
-    else if (type === 'reload') from = Math.min(st.bullets ?? 1, st.shells ?? 1, st.ammo ?? 1);
+    const nextStepTo = (key, itemType) => {
+      const items = (pad.service?.items || []).filter((it) => it.type === itemType);
+      const total = items.length || 1;
+      const done = items.filter((it) => it.status === 'done').length;
+      const start = st._svcStart?.[key] ?? st[key] ?? 0;
+      const cur = st[key] ?? start;
+      const nextDone = Math.min(total, done + 1);
+      from = cur;
+      to = nextDone >= total ? 1 : start + ((1 - start) * nextDone) / total;
+    };
+
+    if (type === 'repair') nextStepTo('hull', 'repair');
+    else if (type === 'refuel') nextStepTo('fuel', 'refuel');
+    else if (type === 'reloadBullets') nextStepTo('bullets', 'reloadBullets');
+    else if (type === 'reloadShells') nextStepTo('shells', 'reloadShells');
     else if (type === 'loadCargo') {
       from = st.cargoSpace ?? 1;
       to = Math.max(0, from - 1 / Math.max(1, st.cargoHold?.slots || 6));
@@ -1888,10 +2050,12 @@ export class HangarBay {
     const v = prog.from + (prog.to - prog.from) * u;
     if (prog.type === 'repair') st.hull = v;
     else if (prog.type === 'refuel') st.fuel = v;
-    else if (prog.type === 'reload') {
-      st.ammo = v;
+    else if (prog.type === 'reloadBullets') {
       st.bullets = v;
+      st.ammo = Math.min(st.bullets, st.shells ?? 1);
+    } else if (prog.type === 'reloadShells') {
       st.shells = v;
+      st.ammo = Math.min(st.bullets ?? 1, st.shells);
     } else if (prog.type === 'loadCargo' || prog.type === 'unloadCargo') {
       st.cargoSpace = v;
     }
@@ -1906,7 +2070,14 @@ export class HangarBay {
     if (npc.job === 'weld') return 'repair';
     if (npc.job === 'loadShip' && npc.cargo) {
       if (npc.cargo.label === 'FUEL') return 'refuel';
-      if (npc.cargo.label === 'AMMO') return 'reload';
+      if (npc.cargo.label === 'AMMO') {
+        for (const pad of this._allServicePads()) {
+          const item = pad.service?.items?.find((it) => it.id === npc.cargo.serviceKey);
+          if (item?.type === 'reloadShells') return 'reloadShells';
+          if (item?.type === 'reloadBullets') return 'reloadBullets';
+        }
+        return 'reloadBullets';
+      }
       if (npc.cargo.family !== 'upgrade') return 'loadCargo';
     }
     if (npc.job === 'unloadShip') return 'unloadCargo';
@@ -1965,7 +2136,7 @@ export class HangarBay {
     if (!pad.service || pad.service.phase !== 'active') return;
     for (const it of pad.service.items) {
       if (it.status === 'done' || it.type === 'repair' || it.type === 'unloadCargo') continue;
-      if (!['refuel', 'reload', 'loadCargo', 'upgrade'].includes(it.type)) continue;
+      if (!SERVICE_STAGING_TYPES.includes(it.type)) continue;
       const row = it.type === 'upgrade' ? ROW.N : ROW.M;
       const south = this._bayPile(pad.bayIndex, 'in', ROW.S);
       const dest = this._bayPile(pad.bayIndex, 'in', row);
@@ -3920,7 +4091,8 @@ export class HangarBay {
         !svcActive ||
         midIn.items.some((c) => c.serviceKey) ||
         needs('refuel') ||
-        needs('reload') ||
+        needs('reloadBullets') ||
+        needs('reloadShells') ||
         needs('loadCargo');
       if (serviceLoad) {
         tasks.push({
@@ -4817,7 +4989,7 @@ export class HangarBay {
     const wantTypes =
       job === 'installUpgrade'
         ? ['upgrade']
-        : ['refuel', 'reload', 'loadCargo'];
+        : ['refuel', 'reloadBullets', 'reloadShells', 'loadCargo'];
     const pending = svc.items.filter(
       (it) => wantTypes.includes(it.type) && it.status !== 'done'
     );
@@ -8906,11 +9078,50 @@ export class HangarBay {
 
       const rows = this._boardTaskRows(bay);
       const maxRows = Math.max(1, Math.floor((bodyH - 10) / 4.5));
+      // Tight left so ≥5 pips fit; label column locked to widest name
+      const circR = 1.2;
+      const circGap = 2.85;
+      const checkW = 3.2;
+      const rowFont = '3px monospace';
+      ctx.font = rowFont;
+      const labelColW = ctx.measureText(SERVICE_BOARD_LABEL_WIDEST).width;
+      const nameX = col2 + checkW;
+      const circStart = nameX + labelColW + 1.1;
+
       rows.slice(0, maxRows).forEach((row, ri) => {
-        ctx.fillStyle = colorMap[row.color] || colorMap.dim;
-        ctx.font = '3.3px monospace';
-        const mark = row.color === 'green' ? '✓' : row.color === 'blue' ? '●' : '○';
-        ctx.fillText(`${mark} ${row.label}`, col2 + 2, bodyTop + 11 + ri * 4.5);
+        const ty = bodyTop + 11 + ri * 4.5;
+        ctx.font = rowFont;
+        ctx.textAlign = 'left';
+
+        if (!row.units?.length) {
+          ctx.fillStyle = colorMap[row.color] || colorMap.dim;
+          ctx.fillText(row.label, col2 + 1, ty);
+          return;
+        }
+
+        if (row.complete) {
+          ctx.fillStyle = colorMap.green;
+          ctx.fillText('✓', col2 + 0.4, ty);
+        }
+
+        ctx.fillStyle = row.complete ? colorMap.green : colorMap.white;
+        ctx.fillText(`${row.label}:`, nameX, ty);
+
+        const cy = ty - 1.0;
+        const n = Math.min(row.units.length, SERVICE_BOARD_PIPS_PER_ROW);
+        for (let i = 0; i < n; i++) {
+          const u = row.units[i];
+          const cxDot = circStart + circR + i * circGap;
+          ctx.fillStyle = colorMap[u.color] || colorMap.dim;
+          ctx.beginPath();
+          ctx.arc(cxDot, cy, circR, 0, Math.PI * 2);
+          ctx.fill();
+          if (u.color === 'grey' || u.color === 'yellow') {
+            ctx.strokeStyle = 'rgba(180, 200, 220, 0.35)';
+            ctx.lineWidth = 0.4;
+            ctx.stroke();
+          }
+        }
       });
 
       ctx.fillStyle = '#c98020';
