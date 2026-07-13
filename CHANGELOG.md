@@ -17,6 +17,35 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.78] — 2026-07-12
+
+### Fixed
+- Crane dropoffs keep their locked slot — no longer reassigned to another quadrant on release
+
+---
+
+## [0.1.77] — 2026-07-12
+
+### Fixed
+- Forklifts claim a drop slot at job start (reserved until deposit) so approach lanes stay stable — no mid-path slot flips / moonwalks
+- Drop-off crates lerp from forks onto the slot again instead of popping into place
+
+---
+
+## [0.1.76] — 2026-07-12
+
+### Fixed
+- Forklifts overshoot ~1.5 lengths past a wrong-side slot approach, then turn in — no more moonwalk into the opposite quadrant
+
+---
+
+## [0.1.75] — 2026-07-12
+
+### Fixed
+- Forklifts stage checklist inbound in parallel (one truck per pending item, not one per bay)
+
+---
+
 ## [0.1.74] — 2026-07-12
 
 ### Changed
