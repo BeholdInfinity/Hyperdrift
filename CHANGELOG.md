@@ -17,6 +17,83 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.89] — 2026-07-13
+
+### Fixed
+- Forklifts no longer leave a stall before seated, or bounce home on touching the roadway — hub jobs wait for a real park settle, and in-flight inbound fetches only abort if the visit/item/pad is actually dead
+
+---
+
+## [0.1.88] — 2026-07-13
+
+### Fixed
+- Outbound staging: multiple forklifts can clear different quadrants of the same south-out pad in parallel (per-slot claims, matching inbound)
+
+---
+
+## [0.1.87] — 2026-07-13
+
+### Changed
+- Forklift parking dashed border omits the north edge where it already meets the roadway paint
+
+---
+
+## [0.1.86] — 2026-07-13
+
+### Changed
+- Forklift parking outline uses the same dashed yellow paint as the roadway borders
+
+---
+
+## [0.1.85] — 2026-07-13
+
+### Changed
+- Forklift parking apron: no per-stall outlines; full area bordered in the same dashed yellow paint as the roadway, with faded industrial parking stencils
+
+---
+
+## [0.1.84] — 2026-07-13
+
+### Fixed
+- Forklift hub restored south of the roadway; fuel hoses coiled by their tanks instead of crossing the road
+
+---
+
+## [0.1.83] — 2026-07-13
+
+### Changed
+- Forklifts leaving a stall merge onto the roadway in ~1 truck length (short diagonal), then drive to their destination
+
+---
+
+## [0.1.82] — 2026-07-13
+
+### Changed
+- Removed spare parked forklifts — hub keeps extra empty stalls; only the four working trucks remain
+
+---
+
+## [0.1.81] — 2026-07-13
+
+### Changed
+- Spare parked forklifts draw with an empty cab (no driver)
+
+---
+
+## [0.1.80] — 2026-07-13
+
+### Changed
+- Forklift hub widened to half the south wall (centered) with truck-sized stalls; drivers claim the closest empty spot before pathing home; two spare empty trucks sit parked on the apron
+
+---
+
+## [0.1.79] — 2026-07-12
+
+### Fixed
+- Forklift inbound fetches no longer abort at the left bulkhead when multi-unit same-type checklist rows (Fuel×N, Bullet/Shells AMMO, etc.) falsely shared one crate — each unit keeps its own serviceKey, and claimed staging stays open until the crate actually spawns
+
+---
+
 ## [0.1.78] — 2026-07-12
 
 ### Fixed
