@@ -17,6 +17,106 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.105] — 2026-07-14
+
+### Changed
+- Bullet / shell freight redrawn to match the ammo-can concept sheets: open metal cans with upright lids, rivets, handles, latches, foam inserts
+- Bullets: brown 7.62 can with two belt-linked tip-up rows; Shells: olive 40mm can with 3×2 fat artillery rounds
+
+---
+
+## [0.1.104] — 2026-07-14
+
+### Changed
+- Shell crates redrawn as olive military ammo boxes with short fat tip-up artillery rounds (no more noodle strokes)
+- Upgrade freight is distinct sci-fi ship parts again: laser cannon, ball turret, armor plate, thruster nozzle, main engine, sensor dish
+
+---
+
+## [0.1.103] — 2026-07-14
+
+### Changed
+- Hangar freight redrawn as worn industrial 2.5D with 8-direction facing (matches forklift / mechanic carry)
+- Service cargo looks like the real request: open-top fuel-cell crates, belt-ammo boxes, large-shell crates
+- Load / unload uses six generic container color schemes; install / uninstall parts are complex non-distinct housings
+- Checklist spawn labels: `BULLETS` / `SHELLS` (was shared `AMMO`)
+
+---
+
+## [0.1.102] — 2026-07-14
+
+### Fixed
+- Forklift cargo rides the drawn fork tips during turnarounds (8-dir visHeading) instead of snapping with logic facing ±1
+
+---
+
+## [0.1.101] — 2026-07-14
+
+### Changed
+- Crane operator head pass: distinct dark facemask (separate from helmet) with 8-direction look toward the current task destination
+- Cab levers rewired to real work — XY travel, hoist up/down, claw open/close — with clearer throws and console labels
+
+---
+
+## [0.1.100] — 2026-07-14
+
+### Changed
+- Overhead crane + manned cab redrawn in the worn industrial 2.5D station look (bridge girder, end trucks, trolley, cables, claw)
+- Crane operator suit fixed to crane-crew theme; helmet/visor tracks the current job target (pickup / dropoff / deck aim)
+- Claw fingertip tip math unchanged so cargo lift/lower alignment stays believable
+
+---
+
+## [0.1.99] — 2026-07-14
+
+### Changed
+- Hangar props rebuilt again for clearer 2.5D read (inset tops, far/near faces, labels)
+- Bay danger lanes / door flight paths kept clear — only apron-flank workbenches + small bay terminals per bay
+- Wing lore dressing: stores racks, umbilical spools, weld screens, O₂ racks, shift boards, break crates (asymmetric)
+- Forklift yard props at hub ends (charger, tire rack, cones, parts crate) — off the road and outside stalls
+
+---
+
+## [0.1.98] — 2026-07-14
+
+### Changed
+- Hangar floor props rebuilt from scratch as 2.5D industrial set dressing (workbenches, bay terminals, parts racks, drum stacks, suit lockers, pallets, diagnostic carts, fuel farms)
+- Removed old flat shelves/desks/hose reels/door lockers and mirrored filler
+- Each bay has purposeful linger props (workbench + terminal); wings get asymmetric hangout / parts / gear spots; gossip waypoints retargeted
+
+---
+
+## [0.1.97] — 2026-07-14
+
+### Changed
+- Hangar floor set dressing redrawn (worn 2.5D variants for shelves, desks, toolbenches, barrels, fuel tanks, hose reels, lockers, crate stacks)
+- Shop floor layout de-mirrored; each bay now has its own toolbench + narrow monitor pedestal (full desks stay in the wings only)
+- Mechanic linger / gossip stand points updated to match the new prop placements
+
+---
+
+## [0.1.96] — 2026-07-14
+
+### Changed
+- Mechanics redrawn as worn industrial 2.5D deck crew (helmet, visor, O2 pack, boots, torch/pad) with 8-direction visual heading
+- Three bay suit themes — both mechanics on a bay share one: B1 rust/hazard amber, B2 station teal, B3 olive utility
+
+---
+
+## [0.1.95] — 2026-07-14
+
+### Fixed
+- Forklift 2.5D draw order: far tires / ROPS posts / mast-vs-cab sort by screen Y so distant wheels no longer paint over the cabin (all 8 headings)
+
+---
+
+## [0.1.94] — 2026-07-14
+
+### Changed
+- Forklifts redrawn as worn industrial 2.5D station trucks (counterweight, ROPS cage, mast, beacon) with 8-direction visual heading — job facing / fork tip math unchanged
+
+---
+
 ## [0.1.93] — 2026-07-13
 
 ### Added

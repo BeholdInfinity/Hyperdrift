@@ -104,6 +104,53 @@ const BAY_COMPUTERS = [-BAY.SIDE_PAD_X, 0, BAY.SIDE_PAD_X].map((x, bay) => ({
   bay,
   kind: 'computer',
 }));
+/** Visual heading snap — 8 ground-plane directions (E, SE, S, SW, W, NW, N, NE) */
+const CREW_VIS_OCT = Math.PI / 4;
+/** Turn rate for draw heading (rad/s); locks snap faster during pile / weld work */
+const CREW_VIS_TURN = 7;
+const CREW_VIS_TURN_LOCK = 14;
+/**
+ * Per-bay mechanic suit themes (both mechs on a bay share one).
+ * B1 rust/hazard · B2 station teal · B3 olive utility.
+ */
+const MECH_BAY_THEMES = [
+  {
+    suit: '#8a4a28',
+    suitDark: '#5a3018',
+    suitWear: '#6a3820',
+    stripe: '#d09030',
+    helmet: '#c8b090',
+    visor: 'rgba(70, 150, 190, 0.42)',
+    pack: '#3a2e2a',
+    boot: '#2a2018',
+    glove: '#4a3830',
+    tool: '#b0b8c0',
+  },
+  {
+    suit: '#3a6a78',
+    suitDark: '#1e4048',
+    suitWear: '#2a5058',
+    stripe: '#50b0c0',
+    helmet: '#b8c8d0',
+    visor: 'rgba(100, 200, 220, 0.45)',
+    pack: '#2a3840',
+    boot: '#1a282e',
+    glove: '#304850',
+    tool: '#c0c8d0',
+  },
+  {
+    suit: '#4a6a38',
+    suitDark: '#2a4020',
+    suitWear: '#3a5028',
+    stripe: '#90b048',
+    helmet: '#c0c8b0',
+    visor: 'rgba(120, 180, 100, 0.4)',
+    pack: '#303828',
+    boot: '#1e2818',
+    glove: '#384030',
+    tool: '#b8c0b0',
+  },
+];
 /** Full truck body + forks length (local −10…+16) — used for hub merge + overshoot */
 const FORK_TRUCK_LEN = 26;
 /** Forklift hub — south wall center; apron is half the bottom-wall width. */
@@ -138,27 +185,26 @@ const STAIRS = BAY_COMPUTERS.map((c) => ({
 }));
 const STAIR_Y = APRON_SAFE_Y;
 
-/** Invisible gossip gather points — north of forklift road, in wing fluff only */
+/** Invisible gossip gather points — near wing hangout props, north of forklift road */
 const GOSSIP_WAYPOINTS = [
-  { id: 'gossipW1', x: -295, y: -40, capacity: 3 },
-  { id: 'gossipW2', x: -280, y: 20, capacity: 3 },
-  { id: 'gossipE1', x: 295, y: -40, capacity: 3 },
-  { id: 'gossipE2', x: 280, y: 20, capacity: 3 },
-  { id: 'gossipWN', x: -300, y: -90, capacity: 2 },
-  { id: 'gossipEN', x: 300, y: -90, capacity: 2 },
+  { id: 'gossipW1', x: -270, y: -52, capacity: 3 },
+  { id: 'gossipW2', x: -258, y: 22, capacity: 3 },
+  { id: 'gossipE1', x: 268, y: -50, capacity: 3 },
+  { id: 'gossipE2', x: 276, y: 52, capacity: 3 },
+  { id: 'gossipWN', x: -298, y: -96, capacity: 2 },
+  { id: 'gossipEN', x: 300, y: -82, capacity: 2 },
 ];
 
 /**
  * Set-dressing props with linger stand points.
- * Mech linger stays in north/side wings — never on or south of the forklift road.
+ * Mech linger stays north of the forklift corridor (y < MECH_LINGER_Y_MAX).
  */
-const MECH_LINGER_Y_MAX = BAY.PATH_Y - 28; // stay clear of forklift corridor
-/** Board-side computer stands: several spots per bay, north of forklift road */
+const MECH_LINGER_Y_MAX = BAY.PATH_Y - 28;
+/** Board-side computer stands — north / lateral to each service display */
 function bayComputerLingerSpots(c) {
   const side = c.bay === 0 ? -1 : c.bay === 2 ? 1 : 0;
   const baseY = Math.min(SERVICE_BOARD_BOTTOM + 6, MECH_LINGER_Y_MAX - 4);
   const northY = Math.min(SERVICE_BOARD_TOP - 8, MECH_LINGER_Y_MAX);
-  // Prefer north-of-board / lateral stands so fluff doesn't force apron↔north churn
   const left = side === 0 ? -1 : side;
   const right = side === 0 ? 1 : side;
   return [
@@ -168,27 +214,196 @@ function bayComputerLingerSpots(c) {
     { x: c.x + right * 22, y: Math.min(baseY, MECH_LINGER_Y_MAX), id: `${c.id}_s0` },
   ];
 }
+
+/**
+ * Bay-only props: workbench + small data terminal.
+ * Sit on the apron SOUTH of the lit danger lane (y > DANGER_ZONE_SOUTH) and
+ * OUTSIDE the door flight corridor (|x-pad| > DOOR_HALF), so ships keep a
+ * clear path and neighboring danger rects never share props.
+ */
+function bayWorkProps() {
+  const pads = [-BAY.SIDE_PAD_X, 0, BAY.SIDE_PAD_X];
+  const apronY = DANGER_ZONE_SOUTH + 20; // ~83 — clear of lit danger
+  // Outboard bias: B1 west, B3 east, B2 split to both flanks
+  const layouts = [
+    {
+      // B1 — both outboard west of danger; terminal nudged inboard slightly
+      bench: { x: pads[0] - 96, y: apronY - 4 },
+      term: { x: pads[0] - 84, y: apronY + 16 },
+      bv: 0,
+      tv: 0,
+    },
+    {
+      // B2 — split flanks on apron (south of lit lane, outside door corridor)
+      bench: { x: pads[1] + 90, y: apronY - 2 },
+      term: { x: pads[1] - 90, y: apronY + 14 },
+      bv: 1,
+      tv: 1,
+    },
+    {
+      // B3 — both outboard east
+      bench: { x: pads[2] + 96, y: apronY },
+      term: { x: pads[2] + 84, y: apronY + 18 },
+      bv: 2,
+      tv: 2,
+    },
+  ];
+  const out = [];
+  for (let bay = 0; bay < 3; bay++) {
+    const L = layouts[bay];
+    out.push({
+      id: `bayBench${bay}`,
+      kind: 'workbench',
+      variant: L.bv,
+      x: L.bench.x,
+      y: L.bench.y,
+      bay,
+      linger: [
+        {
+          x: L.bench.x + (bay === 2 ? -14 : 14),
+          y: Math.min(L.bench.y + 12, MECH_LINGER_Y_MAX),
+          id: `bayBench${bay}_a`,
+        },
+      ],
+    });
+    out.push({
+      id: `bayTerm${bay}`,
+      kind: 'bayTerminal',
+      variant: L.tv,
+      x: L.term.x,
+      y: L.term.y,
+      bay,
+      linger: [
+        {
+          x: L.term.x + (L.term.x < 0 ? 12 : -12),
+          y: Math.min(L.term.y + 10, MECH_LINGER_Y_MAX),
+          id: `bayTerm${bay}_a`,
+        },
+      ],
+    });
+  }
+  return out;
+}
+
+/**
+ * Hangar set dressing — lore-building industrial props.
+ * Wings = asymmetric hangouts. Bays = tool + terminal only (apron flanks).
+ * Forklift yard props are separate (south of road; see FORKLIFT_YARD_PROPS).
+ */
 const HANGAR_PROPS = [
-  // West wing (north of road)
-  { id: 'shelfW1', kind: 'shelf', x: -310, y: 40, bay: 0, linger: [{ x: -295, y: 45 }] },
-  { id: 'shelfW2', kind: 'shelf', x: -310, y: -30, bay: 0, linger: [{ x: -295, y: -25 }] },
-  { id: 'shelfW3', kind: 'shelf', x: -310, y: -90, bay: 0, linger: [{ x: -295, y: -85 }] },
-  { id: 'deskW1', kind: 'desk', x: -280, y: 10, bay: 0, linger: [{ x: -265, y: 15 }] },
-  { id: 'benchW1', kind: 'toolbench', x: -275, y: -55, bay: 0, linger: [{ x: -260, y: -50 }] },
-  { id: 'barrelsW1', kind: 'barrels', x: -300, y: 70, bay: 0, linger: [{ x: -285, y: 75 }] },
-  // East wing
-  { id: 'shelfE1', kind: 'shelf', x: 310, y: 40, bay: 2, linger: [{ x: 295, y: 45 }] },
-  { id: 'shelfE2', kind: 'shelf', x: 310, y: -30, bay: 2, linger: [{ x: 295, y: -25 }] },
-  { id: 'shelfE3', kind: 'shelf', x: 310, y: -90, bay: 2, linger: [{ x: 295, y: -85 }] },
-  { id: 'deskE1', kind: 'desk', x: 280, y: 10, bay: 2, linger: [{ x: 265, y: 15 }] },
-  { id: 'benchE1', kind: 'toolbench', x: 275, y: -55, bay: 2, linger: [{ x: 260, y: -50 }] },
-  { id: 'barrelsE1', kind: 'barrels', x: 300, y: 70, bay: 2, linger: [{ x: 285, y: 75 }] },
-  // B2 side pockets (between bay columns, still north of road)
-  { id: 'benchC1', kind: 'toolbench', x: -100, y: -50, bay: 1, linger: [{ x: -100, y: -40 }] },
-  { id: 'benchC2', kind: 'toolbench', x: 100, y: -50, bay: 1, linger: [{ x: 100, y: -40 }] },
-  { id: 'deskC1', kind: 'desk', x: -90, y: 30, bay: 1, linger: [{ x: -90, y: 40 }] },
-  { id: 'deskC2', kind: 'desk', x: 90, y: 30, bay: 1, linger: [{ x: 90, y: 40 }] },
-  // Bay computers — multi stand points (prefer north of board)
+  // —— West wing: stores, coolant, crew gear ——
+  {
+    id: 'storesW',
+    kind: 'partsRack',
+    variant: 0,
+    x: -312,
+    y: -92,
+    bay: 0,
+    linger: [{ x: -294, y: -84 }],
+  },
+  {
+    id: 'spoolW',
+    kind: 'cableSpool',
+    variant: 0,
+    x: -300,
+    y: -28,
+    bay: 0,
+    linger: [{ x: -282, y: -20 }],
+  },
+  {
+    id: 'coolantW',
+    kind: 'drumStack',
+    variant: 0,
+    x: -308,
+    y: 42,
+    bay: 0,
+    linger: [{ x: -290, y: 50 }],
+  },
+  {
+    id: 'lockerW',
+    kind: 'suitLocker',
+    variant: 0,
+    x: -276,
+    y: -58,
+    bay: 0,
+    linger: [{ x: -258, y: -50 }],
+  },
+  {
+    id: 'breakW',
+    kind: 'breakCrate',
+    variant: 0,
+    x: -268,
+    y: 18,
+    bay: 0,
+    linger: [{ x: -250, y: 26 }],
+  },
+  {
+    id: 'weldScreenW',
+    kind: 'weldScreen',
+    variant: 0,
+    x: -286,
+    y: -8,
+    bay: 0,
+    linger: [{ x: -268, y: 0 }],
+  },
+  // —— East wing: flight hardware, bottles, diagnostics ——
+  {
+    id: 'nozzleE',
+    kind: 'pallet',
+    variant: 0,
+    x: 308,
+    y: -88,
+    bay: 2,
+    linger: [{ x: 290, y: -80 }],
+  },
+  {
+    id: 'bottleE',
+    kind: 'bottleRack',
+    variant: 0,
+    x: 316,
+    y: -34,
+    bay: 2,
+    linger: [{ x: 298, y: -26 }],
+  },
+  {
+    id: 'ammoE',
+    kind: 'drumStack',
+    variant: 1,
+    x: 300,
+    y: 12,
+    bay: 2,
+    linger: [{ x: 282, y: 20 }],
+  },
+  {
+    id: 'cartE',
+    kind: 'diagCart',
+    variant: 0,
+    x: 274,
+    y: -56,
+    bay: 2,
+    linger: [{ x: 256, y: -48 }],
+  },
+  {
+    id: 'lockerE',
+    kind: 'suitLocker',
+    variant: 1,
+    x: 282,
+    y: 48,
+    bay: 2,
+    linger: [{ x: 264, y: 56 }],
+  },
+  {
+    id: 'shiftE',
+    kind: 'shiftBoard',
+    variant: 0,
+    x: 264,
+    y: -12,
+    bay: 2,
+    linger: [{ x: 246, y: -4 }],
+  },
+  // —— Per-bay apron flanks (tools + terminals only) ——
+  ...bayWorkProps(),
+  // —— Service-board linger anchors (boards draw themselves) ——
   ...BAY_COMPUTERS.map((c) => ({
     id: c.id,
     kind: 'computer',
@@ -198,13 +413,48 @@ const HANGAR_PROPS = [
     linger: bayComputerLingerSpots(c),
   })),
 ];
+
+/**
+ * Forklift yard dressing — ends of the parking apron only.
+ * Off the roadway, outside stall centers, no mechanic linger.
+ */
+const FORKLIFT_YARD_PROPS = [
+  {
+    id: 'forkChargeW',
+    kind: 'forkCharger',
+    variant: 0,
+    x: -FORKLIFT_HUB_HALF_W - 24,
+    y: FORKLIFT_HUB_Y + 2,
+  },
+  {
+    id: 'forkTireE',
+    kind: 'forkTireRack',
+    variant: 0,
+    x: FORKLIFT_HUB_HALF_W + 22,
+    y: FORKLIFT_HUB_Y - 4,
+  },
+  {
+    id: 'forkConesW',
+    kind: 'forkCones',
+    variant: 0,
+    x: -FORKLIFT_HUB_HALF_W - 18,
+    y: FORKLIFT_HUB_Y + 18,
+  },
+  {
+    id: 'forkCrateE',
+    kind: 'forkCrate',
+    variant: 0,
+    x: FORKLIFT_HUB_HALF_W + 18,
+    y: FORKLIFT_HUB_Y + 16,
+  },
+];
+
 /**
  * Half-width of per-bay danger-zone light lanes (door → DANGER_ZONE_SOUTH).
  * Must stay outside cargo pads (~±71) and inside half pad-spacing (77.5) so
  * neighboring bay lines don't double up: 72 leaves ~11px between B1|B2 and B2|B3.
  */
 const BAY_LANE_HALF = 72;
-
 const BRIDGE_Y_MIN = -BAY.HALF_H + 55;
 const BRIDGE_Y_MAX = BAY.HALF_H - 36;
 const RUNWAY_X = [-BAY.HALF_W + BAY.RUNWAY_INSET, BAY.HALF_W - BAY.RUNWAY_INSET];
@@ -215,8 +465,20 @@ const TROLLEY_NORTH = 52;
 /** Claw: 1 = open empty, ~0.35 = gripped around cargo */
 const CLAW_OPEN = 1;
 const CLAW_GRIP = 0.35;
+/** Palm depth + fingertip reach — tip math is locked for cargo lift/lower alignment */
 const CLAW_PALM = 5;
 const CLAW_FINGER = 11;
+/** Crane operator suit (worn industrial — fixed, not random) */
+const CRANE_CREW = {
+  suit: '#8a5530',
+  suitDark: '#5a3018',
+  helmet: '#c8b898',
+  /** Dark rubber / polycarb faceplate — distinct from helmet so look dir reads */
+  mask: '#1e2a36',
+  maskRim: '#6a7888',
+  visor: 'rgba(70, 170, 210, 0.55)',
+  stripe: '#d09030',
+};
 /** Forklift fork height: 0 = raised travel, 1 = lowered to deck */
 const FORK_RAISED = 0;
 const FORK_LOWERED = 1;
@@ -251,27 +513,33 @@ const PILE_CAP = 4;
 /** Per-bay soft cap across south+mid+north inbound piles — don't keep stuffing empty bays */
 const INBOUND_SOFT_CAP = 3;
 
-/** Hold cargo — always rectangular boxes (size/color vary by type). */
-const HOLD_CARGO = [
-  { label: 'CRATE', family: 'cargo', shape: 'rect', w: 10, h: 8, color: '#6a5a3a', hp: 30 },
-  { label: 'CRATE', family: 'cargo', shape: 'rect', w: 10, h: 8, color: '#3a7a4a', hp: 30 },
-  { label: 'BARREL', family: 'cargo', shape: 'rect', w: 7, h: 9, color: '#4a6a4a', hp: 25 },
-  { label: 'COIL', family: 'cargo', shape: 'rect', w: 9, h: 7, color: '#8a6a40', hp: 28 },
-  { label: 'TANK', family: 'cargo', shape: 'rect', w: 9, h: 9, color: '#3a5a6a', hp: 35 },
-  { label: 'AMMO', family: 'cargo', shape: 'rect', w: 9, h: 6, color: '#8a5050', hp: 22 },
-  { label: 'FUEL', family: 'cargo', shape: 'rect', w: 8, h: 8, color: '#3a7a6a', hp: 28 },
-  { label: 'ORE', family: 'cargo', shape: 'rect', w: 10, h: 7, color: '#8a7a48', hp: 36 },
-  { label: 'INGOT', family: 'cargo', shape: 'rect', w: 11, h: 5, color: '#8a8a70', hp: 40 },
+/** Hold / service freight — worn industrial 2.5D (drawn via `_drawCargoItem`). */
+const CRATE_VARIANTS = [
+  { label: 'CRATE', family: 'cargo', shape: 'crate', variant: 0, w: 10, h: 8, color: '#6a5538', accent: '#c9a020', hp: 30 },
+  { label: 'CRATE', family: 'cargo', shape: 'crate', variant: 1, w: 10, h: 8, color: '#3a5548', accent: '#40a878', hp: 30 },
+  { label: 'CRATE', family: 'cargo', shape: 'crate', variant: 2, w: 10, h: 8, color: '#3a4a5a', accent: '#58a0c8', hp: 30 },
+  { label: 'CRATE', family: 'cargo', shape: 'crate', variant: 3, w: 10, h: 8, color: '#5a3a3a', accent: '#c87050', hp: 30 },
+  { label: 'CRATE', family: 'cargo', shape: 'crate', variant: 4, w: 10, h: 8, color: '#4a4a38', accent: '#a8a060', hp: 30 },
+  { label: 'CRATE', family: 'cargo', shape: 'crate', variant: 5, w: 10, h: 8, color: '#4a3a52', accent: '#a878c8', hp: 30 },
 ];
 
-/** Ship-mounted upgrades — distinct non-rect silhouettes (top-row pipeline). */
+/** Service consumables — distinct silhouettes matching checklist rows. */
+const SERVICE_CARGO = [
+  { label: 'FUEL', family: 'cargo', shape: 'fuel', w: 8, h: 8, color: '#2a6858', accent: '#40e0a0', hp: 28 },
+  { label: 'BULLETS', family: 'cargo', shape: 'bullets', w: 9, h: 6, color: '#4a3428', accent: '#c9a020', hp: 22 },
+  { label: 'SHELLS', family: 'cargo', shape: 'shells', w: 9, h: 7, color: '#4a5230', accent: '#d0a048', hp: 24 },
+];
+
+const HOLD_CARGO = [...SERVICE_CARGO, ...CRATE_VARIANTS];
+
+/** Ship-mounted upgrades — distinct sci-fi ship parts (top-row pipeline). */
 const UPGRADE_KINDS = [
-  { label: 'LASER', family: 'upgrade', shape: 'laser', w: 16, h: 6, color: '#50a0c8', hp: 40 },
-  { label: 'TURRET', family: 'upgrade', shape: 'turret', w: 12, h: 11, color: '#708898', hp: 45 },
-  { label: 'ARMOR', family: 'upgrade', shape: 'armor', w: 12, h: 10, color: '#6a7888', hp: 50 },
-  { label: 'THRUSTER', family: 'upgrade', shape: 'thruster', w: 8, h: 13, color: '#5a8aaa', hp: 38 },
-  { label: 'ENGINE', family: 'upgrade', shape: 'engine', w: 11, h: 13, color: '#c87840', hp: 55 },
-  { label: 'SENSOR', family: 'upgrade', shape: 'sensor', w: 10, h: 10, color: '#60b090', hp: 32 },
+  { label: 'LASER', family: 'upgrade', shape: 'laser', w: 14, h: 7, color: '#50a0c8', hp: 40 },
+  { label: 'TURRET', family: 'upgrade', shape: 'turret', w: 11, h: 10, color: '#708898', hp: 45 },
+  { label: 'ARMOR', family: 'upgrade', shape: 'armor', w: 12, h: 9, color: '#6a7888', hp: 50 },
+  { label: 'THRUSTER', family: 'upgrade', shape: 'thruster', w: 8, h: 12, color: '#5a8aaa', hp: 38 },
+  { label: 'ENGINE', family: 'upgrade', shape: 'engine', w: 11, h: 12, color: '#c87840', hp: 55 },
+  { label: 'SENSOR', family: 'upgrade', shape: 'sensor', w: 10, h: 9, color: '#60b090', hp: 32 },
 ];
 
 /** @deprecated alias — hold cargo only; upgrades use UPGRADE_KINDS */
@@ -635,23 +903,36 @@ function clearVisitorThrusters(pad) {
 }
 
 function makeCargo(kind = null) {
-  const k = kind ? { ...kind } : { ...pick(HOLD_CARGO) };
+  let k;
+  if (!kind) {
+    k = { ...pick(CRATE_VARIANTS) };
+  } else if (kind.label === 'CRATE' && kind.variant == null) {
+    k = { ...pick(CRATE_VARIANTS) };
+  } else {
+    k = { ...kind };
+  }
   return {
     id: _cargoSeq++,
     label: k.label,
     family: k.family || 'cargo',
     shape: k.shape || 'crate',
+    variant: k.variant ?? 0,
     w: k.w,
     h: k.h,
     color: k.color,
+    accent: k.accent || null,
     hp: k.hp,
     maxHp: k.hp,
+    /** Resting 8-dir yaw on piles / floor (carrier overrides while held). */
+    restHeading: ((Math.random() * 8) | 0) * CREW_VIS_OCT,
   };
 }
 
 function makeInboundCargo() {
-  // Forklift arrivals: mostly hold cargo; upgrades are uncommon (installs drive strip/swap)
-  return makeCargo(Math.random() < 0.18 ? pick(UPGRADE_KINDS) : pick(HOLD_CARGO));
+  // Forklift arrivals: mostly generic crates; upgrades uncommon (installs drive strip/swap)
+  if (Math.random() < 0.18) return makeCargo(pick(UPGRADE_KINDS));
+  if (Math.random() < 0.12) return makeCargo(pick(SERVICE_CARGO));
+  return makeCargo(pick(CRATE_VARIANTS));
 }
 
 function pileId(row, col) {
@@ -1794,11 +2075,11 @@ export class HangarBay {
     });
     pushN(meterServiceUnits(shipState.hull, bias.hull), 'repair', { priority: 3 });
     pushN(meterServiceUnits(shipState.bullets, bias.ammo), 'reloadBullets', {
-      kindLabel: 'AMMO',
+      kindLabel: 'BULLETS',
       priority: 2,
     });
     pushN(meterServiceUnits(shipState.shells, bias.ammo), 'reloadShells', {
-      kindLabel: 'AMMO',
+      kindLabel: 'SHELLS',
       priority: 2,
     });
 
@@ -1810,9 +2091,8 @@ export class HangarBay {
       const filledSlots = used;
       const loadN = cargoServiceUnits(freeSlots, shipState.cargoSpace, bias.cargo);
       const unloadN = cargoServiceUnits(filledSlots, 1 - shipState.cargoSpace, bias.cargo);
-      const loadKinds = ['CRATE', 'ORE', 'INGOT', 'BARREL', 'COIL', 'TANK'];
       for (let i = 0; i < loadN; i++) {
-        push('loadCargo', { kindLabel: pick(loadKinds), priority: 2 });
+        push('loadCargo', { kindLabel: 'CRATE', priority: 2 });
       }
       pushN(unloadN, 'unloadCargo', { priority: 1 });
     }
@@ -1951,10 +2231,11 @@ export class HangarBay {
     if (it.type === 'upgrade') {
       const kind = UPGRADE_KINDS.find((k) => k.label === it.kindLabel) || pick(UPGRADE_KINDS);
       cargo = makeCargo(kind);
+    } else if (it.type === 'loadCargo' || it.kindLabel === 'CRATE') {
+      cargo = makeCargo(pick(CRATE_VARIANTS));
     } else {
       const kind =
-        HOLD_CARGO.find((k) => k.label === it.kindLabel) ||
-        HOLD_CARGO.find((k) => k.label === 'CRATE');
+        HOLD_CARGO.find((k) => k.label === it.kindLabel) || pick(CRATE_VARIANTS);
       cargo = makeCargo(kind);
     }
     cargo.serviceKey = it.id;
@@ -1996,7 +2277,10 @@ export class HangarBay {
       return;
     }
     if (cargo?.label === 'FUEL') this._completeServiceType(bay, 'refuel');
+    else if (cargo?.label === 'BULLETS') this._completeServiceType(bay, 'reloadBullets');
+    else if (cargo?.label === 'SHELLS') this._completeServiceType(bay, 'reloadShells');
     else if (cargo?.label === 'AMMO') {
+      // Legacy label from older saves / warmups
       const pad = this._servicePad(bay);
       const item = pad?.service?.items?.find(
         (it) =>
@@ -2129,12 +2413,13 @@ export class HangarBay {
     if (npc.job === 'weld') return 'repair';
     if (npc.job === 'loadShip' && npc.cargo) {
       if (npc.cargo.label === 'FUEL') return 'refuel';
-      if (npc.cargo.label === 'AMMO') {
+      if (npc.cargo.label === 'BULLETS' || npc.cargo.label === 'SHELLS' || npc.cargo.label === 'AMMO') {
         for (const pad of this._allServicePads()) {
           const item = pad.service?.items?.find((it) => it.id === npc.cargo.serviceKey);
           if (item?.type === 'reloadShells') return 'reloadShells';
           if (item?.type === 'reloadBullets') return 'reloadBullets';
         }
+        if (npc.cargo.label === 'SHELLS') return 'reloadShells';
         return 'reloadBullets';
       }
       if (npc.cargo.family !== 'upgrade') return 'loadCargo';
@@ -2875,6 +3160,10 @@ export class HangarBay {
     }
     if (slot < 0) return false;
     cargo.pileSlot = slot;
+    // Keep the orientation it arrived with (carrier 8-dir), else leave restHeading
+    if (exceptNpc && (exceptNpc.kind === 'forklift' || exceptNpc.kind === 'mechanic')) {
+      cargo.restHeading = this._crewVisOctant(exceptNpc) * CREW_VIS_OCT;
+    }
     pile.items.push(cargo);
     return true;
   }
@@ -3441,8 +3730,12 @@ export class HangarBay {
       claw: CLAW_OPEN,
       levers: { travel: 0, hoist: 0, grip: 0 },
       operator: {
-        suit: pick(['#3a6a8a', '#5a6a4a', '#6a5a48', '#4a5a6a']),
-        helmet: pick(['#c8d0d8', '#b0a890', '#d0c8b8']),
+        suit: CRANE_CREW.suit,
+        helmet: CRANE_CREW.helmet,
+        mask: CRANE_CREW.mask,
+        /** Draw yaw — 8-dir head look (smoothed toward task destination) */
+        visHeading: Math.PI / 2,
+        facing: 1,
       },
       phase: 'idle',
       pickup: start,
@@ -3853,6 +4146,56 @@ export class HangarBay {
     return c.bridgeY + TROLLEY_NORTH;
   }
 
+  /**
+   * World point for the operator's current task destination (where the head aims).
+   * Pickup while fetching; dropoff once cargo is aboard / delivering; deck aim when idle.
+   */
+  _craneOperatorLookAt(c = this.crane) {
+    if (!c) return { x: 0, y: 0 };
+    const phase = c.phase || 'idle';
+    const homeish = (p) => !p || p.id?.includes?.('craneHome');
+    const towardPickup =
+      phase === 'travelPickup' ||
+      phase === 'lowerPickup' ||
+      phase === 'linger' ||
+      (phase === 'raisePickup' && !c.carried);
+    const towardDrop =
+      phase === 'travelDropoff' ||
+      phase === 'lowerDropoff' ||
+      phase === 'lingerLoaded' ||
+      phase === 'raisePickup' ||
+      (phase === 'raiseDropoff' && !!c.dropoff);
+    if (towardPickup && !homeish(c.pickup)) {
+      return { x: c.pickup.x, y: c.pickup.y };
+    }
+    if (towardDrop && c.dropoff && !homeish(c.dropoff)) {
+      return { x: c.dropoff.x, y: c.dropoff.y };
+    }
+    if (c.carried && c.dropoff && !homeish(c.dropoff)) {
+      return { x: c.dropoff.x, y: c.dropoff.y };
+    }
+    if (!c.carried && !homeish(c.pickup) && phase !== 'idle' && phase !== 'raiseDropoff') {
+      return { x: c.pickup.x, y: c.pickup.y };
+    }
+    // Idle / home / post-drop — watch the deck aim under the trolley
+    return { x: c.trolleyX, y: this._craneAimFloorY(c) };
+  }
+
+  /** Smooth 8-dir head yaw toward the current task destination. */
+  _updateCraneOperatorLook(dt) {
+    const c = this.crane;
+    if (!c?.operator) return;
+    const op = c.operator;
+    const look = this._craneOperatorLookAt(c);
+    // Cab seat is east of trolley on the bridge (matches `_drawCraneCabin`)
+    const headX = c.trolleyX + 13;
+    const headY = c.bridgeY - 3;
+    const dx = look.x - headX;
+    const dy = look.y - headY;
+    if (Math.hypot(dx, dy) < 2) return;
+    this._crewSteerVisHeading(op, Math.atan2(dy, dx), dt);
+  }
+
   /** Hook Y so gripped cargo center sits at cy (fingertips reach the box). */
   _craneHookForCargoCenter(cy, cargo = null) {
     const h = cargo?.h ?? 8;
@@ -3984,7 +4327,7 @@ export class HangarBay {
     c.claw += (target - (c.claw ?? CLAW_OPEN)) * Math.min(1, dt * rate);
   }
 
-  /** Cab levers track travel / hoist / grip so the bay reads as manned, not automated. */
+  /** Cab levers track real work: XY travel · hoist up/down · claw open/close. */
   _updateCraneLevers(dt) {
     const c = this.crane;
     if (!c) return;
@@ -3997,28 +4340,38 @@ export class HangarBay {
     c._prevBY = c.bridgeY;
     c._prevHoist = c.hoist;
 
+    // XY travel lever — pushed forward while the bridge/trolley is moving
+    const moveMag = Math.hypot(dx, dy);
     let travelT = 0;
-    let hoistT = 0;
-    if (Math.abs(dx) > 0.05 || Math.abs(dy) > 0.05) {
-      travelT = Math.max(-1, Math.min(1, (dx + dy) * 0.35));
+    if (moveMag > 0.04) {
+      travelT = Math.min(1, moveMag * 0.45);
     } else if (
       c.phase === 'travelPickup' ||
       c.phase === 'travelDropoff' ||
       c.phase === 'linger' ||
       c.phase === 'lingerLoaded'
     ) {
-      travelT = Math.sin(this.time * 6) * 0.08;
-    }
-    if (Math.abs(dh) > 0.05) {
-      hoistT = Math.max(-1, Math.min(1, dh * 0.12));
-    } else if (c.phase === 'lowerPickup' || c.phase === 'lowerDropoff') {
-      hoistT = 0.85;
-    } else if (c.phase === 'raisePickup' || c.phase === 'raiseDropoff') {
-      hoistT = -0.85;
+      // Micro-nudge while settling on target so the stick isn't dead-still mid-job
+      travelT = 0.12 + Math.sin(this.time * 7) * 0.04;
     }
 
-    const gripT = 1 - (c.claw ?? CLAW_OPEN);
-    const k = Math.min(1, dt * 9);
+    // Hoist lever — forward = arm down, back = arm up
+    let hoistT = 0;
+    if (Math.abs(dh) > 0.04) {
+      hoistT = Math.max(-1, Math.min(1, dh * 0.14));
+    } else if (c.phase === 'lowerPickup' || c.phase === 'lowerDropoff') {
+      hoistT = 0.92;
+    } else if (c.phase === 'raisePickup' || c.phase === 'raiseDropoff') {
+      hoistT = -0.92;
+    }
+
+    // Grip lever — back = open, forward = closed (tracks claw open→grip)
+    const claw = c.claw ?? CLAW_OPEN;
+    const span = CLAW_OPEN - CLAW_GRIP;
+    const closed01 = Math.max(0, Math.min(1, (CLAW_OPEN - claw) / span));
+    const gripT = closed01 * 2 - 1; // -1 open … +1 closed
+
+    const k = Math.min(1, dt * 10);
     c.levers.travel += (travelT - c.levers.travel) * k;
     c.levers.hoist += (hoistT - c.levers.hoist) * k;
     c.levers.grip += (gripT - c.levers.grip) * k;
@@ -4033,6 +4386,7 @@ export class HangarBay {
 
     this._updateCraneClaw(dt);
     this._updateCraneLevers(dt);
+    this._updateCraneOperatorLook(dt);
 
     if (c.pause > 0) {
       c.pause -= dt;
@@ -4620,8 +4974,12 @@ export class HangarBay {
       _crossPhase: 0,
       _corridorX: null,
       _crossCool: 0,
-      suit: pick(['#3a6a8a', '#4a7a6a', '#6a5a4a', '#5a5a7a']),
-      helmet: pick(['#c8d0d8', '#a8b8c8', '#d0c8b0']),
+      theme: MECH_BAY_THEMES[homeBay] || MECH_BAY_THEMES[0],
+      suit: (MECH_BAY_THEMES[homeBay] || MECH_BAY_THEMES[0]).suit,
+      helmet: (MECH_BAY_THEMES[homeBay] || MECH_BAY_THEMES[0]).helmet,
+      // Draw yaw (8-dir); job/hand math still uses facing ±1
+      visHeading: homeBay === 2 ? Math.PI : 0,
+      _visOct: homeBay === 2 ? 4 : 0,
       _skirtWp: null,
     };
     if (this._assignMechanicRoute(npc)) {
@@ -4658,6 +5016,9 @@ export class HangarBay {
       forkPhase: null,
       targetSlot: null,
       _forkLift: null,
+      // Draw yaw (8-dir); job/fork math still uses facing ±1
+      visHeading: park.x <= 0 ? 0 : Math.PI,
+      _visOct: park.x <= 0 ? 0 : 4,
     };
     this.npcs.push(npc);
   }
@@ -5222,11 +5583,18 @@ export class HangarBay {
   _forkCargoCenterFromTruck(npc, cargo = null) {
     const c = cargo || npc.cargo || npc._forkLift?.cargo;
     const tine = this._forkTineLocal(npc.forkH ?? FORK_RAISED);
-    const face = npc.facing >= 0 ? 1 : -1;
     const h = c?.h ?? 8;
+    // Ride the *drawn* fork tips (8-dir visHeading), not logic facing ±1 —
+    // otherwise turnarounds snap the box while the prongs swing around.
+    const oct = this._crewVisOctant(npc);
+    const heading = oct * CREW_VIS_OCT;
+    const fx = Math.cos(heading);
+    const fy = Math.sin(heading);
+    const alongScale = 0.72 + 0.28 * Math.abs(fx);
+    const tipAlong = tine.tipX * alongScale;
     return {
-      x: npc.x + face * tine.tipX,
-      y: npc.y + tine.tineY - h * 0.5,
+      x: npc.x + fx * tipAlong,
+      y: npc.y + fy * tipAlong + tine.tineY - h * 0.5,
     };
   }
 
@@ -6108,6 +6476,8 @@ export class HangarBay {
   }
 
   _updateForklift(npc, dt, hazard) {
+    const ox = npc.x;
+    const oy = npc.y;
     npc.phase += dt * 8;
     npc.stateT -= dt;
 
@@ -6115,6 +6485,7 @@ export class HangarBay {
       npc.x += Math.sin(npc.phase * 4) * 14 * dt;
       npc.y += Math.cos(npc.phase * 5) * 4 * dt;
       if (npc.stateT <= 0) npc.state = npc.resumeState || 'toPile';
+      this._forkUpdateVisHeading(npc, npc.x - ox, npc.y - oy, dt);
       return;
     }
 
@@ -6128,6 +6499,7 @@ export class HangarBay {
       npc.resumeState = npc.state;
       npc.state = 'flinch';
       npc.stateT = rand(0.35, 0.7);
+      this._forkUpdateVisHeading(npc, npc.x - ox, npc.y - oy, dt);
       return;
     }
 
@@ -6514,6 +6886,92 @@ export class HangarBay {
       npc.x = pushed.x;
       npc.y = Math.max(pushed.y, BAY.PATH_Y - 40);
     }
+    this._forkUpdateVisHeading(npc, npc.x - ox, npc.y - oy, dt);
+  }
+
+  /**
+   * Smooth draw yaw from movement; snap to job facing while locked on a pile.
+   * Does not change npc.facing (fork tip / cargo math).
+   */
+  _forkUpdateVisHeading(npc, moveX, moveY, dt) {
+    const moveDist = Math.hypot(moveX, moveY);
+    const faceAng = npc.facing >= 0 ? 0 : Math.PI;
+    let target = npc.visHeading ?? faceAng;
+    if (npc.forkPhase || npc._lockFacing) {
+      target = faceAng;
+    } else if (moveDist > 0.2) {
+      target = Math.atan2(moveY, moveX);
+    } else {
+      target = faceAng;
+    }
+    this._crewSteerVisHeading(npc, target, dt);
+  }
+
+  /**
+   * Mechanic draw yaw — same 8-dir system; locks during pile / hull work.
+   * Does not change npc.facing (hand / cargo math).
+   */
+  _mechUpdateVisHeading(npc, moveX, moveY, dt) {
+    const moveDist = Math.hypot(moveX, moveY);
+    const faceAng = npc.facing >= 0 ? 0 : Math.PI;
+    let target = npc.visHeading ?? faceAng;
+    const locked = !!(
+      npc.mechPhase ||
+      npc._lockFacing ||
+      npc.state === 'workPile' ||
+      npc.state === 'workShip' ||
+      npc.state === 'workWeld'
+    );
+    if (locked) {
+      target = faceAng;
+    } else if (moveDist > 0.2) {
+      target = Math.atan2(moveY, moveX);
+    } else {
+      target = faceAng;
+    }
+    this._crewSteerVisHeading(npc, target, dt);
+  }
+
+  _crewSteerVisHeading(npc, target, dt) {
+    let cur = npc.visHeading;
+    if (cur == null || Number.isNaN(cur)) {
+      npc.visHeading = target;
+      return;
+    }
+    let diff = target - cur;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    const locked = !!(npc.forkPhase || npc.mechPhase || npc._lockFacing);
+    const step = (locked ? CREW_VIS_TURN_LOCK : CREW_VIS_TURN) * dt;
+    if (Math.abs(diff) <= step) npc.visHeading = target;
+    else npc.visHeading = cur + Math.sign(diff) * step;
+    if (npc.visHeading > Math.PI) npc.visHeading -= Math.PI * 2;
+    if (npc.visHeading <= -Math.PI) npc.visHeading += Math.PI * 2;
+  }
+
+  /** Nearest of 8 ground headings, with hysteresis so flicker stays down. */
+  _crewVisOctant(npc) {
+    const h = npc.visHeading ?? (npc.facing >= 0 ? 0 : Math.PI);
+    let oct = Math.round(h / CREW_VIS_OCT);
+    oct = ((oct % 8) + 8) % 8;
+    const prev = npc._visOct;
+    if (prev != null && prev !== oct) {
+      const ang = (o) => {
+        let a = o * CREW_VIS_OCT;
+        if (a > Math.PI) a -= Math.PI * 2;
+        return a;
+      };
+      const wrap = (d) => {
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        return d;
+      };
+      const dNew = Math.abs(wrap(h - ang(oct)));
+      const dOld = Math.abs(wrap(h - ang(prev)));
+      if (dNew + 0.14 > dOld) oct = prev;
+    }
+    npc._visOct = oct;
+    return oct;
   }
 
   _shipLocalToWorld(padX, padY, lx, ly) {
@@ -7116,6 +7574,9 @@ export class HangarBay {
   }
 
   _updateMechanic(npc, dt, hazard) {
+    const ox = npc.x;
+    const oy = npc.y;
+    try {
     npc.phase += dt * 8;
     npc.stateT -= dt;
 
@@ -7480,10 +7941,7 @@ export class HangarBay {
             removeCargoHoldBlock(pad.shipState.cargoHold);
             syncCargoSpace(pad.shipState);
           }
-          const kinds = HOLD_CARGO.filter(
-            (k) => k.label === 'ORE' || k.label === 'INGOT' || k.label === 'AMMO' || k.label === 'CRATE'
-          );
-          npc.cargo = makeCargo(pick(kinds));
+          npc.cargo = makeCargo(pick(CRATE_VARIANTS));
           npc.cargo.unloadServiceBay = bay;
           npc.cargo._boardUnloadApplied = true;
           npc.targetPile = dest;
@@ -7551,6 +8009,9 @@ export class HangarBay {
     }
     // Mechanics walk over pads freely — keep-out only for any leftover states
     // (forklifts still use _padKeepOut in their own update).
+    } finally {
+      this._mechUpdateVisHeading(npc, npc.x - ox, npc.y - oy, dt);
+    }
   }
 
   _resumeAfterOpsClear(npc) {
@@ -8874,41 +9335,27 @@ export class HangarBay {
     ctx.fill();
   }
 
-  /** Static industrial props — wing shelves/desks/benches + legacy tanks/hoses. */
+  /**
+   * Industrial hangar set dressing — readable 2.5D props (height screen-up).
+   * Bay danger lanes stay clear of everything except apron-flank tools/terminals.
+   */
   _drawSetDressing(ctx) {
-    this._drawFuelTank(ctx, -305, 178, 1);
-    this._drawFuelTank(ctx, 305, 178, 0.92);
+    // Far→near by screen Y
+    const deck = HANGAR_PROPS.filter((p) => p.kind !== 'computer')
+      .slice()
+      .sort((a, b) => a.y - b.y);
+    for (const prop of deck) this._drawHangarProp(ctx, prop);
 
-    // Hoses coiled by their tanks — stay south of the forklift road
-    this._drawCoiledFuelHose(ctx, -292, 172, -1);
-    this._drawCoiledFuelHose(ctx, 292, 172, 1);
+    const yard = FORKLIFT_YARD_PROPS.slice().sort((a, b) => a.y - b.y);
+    for (const prop of yard) this._drawHangarProp(ctx, prop);
 
-    this._drawHoseReel(ctx, -318, 30, -1);
-    this._drawHoseReel(ctx, 318, 30, 1);
-    this._drawHoseReel(ctx, -318, -70, -1);
-    this._drawHoseReel(ctx, 318, -70, 1);
-
-    for (const prop of HANGAR_PROPS) {
-      if (prop.kind === 'computer') continue; // drawn with service boards
-      if (prop.kind === 'shelf') this._drawShelf(ctx, prop.x, prop.y);
-      else if (prop.kind === 'desk') this._drawDesk(ctx, prop.x, prop.y);
-      else if (prop.kind === 'toolbench') this._drawToolStation(ctx, prop.x, prop.y);
-      else if (prop.kind === 'barrels') {
-        this._drawBarrel(ctx, prop.x - 6, prop.y, '#4a5a40');
-        this._drawBarrel(ctx, prop.x + 6, prop.y + 4, '#3a4a58');
-      }
-    }
-
-    const lockerY = -BAY.HALF_H + BAY.DOOR_H + 18;
-    this._drawWallLocker(ctx, -78, lockerY);
-    this._drawWallLocker(ctx, 78, lockerY);
-
-    this._drawFireExt(ctx, -325, BAY.PATH_Y - 48);
-    this._drawFireExt(ctx, 325, BAY.PATH_Y - 48);
-
-    this._drawDrain(ctx, -160, 165);
-    this._drawDrain(ctx, 160, 165);
-    this._drawDrain(ctx, 0, -40);
+    // South-of-road bulk fuel (no linger) — clear of hub stalls
+    this._drawPropFuelFarm(ctx, -310, 176, 0);
+    this._drawPropFuelFarm(ctx, 302, 182, 1);
+    this._drawPropExtinguisher(ctx, -328, BAY.PATH_Y - 46);
+    this._drawPropExtinguisher(ctx, 322, BAY.PATH_Y - 40);
+    this._drawPropFloorDrain(ctx, -132, 168);
+    this._drawPropFloorDrain(ctx, 148, 162);
 
     ctx.fillStyle = 'rgba(201, 160, 32, 0.35)';
     ctx.font = '5px sans-serif';
@@ -8917,258 +9364,818 @@ export class HangarBay {
     ctx.fillText('KEEP CLEAR', 155, DANGER_ZONE_SOUTH - 8);
   }
 
-  _drawShelf(ctx, x, y) {
-    ctx.fillStyle = '#2a343c';
-    ctx.fillRect(x - 10, y - 16, 20, 28);
-    ctx.strokeStyle = '#6a8090';
-    ctx.lineWidth = 0.8;
-    ctx.strokeRect(x - 10, y - 16, 20, 28);
-    for (let i = 0; i < 3; i++) {
-      ctx.fillStyle = 'rgba(0,0,0,0.25)';
-      ctx.fillRect(x - 9, y - 10 + i * 8, 18, 1.5);
-      ctx.fillStyle = '#4a5a48';
-      ctx.fillRect(x - 7, y - 8 + i * 8, 6, 4);
-      ctx.fillStyle = '#5a4a40';
-      ctx.fillRect(x + 1, y - 8 + i * 8, 6, 4);
+  _drawHangarProp(ctx, prop) {
+    const v = prop.variant ?? 0;
+    switch (prop.kind) {
+      case 'workbench':
+        this._drawPropWorkbench(ctx, prop.x, prop.y, v);
+        break;
+      case 'bayTerminal':
+        this._drawPropBayTerminal(ctx, prop.x, prop.y, v);
+        break;
+      case 'partsRack':
+        this._drawPropPartsRack(ctx, prop.x, prop.y, v);
+        break;
+      case 'drumStack':
+        this._drawPropDrumStack(ctx, prop.x, prop.y, v);
+        break;
+      case 'suitLocker':
+        this._drawPropSuitLocker(ctx, prop.x, prop.y, v);
+        break;
+      case 'pallet':
+        this._drawPropPallet(ctx, prop.x, prop.y, v);
+        break;
+      case 'diagCart':
+        this._drawPropDiagCart(ctx, prop.x, prop.y, v);
+        break;
+      case 'cableSpool':
+        this._drawPropCableSpool(ctx, prop.x, prop.y, v);
+        break;
+      case 'breakCrate':
+        this._drawPropBreakCrate(ctx, prop.x, prop.y, v);
+        break;
+      case 'weldScreen':
+        this._drawPropWeldScreen(ctx, prop.x, prop.y, v);
+        break;
+      case 'bottleRack':
+        this._drawPropBottleRack(ctx, prop.x, prop.y, v);
+        break;
+      case 'shiftBoard':
+        this._drawPropShiftBoard(ctx, prop.x, prop.y, v);
+        break;
+      case 'forkCharger':
+        this._drawPropForkCharger(ctx, prop.x, prop.y, v);
+        break;
+      case 'forkTireRack':
+        this._drawPropForkTireRack(ctx, prop.x, prop.y, v);
+        break;
+      case 'forkCones':
+        this._drawPropForkCones(ctx, prop.x, prop.y, v);
+        break;
+      case 'forkCrate':
+        this._drawPropForkCrate(ctx, prop.x, prop.y, v);
+        break;
+      default:
+        break;
     }
   }
 
-  _drawDesk(ctx, x, y) {
-    ctx.fillStyle = '#3a444c';
-    ctx.fillRect(x - 14, y - 4, 28, 10);
-    ctx.fillStyle = '#2a343c';
-    ctx.fillRect(x - 12, y + 6, 4, 8);
-    ctx.fillRect(x + 8, y + 6, 4, 8);
-    ctx.fillStyle = '#1a2830';
-    ctx.fillRect(x - 6, y - 10, 14, 8);
-    ctx.fillStyle = 'rgba(80, 180, 255, 0.35)';
-    ctx.fillRect(x - 4, y - 8, 10, 5);
-    ctx.strokeStyle = '#7a90a0';
-    ctx.strokeRect(x - 14, y - 4, 28, 10);
-  }
+  /**
+   * 2.5D box: footprint on deck, height screen-up, far faces first.
+   * Top is inset north slightly so the near lip reads as thickness.
+   */
+  _propBox(ctx, x, y, halfW, halfD, h, cols) {
+    const inset = Math.min(1.6, h * 0.08);
+    const nw = { x: x - halfW, y: y - halfD };
+    const ne = { x: x + halfW, y: y - halfD };
+    const se = { x: x + halfW, y: y + halfD };
+    const sw = { x: x - halfW, y: y + halfD };
+    const tnw = { x: nw.x + inset * 0.15, y: nw.y - h + inset };
+    const tne = { x: ne.x - inset * 0.15, y: ne.y - h + inset };
+    const tse = { x: se.x - inset * 0.15, y: se.y - h };
+    const tsw = { x: sw.x + inset * 0.15, y: sw.y - h };
 
-  /** Stairs removed — apron crew stay on deck. */
-  _drawStairs(_ctx) {
-    /* no-op */
-  }
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.beginPath();
+    ctx.ellipse(
+      x,
+      y + halfD * 0.4 + 2.2,
+      halfW * 1.2,
+      halfD * 0.55 + 1.8,
+      0,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
 
-  _drawFuelTank(ctx, x, y, scale = 1) {
-    const s = scale;
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.scale(s, s);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+    // Far (north) wall
+    ctx.fillStyle = cols.far || '#1a2430';
     ctx.beginPath();
-    ctx.ellipse(0, 6, 14, 5, 0, 0, Math.PI * 2);
+    ctx.moveTo(nw.x, nw.y);
+    ctx.lineTo(ne.x, ne.y);
+    ctx.lineTo(tne.x, tne.y);
+    ctx.lineTo(tnw.x, tnw.y);
+    ctx.closePath();
     ctx.fill();
-    ctx.fillStyle = '#3a4a38';
-    ctx.fillRect(-10, -18, 20, 22);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-    ctx.fillRect(-10, -18, 5, 22);
-    ctx.fillStyle = 'rgba(140, 160, 120, 0.2)';
-    ctx.fillRect(4, -18, 6, 22);
-    ctx.fillStyle = '#4a5a48';
+
+    // Side walls — draw lower-Y (farther) side first
+    const leftFirst = (nw.y + sw.y) / 2 <= (ne.y + se.y) / 2;
+    const sides = leftFirst
+      ? [
+          [nw, sw, tsw, tnw, cols.sideL || cols.side],
+          [ne, se, tse, tne, cols.sideR || cols.side],
+        ]
+      : [
+          [ne, se, tse, tne, cols.sideR || cols.side],
+          [nw, sw, tsw, tnw, cols.sideL || cols.side],
+        ];
+    for (const [a, b, tb, ta, col] of sides) {
+      ctx.fillStyle = col || cols.side || '#243040';
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.lineTo(tb.x, tb.y);
+      ctx.lineTo(ta.x, ta.y);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Near (south) wall — last so it sits in front
+    ctx.fillStyle = cols.near || '#2a3848';
     ctx.beginPath();
-    ctx.ellipse(0, -18, 10, 4, 0, 0, Math.PI * 2);
+    ctx.moveTo(sw.x, sw.y);
+    ctx.lineTo(se.x, se.y);
+    ctx.lineTo(tse.x, tse.y);
+    ctx.lineTo(tsw.x, tsw.y);
+    ctx.closePath();
     ctx.fill();
-    ctx.strokeStyle = '#7a8a70';
+
+    // Top deck
+    ctx.fillStyle = cols.top || '#4a5868';
+    ctx.beginPath();
+    ctx.moveTo(tnw.x, tnw.y);
+    ctx.lineTo(tne.x, tne.y);
+    ctx.lineTo(tse.x, tse.y);
+    ctx.lineTo(tsw.x, tsw.y);
+    ctx.closePath();
+    ctx.fill();
+    if (cols.stroke) {
+      ctx.strokeStyle = cols.stroke;
+      ctx.lineWidth = 0.85;
+      ctx.stroke();
+    }
+    // Near lip highlight
+    ctx.strokeStyle = 'rgba(220, 230, 240, 0.22)';
     ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(tsw.x, tsw.y);
+    ctx.lineTo(tse.x, tse.y);
     ctx.stroke();
-    ctx.strokeRect(-10, -18, 20, 22);
-    for (let i = 0; i < 4; i++) {
-      ctx.fillStyle = i % 2 ? '#c9a020' : '#1a1a14';
-      ctx.fillRect(-10 + i * 5, -4, 5, 4);
+    return { nw, ne, se, sw, tnw, tne, tse, tsw, h };
+  }
+
+  _propDrum(ctx, x, y, r, h, color, label = null) {
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + 3.5, r * 1.1, r * 0.45, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Body
+    ctx.fillStyle = color;
+    ctx.fillRect(x - r, y - h + 3, r * 2, h);
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.fillRect(x - r, y - h + 3, r * 0.5, h);
+    ctx.fillStyle = 'rgba(255,255,255,0.1)';
+    ctx.fillRect(x + r * 0.3, y - h + 3, r * 0.4, h);
+    // Top ellipse
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.ellipse(x, y - h + 3, r, r * 0.4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(220, 200, 120, 0.45)';
+    ctx.lineWidth = 1.1;
+    ctx.beginPath();
+    ctx.moveTo(x - r, y - h * 0.35);
+    ctx.lineTo(x + r, y - h * 0.35);
+    ctx.moveTo(x - r, y - h * 0.62);
+    ctx.lineTo(x + r, y - h * 0.62);
+    ctx.stroke();
+    if (label) {
+      ctx.fillStyle = 'rgba(240, 230, 200, 0.55)';
+      ctx.font = 'bold 3.2px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(label, x, y - h * 0.48);
     }
-    ctx.fillStyle = '#6a7888';
-    ctx.fillRect(8, -8, 5, 3);
+  }
+
+  _drawPropWorkbench(ctx, x, y, variant = 0) {
+    const v = ((variant % 3) + 3) % 3;
+    this._propBox(ctx, x, y, 14, 7, 9, {
+      top: '#5a6a78',
+      far: '#1a2834',
+      near: '#2a3a48',
+      side: '#243444',
+      sideL: '#1e303c',
+      sideR: '#2a4050',
+      stroke: '#9aacbc',
+    });
+    // Hazard stripe on near lip
+    ctx.fillStyle = 'rgba(201, 160, 32, 0.55)';
+    ctx.fillRect(x - 12, y + 5.5 - 9, 24, 1.4);
+    ctx.fillStyle = 'rgba(20, 14, 8, 0.35)';
+    ctx.fillRect(x - 8, y - 1 - 9, 7, 2);
+    if (v === 0) {
+      // Arc welder bottle + leads
+      this._propBox(ctx, x + 10, y + 1, 2.8, 2.8, 8, {
+        top: '#c85840',
+        far: '#802820',
+        near: '#a03828',
+        side: '#903028',
+      });
+      ctx.strokeStyle = '#c0c8d0';
+      ctx.lineWidth = 1.5;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(x - 4, y - 10);
+      ctx.quadraticCurveTo(x + 2, y - 16, x + 8, y - 14);
+      ctx.stroke();
+      ctx.fillStyle = `rgba(160, 220, 255, 0.55)`;
+      ctx.beginPath();
+      ctx.arc(x + 9, y - 14.5, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineCap = 'butt';
+    } else if (v === 1) {
+      // Open tool tray
+      this._propBox(ctx, x - 4, y - 1, 6, 4, 2.5, {
+        top: '#3a4550',
+        far: '#1a2228',
+        near: '#2a343c',
+        side: '#222c34',
+      });
+      ctx.strokeStyle = '#d0d8e0';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(x + 4, y - 10);
+      ctx.lineTo(x + 11, y - 17);
+      ctx.moveTo(x + 5, y - 10);
+      ctx.lineTo(x + 12, y - 14);
+      ctx.stroke();
+    } else {
+      // Bench vise
+      this._propBox(ctx, x - 1, y - 1, 5, 3.5, 5, {
+        top: '#7a8490',
+        far: '#3a4450',
+        near: '#5a6470',
+        side: '#4a5460',
+      });
+      ctx.strokeStyle = '#b8c0c8';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.arc(x + 9, y - 13, 4.2, 0, Math.PI * 2);
+      ctx.stroke();
+      ctx.fillStyle = '#c9a020';
+      ctx.fillRect(x + 10, y - 8, 3, 2);
+    }
+  }
+
+  _drawPropBayTerminal(ctx, x, y, variant = 0) {
+    const v = ((variant % 3) + 3) % 3;
+    // Slim pedestal
+    this._propBox(ctx, x, y, 3.5, 3.2, 7, {
+      top: '#3a4854',
+      far: '#141c24',
+      near: '#243038',
+      side: '#1a2430',
+      stroke: '#6a7a88',
+    });
+    if (v === 0) {
+      this._propBox(ctx, x, y - 1, 6.5, 2.4, 12, {
+        top: '#1a2834',
+        far: '#0a1018',
+        near: '#152028',
+        side: '#0e181f',
+        stroke: '#5a7080',
+      });
+      ctx.fillStyle = 'rgba(60, 170, 220, 0.45)';
+      ctx.fillRect(x - 4.2, y - 1 - 10.5, 8.4, 6.5);
+      ctx.fillStyle = 'rgba(200, 230, 255, 0.35)';
+      ctx.font = '2.8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('BAY', x, y - 1 - 7);
+    } else if (v === 1) {
+      this._propBox(ctx, x, y - 2, 5.5, 2, 8, {
+        top: '#1a2834',
+        far: '#0a1018',
+        near: '#152028',
+        side: '#0e181f',
+      });
+      this._propBox(ctx, x, y - 2, 5.2, 1.8, 16, {
+        top: '#1a2834',
+        far: '#0a1018',
+        near: '#152028',
+        side: '#0e181f',
+      });
+      ctx.fillStyle = 'rgba(100, 210, 160, 0.4)';
+      ctx.fillRect(x - 3.4, y - 2 - 14.5, 6.8, 4.2);
+      ctx.fillStyle = 'rgba(80, 170, 230, 0.42)';
+      ctx.fillRect(x - 3.6, y - 2 - 7.5, 7.2, 4.2);
+    } else {
+      ctx.fillStyle = 'rgba(0,0,0,0.28)';
+      ctx.beginPath();
+      ctx.ellipse(x, y + 4, 7.5, 2.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      const h = 11;
+      ctx.fillStyle = '#152028';
+      ctx.beginPath();
+      ctx.moveTo(x - 7, y);
+      ctx.lineTo(x - 5, y - h);
+      ctx.lineTo(x + 5, y - h);
+      ctx.lineTo(x + 7, y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = 'rgba(90, 190, 240, 0.4)';
+      ctx.fillRect(x - 3.6, y - h + 2, 7.2, 5.5);
+      ctx.fillStyle = '#c9a020';
+      ctx.beginPath();
+      ctx.arc(x - 2.2, y - 3.2, 1.15, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#40a060';
+      ctx.beginPath();
+      ctx.arc(x + 2.2, y - 3.2, 1.15, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  _drawPropPartsRack(ctx, x, y, variant = 0) {
+    const v = ((variant % 3) + 3) % 3;
+    this._propBox(ctx, x, y, 12, 6.5, 24, {
+      top: '#3a4854',
+      far: '#101820',
+      near: '#1e2a36',
+      side: '#162028',
+      stroke: '#7a90a0',
+    });
+    ctx.fillStyle = 'rgba(201, 160, 32, 0.4)';
+    ctx.font = 'bold 3px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(v === 0 ? 'STORES' : v === 1 ? 'SPARES' : 'GEAR', x, y - 22);
+    for (let i = 0; i < 3; i++) {
+      const sy = y - 4 - i * 6.5;
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(x - 11, sy, 22, 1.4);
+      if (v === 0) {
+        this._propBox(ctx, x - 5, sy + 3.2, 4, 3.2, 4, {
+          top: '#5a6a50',
+          far: '#2a3830',
+          near: '#3a4a40',
+          side: '#304038',
+        });
+        this._propBox(ctx, x + 5, sy + 3.2, 4, 3.2, 3.6, {
+          top: '#5a4a38',
+          far: '#2a2018',
+          near: '#3a3020',
+          side: '#322818',
+        });
+      } else if (v === 1) {
+        ctx.fillStyle = '#5a4030';
+        ctx.beginPath();
+        ctx.ellipse(x - 4, sy + 1.5, 4.2, 2.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillStyle = '#3a5060';
+        ctx.beginPath();
+        ctx.ellipse(x + 5, sy + 1.5, 3.6, 2.2, 0, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        ctx.fillStyle = '#9aa8b4';
+        ctx.beginPath();
+        ctx.arc(x - 4, sy - 0.5, 3.4, 0, Math.PI * 2);
+        ctx.fill();
+        this._propBox(ctx, x + 4.5, sy + 2.5, 3.8, 2.8, 4.5, {
+          top: '#4a5a48',
+          far: '#243028',
+          near: '#354438',
+          side: '#2c3830',
+        });
+      }
+    }
+  }
+
+  _drawPropDrumStack(ctx, x, y, variant = 0) {
+    const v = ((variant % 2) + 2) % 2;
+    if (v === 0) {
+      this._propDrum(ctx, x - 7, y + 1, 5.8, 14, '#4a5a40', 'COOL');
+      this._propDrum(ctx, x + 7, y + 3, 5.4, 13, '#3a4a58', 'HYD');
+    } else {
+      this._propDrum(ctx, x - 8, y + 2, 5.2, 12, '#5a4a38', 'INERT');
+      this._propDrum(ctx, x + 2, y - 1, 5.6, 14, '#4a5a48', 'TRAIN');
+      this._propDrum(ctx, x + 11, y + 4, 4.8, 11, '#3a4858', null);
+    }
+  }
+
+  _drawPropSuitLocker(ctx, x, y, variant = 0) {
+    const v = ((variant % 2) + 2) % 2;
+    const halfW = v === 0 ? 8.5 : 7;
+    const h = v === 0 ? 22 : 26;
+    this._propBox(ctx, x, y, halfW, 5.5, h, {
+      top: '#3a4a58',
+      far: '#101820',
+      near: '#243040',
+      side: '#1a2834',
+      stroke: '#8aa0b0',
+    });
+    ctx.fillStyle = 'rgba(180, 200, 220, 0.35)';
+    ctx.font = 'bold 2.8px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText(v === 0 ? 'CREW' : 'EVA', x, y - h + 6);
+    ctx.strokeStyle = 'rgba(160, 180, 200, 0.5)';
+    ctx.lineWidth = 0.9;
+    if (v === 0) {
+      ctx.beginPath();
+      ctx.moveTo(x, y + 4);
+      ctx.lineTo(x, y + 4 - h);
+      ctx.stroke();
+      ctx.fillStyle = '#c9a020';
+      ctx.beginPath();
+      ctx.arc(x - 3.2, y - h * 0.38, 1.35, 0, Math.PI * 2);
+      ctx.arc(x + 3.2, y - h * 0.38, 1.35, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.fillStyle = '#c9a020';
+      ctx.beginPath();
+      ctx.arc(x + halfW - 2.8, y - h * 0.42, 1.45, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      for (let i = 0; i < 4; i++) {
+        ctx.fillRect(x - 4, y - h * 0.55 + i * 2.8, 8, 1.1);
+      }
+    }
+  }
+
+  _drawPropPallet(ctx, x, y, variant = 0) {
+    const v = ((variant % 3) + 3) % 3;
+    this._propBox(ctx, x, y, 13, 8.5, 3.2, {
+      top: '#6a5a38',
+      far: '#2a2010',
+      near: '#4a3a20',
+      side: '#3a2e18',
+      stroke: 'rgba(200, 170, 80, 0.4)',
+    });
+    if (v === 0) {
+      // Thruster nozzle crate
+      this._propBox(ctx, x - 2, y - 1, 8, 5.5, 10, {
+        top: '#4a5a68',
+        far: '#1a2834',
+        near: '#2a3a48',
+        side: '#223040',
+      });
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath();
+      ctx.ellipse(x - 2, y - 1 - 10, 4, 2.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(201, 160, 32, 0.45)';
+      ctx.font = 'bold 2.6px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('NOZZLE', x - 2, y - 5);
+    } else if (v === 1) {
+      this._propBox(ctx, x, y - 1, 9, 5.5, 11, {
+        top: '#3a5a48',
+        far: '#1a3020',
+        near: '#2a4030',
+        side: '#243828',
+      });
+      ctx.fillStyle = 'rgba(80, 180, 220, 0.3)';
+      ctx.fillRect(x - 6, y - 1 - 10, 12, 3);
+    } else {
+      this._propBox(ctx, x - 4, y, 6.5, 5, 8, {
+        top: '#5a4a30',
+        far: '#2a2010',
+        near: '#3a3020',
+        side: '#322818',
+      });
+      this._propBox(ctx, x + 5.5, y - 2, 5.5, 4.5, 6, {
+        top: '#2a3848',
+        far: '#101820',
+        near: '#1e2a36',
+        side: '#162028',
+      });
+    }
+  }
+
+  _drawPropDiagCart(ctx, x, y, variant = 0) {
+    const v = ((variant % 2) + 2) % 2;
+    this._propBox(ctx, x, y, 11, 6.5, 10, {
+      top: '#3a4a58',
+      far: '#101820',
+      near: '#243040',
+      side: '#1a2834',
+      stroke: '#8aa0b0',
+    });
+    this._propBox(ctx, x + (v === 0 ? 3 : -3), y - 2, 5.5, 2.2, 9, {
+      top: '#1a2834',
+      far: '#0a1018',
+      near: '#152028',
+      side: '#0e181f',
+    });
+    ctx.fillStyle =
+      v === 0 ? 'rgba(80, 210, 160, 0.45)' : 'rgba(80, 170, 230, 0.45)';
+    ctx.fillRect(x + (v === 0 ? 3 : -3) - 3.5, y - 2 - 8, 7, 5);
+    ctx.fillStyle = 'rgba(220, 230, 240, 0.4)';
+    ctx.font = '2.5px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('DIAG', x, y - 8);
+    for (const [ox, oy] of [
+      [-8, 4.5],
+      [8, 4.5],
+      [-8, -3.5],
+      [8, -3.5],
+    ]) {
+      ctx.fillStyle = '#121212';
+      ctx.beginPath();
+      ctx.ellipse(x + ox, y + oy + 2.2, 2.6, 1.7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#3a3a3a';
+      ctx.beginPath();
+      ctx.ellipse(x + ox, y + oy + 1.8, 1.2, 0.8, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  _drawPropCableSpool(ctx, x, y, _variant = 0) {
+    ctx.fillStyle = 'rgba(0,0,0,0.3)';
+    ctx.beginPath();
+    ctx.ellipse(x, y + 6, 11, 4, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Axle stand
+    this._propBox(ctx, x - 9, y + 2, 1.5, 3, 10, {
+      top: '#5a6878',
+      far: '#2a343c',
+      near: '#3a4850',
+      side: '#323c44',
+    });
+    this._propBox(ctx, x + 9, y + 2, 1.5, 3, 10, {
+      top: '#5a6878',
+      far: '#2a343c',
+      near: '#3a4850',
+      side: '#323c44',
+    });
+    // Spool
+    ctx.fillStyle = '#5a4030';
+    ctx.beginPath();
+    ctx.ellipse(x, y - 4, 8, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#3a2818';
+    ctx.beginPath();
+    ctx.ellipse(x, y - 4, 4, 3.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#8a6a40';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.ellipse(x, y - 4, 8, 7, 0, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(200, 180, 120, 0.4)';
+    ctx.font = 'bold 2.6px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('UMBILICAL', x, y + 2);
+  }
+
+  _drawPropBreakCrate(ctx, x, y, _variant = 0) {
+    this._propBox(ctx, x, y, 10, 7, 7, {
+      top: '#6a5a38',
+      far: '#2a2010',
+      near: '#4a3a20',
+      side: '#3a2e18',
+      stroke: 'rgba(200, 170, 80, 0.35)',
+    });
+    // Thermos + mugs
+    this._propBox(ctx, x - 3, y - 1, 2.2, 2.2, 5, {
+      top: '#4a5868',
+      far: '#1a2430',
+      near: '#2a3848',
+      side: '#223040',
+    });
     ctx.fillStyle = '#c05040';
     ctx.beginPath();
-    ctx.arc(14, -6.5, 2, 0, Math.PI * 2);
+    ctx.arc(x + 4, y - 5, 2.2, 0, Math.PI * 2);
     ctx.fill();
-    ctx.restore();
+    ctx.fillStyle = 'rgba(220, 200, 160, 0.45)';
+    ctx.font = 'bold 2.5px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('BREAK', x, y - 9);
   }
 
-  _drawFuelHose(ctx, x0, y0, x1, y1, x2, y2) {
-    ctx.strokeStyle = 'rgba(40, 30, 20, 0.55)';
-    ctx.lineWidth = 3.5;
-    ctx.lineCap = 'round';
+  _drawPropWeldScreen(ctx, x, y, _variant = 0) {
+    // Curtain frame
+    this._propBox(ctx, x - 8, y + 2, 1.2, 2.5, 16, {
+      top: '#5a6878',
+      far: '#2a343c',
+      near: '#3a4850',
+      side: '#323c44',
+    });
+    this._propBox(ctx, x + 8, y + 2, 1.2, 2.5, 16, {
+      top: '#5a6878',
+      far: '#2a343c',
+      near: '#3a4850',
+      side: '#323c44',
+    });
+    ctx.fillStyle = 'rgba(180, 90, 40, 0.55)';
     ctx.beginPath();
-    ctx.moveTo(x0, y0);
-    ctx.quadraticCurveTo(x1, y1 + 8, x2, y2);
-    ctx.stroke();
-    ctx.strokeStyle = 'rgba(90, 70, 40, 0.7)';
+    ctx.moveTo(x - 8, y - 14);
+    ctx.lineTo(x + 8, y - 14);
+    ctx.lineTo(x + 8, y + 1);
+    ctx.lineTo(x - 8, y + 1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = 'rgba(40, 20, 10, 0.25)';
+    for (let i = -6; i <= 6; i += 4) {
+      ctx.fillRect(x + i - 0.6, y - 13, 1.2, 12);
+    }
+    ctx.fillStyle = 'rgba(255, 200, 120, 0.4)';
+    ctx.font = 'bold 2.5px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('WELD', x, y - 15.5);
+  }
+
+  _drawPropBottleRack(ctx, x, y, _variant = 0) {
+    this._propBox(ctx, x, y, 9, 5, 4, {
+      top: '#3a4550',
+      far: '#141c24',
+      near: '#243038',
+      side: '#1a2430',
+      stroke: '#6a7a88',
+    });
+    for (const ox of [-5, 0, 5]) {
+      this._propBox(ctx, x + ox, y - 1, 2.2, 2.2, 14, {
+        top: ox === 0 ? '#c8d0d8' : '#6a8a9a',
+        far: '#2a3840',
+        near: '#4a5a68',
+        side: '#3a4a58',
+      });
+      ctx.fillStyle = ox === 0 ? '#4090c0' : '#c05040';
+      ctx.beginPath();
+      ctx.arc(x + ox, y - 1 - 14, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(200, 220, 240, 0.4)';
+    ctx.font = 'bold 2.4px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('O₂ / N₂', x, y - 18);
+  }
+
+  _drawPropShiftBoard(ctx, x, y, _variant = 0) {
+    this._propBox(ctx, x, y, 2.5, 2.5, 6, {
+      top: '#4a5868',
+      far: '#1a2430',
+      near: '#2a3848',
+      side: '#223040',
+    });
+    this._propBox(ctx, x, y - 2, 9, 2, 12, {
+      top: '#2a343c',
+      far: '#101820',
+      near: '#1e2830',
+      side: '#162028',
+      stroke: '#7a90a0',
+    });
+    ctx.fillStyle = 'rgba(220, 210, 180, 0.5)';
+    ctx.fillRect(x - 6, y - 2 - 10, 12, 8);
+    ctx.fillStyle = 'rgba(40, 30, 20, 0.55)';
+    ctx.font = '2.4px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText('SHIFT 04', x - 5, y - 2 - 6);
+    ctx.fillText('B1 OK', x - 5, y - 2 - 3.5);
+    ctx.fillText('B3 DELAY', x - 5, y - 2 - 1);
+  }
+
+  _drawPropForkCharger(ctx, x, y, _variant = 0) {
+    this._propBox(ctx, x, y, 8, 6, 12, {
+      top: '#3a4a38',
+      far: '#142018',
+      near: '#2a3a28',
+      side: '#1e2e20',
+      stroke: '#7a9a70',
+    });
+    ctx.fillStyle = 'rgba(80, 200, 120, 0.45)';
+    ctx.fillRect(x - 4, y - 9, 8, 3);
+    ctx.fillStyle = '#c9a020';
+    ctx.beginPath();
+    ctx.arc(x + 5, y - 11, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+    // Cable to deck
+    ctx.strokeStyle = '#2a2a2a';
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(x0, y0);
-    ctx.quadraticCurveTo(x1, y1 + 8, x2, y2);
+    ctx.moveTo(x - 6, y - 4);
+    ctx.quadraticCurveTo(x - 14, y + 4, x - 8, y + 8);
     ctx.stroke();
-    ctx.fillStyle = '#4a5560';
-    ctx.fillRect(x2 - 3, y2 - 2, 8, 4);
-    ctx.lineCap = 'butt';
+    ctx.fillStyle = 'rgba(180, 220, 160, 0.45)';
+    ctx.font = 'bold 2.6px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('CHARGE', x, y - 14);
   }
 
-  /** Hose dumped in a loose coil next to its tank (always south of PATH_Y). */
-  _drawCoiledFuelHose(ctx, x, y, side) {
-    const roadClear = BAY.PATH_Y + 22;
-    const baseY = Math.max(y, roadClear);
-    const s = side < 0 ? -1 : 1; // coil drifts inboard from tank
+  _drawPropForkTireRack(ctx, x, y, _variant = 0) {
+    this._propBox(ctx, x, y, 7, 5, 5, {
+      top: '#3a4550',
+      far: '#141c24',
+      near: '#243038',
+      side: '#1a2430',
+    });
+    for (let i = 0; i < 3; i++) {
+      const ty = y - 6 - i * 5.5;
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath();
+      ctx.ellipse(x, ty, 6.5, 5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#3a3a3a';
+      ctx.beginPath();
+      ctx.ellipse(x, ty, 2.8, 2.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#5a5a5a';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.ellipse(x, ty, 6.5, 5, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(200, 180, 120, 0.4)';
+    ctx.font = 'bold 2.5px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('TIRES', x, y - 24);
+  }
+
+  _drawPropForkCones(ctx, x, y, _variant = 0) {
+    for (const [ox, oy] of [
+      [-5, 2],
+      [4, 0],
+      [0, 5],
+    ]) {
+      const cx = x + ox;
+      const cy = y + oy;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.beginPath();
+      ctx.ellipse(cx, cy + 3, 3.5, 1.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#d08020';
+      ctx.beginPath();
+      ctx.moveTo(cx - 3.5, cy + 2);
+      ctx.lineTo(cx, cy - 10);
+      ctx.lineTo(cx + 3.5, cy + 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.fillStyle = '#1a1a14';
+      ctx.fillRect(cx - 2.5, cy - 3, 5, 1.5);
+    }
+  }
+
+  _drawPropForkCrate(ctx, x, y, _variant = 0) {
+    this._propBox(ctx, x, y, 9, 6, 8, {
+      top: '#5a4a30',
+      far: '#2a2010',
+      near: '#3a3020',
+      side: '#322818',
+      stroke: 'rgba(200, 170, 80, 0.35)',
+    });
+    ctx.fillStyle = 'rgba(201, 160, 32, 0.45)';
+    ctx.font = 'bold 2.5px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('FORK', x, y - 6);
+    ctx.fillText('PARTS', x, y - 3);
+  }
+
+  _drawPropFuelFarm(ctx, x, y, variant = 0) {
+    const v = ((variant % 2) + 2) % 2;
+    this._propDrum(
+      ctx,
+      x,
+      y,
+      v === 0 ? 11 : 9.5,
+      v === 0 ? 22 : 18,
+      v === 0 ? '#3a4a38' : '#3a4850',
+      'FUEL'
+    );
+    ctx.fillStyle = '#6a7888';
+    ctx.fillRect(x + 8, y - 10, 5, 3);
+    ctx.fillStyle = '#c05040';
+    ctx.beginPath();
+    ctx.arc(x + 14, y - 8.5, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+    const s = x < 0 ? -1 : 1;
+    const baseY = Math.max(y + 8, BAY.PATH_Y + 20);
     ctx.lineCap = 'round';
-    // Outer dark pass + inner highlight — loose figure-eight pile
-    const loops = [
-      [x, baseY, x - s * 14, baseY + 10, x - s * 22, baseY + 2],
-      [x - s * 22, baseY + 2, x - s * 8, baseY - 6, x - s * 18, baseY + 12],
-      [x - s * 18, baseY + 12, x - s * 28, baseY + 6, x - s * 12, baseY + 8],
-    ];
     for (const pass of [
-      { color: 'rgba(40, 30, 20, 0.55)', w: 3.5 },
-      { color: 'rgba(90, 70, 40, 0.7)', w: 2 },
+      { color: 'rgba(40, 30, 20, 0.55)', w: 3.2 },
+      { color: 'rgba(90, 70, 40, 0.7)', w: 1.8 },
     ]) {
       ctx.strokeStyle = pass.color;
       ctx.lineWidth = pass.w;
-      for (const [x0, y0, x1, y1, x2, y2] of loops) {
-        ctx.beginPath();
-        ctx.moveTo(x0, y0);
-        ctx.quadraticCurveTo(x1, y1, x2, y2);
-        ctx.stroke();
-      }
+      ctx.beginPath();
+      ctx.moveTo(x - s * 4, y + 2);
+      ctx.quadraticCurveTo(x - s * 18, baseY - 4, x - s * 10, baseY + 6);
+      ctx.quadraticCurveTo(x - s * 2, baseY + 12, x - s * 16, baseY + 4);
+      ctx.stroke();
     }
-    // Nozzle resting on the coil
-    const nx = x - s * 14;
-    const ny = baseY + 7;
     ctx.fillStyle = '#4a5560';
-    ctx.fillRect(nx - 3, ny - 2, 8, 4);
-    ctx.fillStyle = '#2a3038';
-    ctx.fillRect(nx + 4, ny - 1, 3, 2);
+    ctx.fillRect(x - s * 12 - 3, baseY + 4, 8, 4);
     ctx.lineCap = 'butt';
   }
 
-  _drawHoseReel(ctx, x, y, side) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+  _drawPropExtinguisher(ctx, x, y) {
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.beginPath();
-    ctx.ellipse(side * 2, 8, 8, 3, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#3a4858';
-    ctx.beginPath();
-    ctx.arc(0, 0, 7, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#7a90a0';
-    ctx.lineWidth = 1.2;
-    ctx.stroke();
-    ctx.fillStyle = '#1a2834';
-    ctx.beginPath();
-    ctx.arc(0, 0, 3, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = '#5a4030';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.arc(0, 0, 5, 0.2, Math.PI * 1.4);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(side * 5, 4);
-    ctx.quadraticCurveTo(side * 12, 18, side * 8, 28);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  _drawToolStation(ctx, x, y) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-    ctx.beginPath();
-    ctx.ellipse(0, 4, 16, 5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = '#2a3440';
-    ctx.fillRect(-14, -6, 28, 10);
-    ctx.fillStyle = '#3a4858';
-    ctx.fillRect(-14, -8, 28, 3);
-    ctx.fillStyle = 'rgba(140, 160, 180, 0.2)';
-    ctx.fillRect(-14, -8, 28, 1.2);
-    ctx.strokeStyle = '#6a7a88';
-    ctx.lineWidth = 0.9;
-    ctx.strokeRect(-14, -6, 28, 10);
-    ctx.strokeStyle = '#8a9aa8';
-    ctx.lineWidth = 1.2;
-    ctx.beginPath();
-    ctx.moveTo(-8, -10);
-    ctx.lineTo(-4, -16);
-    ctx.moveTo(2, -9);
-    ctx.lineTo(6, -15);
-    ctx.stroke();
-    ctx.fillStyle = '#c05040';
-    ctx.fillRect(8, -12, 4, 3);
-    ctx.fillStyle = '#1a2430';
-    ctx.fillRect(-12, 2, 3, 4);
-    ctx.fillRect(9, 2, 3, 4);
-    ctx.restore();
-  }
-
-  _drawBarrel(ctx, x, y, color) {
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
-    ctx.beginPath();
-    ctx.ellipse(0, 5, 6, 2.5, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = color;
-    ctx.fillRect(-5, -8, 10, 12);
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
-    ctx.fillRect(-5, -8, 3, 12);
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.ellipse(0, -8, 5, 2, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(200, 180, 100, 0.45)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(-5, -2);
-    ctx.lineTo(5, -2);
-    ctx.moveTo(-5, 2);
-    ctx.lineTo(5, 2);
-    ctx.stroke();
-    ctx.restore();
-  }
-
-  _drawWallLocker(ctx, x, y) {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
-    ctx.fillRect(x - 9, y + 2, 18, 4);
-    ctx.fillStyle = '#2a3848';
-    ctx.fillRect(x - 10, y - 14, 20, 18);
-    ctx.fillStyle = 'rgba(120, 150, 170, 0.15)';
-    ctx.fillRect(x - 10, y - 14, 20, 2);
-    ctx.strokeStyle = '#6a8498';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(x - 10, y - 14, 20, 18);
-    ctx.beginPath();
-    ctx.moveTo(x, y - 14);
-    ctx.lineTo(x, y + 4);
-    ctx.stroke();
-    ctx.fillStyle = '#c9a020';
-    ctx.beginPath();
-    ctx.arc(x - 4, y - 4, 1.2, 0, Math.PI * 2);
-    ctx.arc(x + 4, y - 4, 1.2, 0, Math.PI * 2);
-    ctx.fill();
-  }
-
-  _drawFireExt(ctx, x, y) {
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
-    ctx.beginPath();
-    ctx.ellipse(x, y + 6, 4, 2, 0, 0, Math.PI * 2);
+    ctx.ellipse(x, y + 5, 4, 2, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.fillStyle = '#a03028';
-    ctx.fillRect(x - 3, y - 8, 6, 12);
+    ctx.fillRect(x - 3, y - 9, 6, 13);
+    ctx.fillStyle = 'rgba(0,0,0,0.2)';
+    ctx.fillRect(x - 3, y - 9, 2, 13);
     ctx.fillStyle = '#c8c8c8';
-    ctx.fillRect(x - 2, y - 10, 4, 2);
+    ctx.fillRect(x - 2, y - 11, 4, 2);
     ctx.strokeStyle = '#e0e0e0';
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.1;
     ctx.beginPath();
-    ctx.moveTo(x + 3, y - 8);
-    ctx.lineTo(x + 6, y - 4);
+    ctx.moveTo(x + 3, y - 9);
+    ctx.lineTo(x + 7, y - 4);
     ctx.stroke();
   }
 
-  _drawDrain(ctx, x, y) {
+  _drawPropFloorDrain(ctx, x, y) {
     ctx.fillStyle = '#121820';
     ctx.beginPath();
     ctx.ellipse(x, y, 8, 4, 0, 0, Math.PI * 2);
@@ -9176,7 +10183,7 @@ export class HangarBay {
     ctx.strokeStyle = '#4a5a68';
     ctx.lineWidth = 0.8;
     ctx.stroke();
-    ctx.strokeStyle = 'rgba(70, 90, 105, 0.6)';
+    ctx.strokeStyle = 'rgba(70, 90, 105, 0.55)';
     for (let i = -2; i <= 2; i++) {
       ctx.beginPath();
       ctx.moveTo(x - 6, y + i * 1.4);
@@ -9220,7 +10227,7 @@ export class HangarBay {
       pile.items.forEach((item) => {
         if (pileHidden.has(item.id)) return;
         const pos = this._itemWorldPos(pile, item);
-        this._drawCargoItem(ctx, item, pos.x, pos.y, 1);
+        this._drawCargoItem(ctx, item, pos.x, pos.y, 1, item.restHeading);
       });
     }
 
@@ -9230,184 +10237,981 @@ export class HangarBay {
       ctx.beginPath();
       ctx.ellipse(drop.x, drop.y + drop.cargo.h * 0.45, drop.cargo.w * 0.55, 3, 0, 0, Math.PI * 2);
       ctx.fill();
-      this._drawCargoItem(ctx, drop.cargo, drop.x, drop.y, 0.92);
+      this._drawCargoItem(ctx, drop.cargo, drop.x, drop.y, 0.92, drop.cargo.restHeading);
     }
   }
 
-  /**
-   * Hold cargo = rectangles only. Ship mounts = complex silhouettes.
-   * (cx, cy) = item center.
-   */
-  _drawCargoItem(ctx, item, cx, cy, scale = 1) {
-    const s = scale;
-    const w = item.w * s;
-    const h = item.h * s;
-    ctx.save();
-    ctx.translate(cx, cy);
+  /** Resolve 8-dir basis for cargo draw (matches forklift / mech foreshortening). */
+  _cargoOctBasis(headingRad) {
+    let oct = Math.round((headingRad || 0) / CREW_VIS_OCT);
+    oct = ((oct % 8) + 8) % 8;
+    const heading = oct * CREW_VIS_OCT;
+    const fx = Math.cos(heading);
+    const fy = Math.sin(heading);
+    return {
+      oct,
+      heading,
+      fx,
+      fy,
+      rx: -fy,
+      ry: fx,
+      alongScale: 0.72 + 0.28 * Math.abs(fx),
+      acrossScale: 0.72 + 0.28 * Math.abs(fy),
+    };
+  }
 
-    // Hold cargo is always a rectangular box
-    if (item.family === 'cargo' || item.shape === 'rect') {
-      ctx.fillStyle = item.color;
-      ctx.strokeStyle = '#c8c0b0';
+  /**
+   * Worn industrial 2.5D freight. Optional `headingRad` follows carrier visHeading;
+   * piles / floor use `item.restHeading`. Footprint stays near legacy w×h.
+   */
+  _drawCargoItem(ctx, item, cx, cy, scale = 1, headingRad = null) {
+    if (!item) return;
+    const heading =
+      headingRad != null && Number.isFinite(headingRad)
+        ? headingRad
+        : item.restHeading ?? 0;
+    const b = this._cargoOctBasis(heading);
+    const s = scale;
+    const len = item.w * s * 0.92;
+    const wid = item.h * s * 0.52;
+    const tall = item.h * s * 0.42;
+    const g = (along, across, up = 0) => ({
+      x: cx + b.fx * along * b.alongScale + b.rx * across * b.acrossScale,
+      y: cy + b.fy * along * b.alongScale + b.ry * across * b.acrossScale - up,
+    });
+
+    ctx.save();
+
+    // Soft deck shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy + tall * 0.15, len * 0.42, wid * 0.28, b.heading * 0.15, 0, Math.PI * 2);
+    ctx.fill();
+
+    const shape = item.shape || (item.family === 'upgrade' ? 'laser' : 'crate');
+    if (shape === 'fuel') this._drawCargoFuel(ctx, item, g, len, wid, tall, b);
+    else if (shape === 'bullets') this._drawCargoBullets(ctx, item, g, len, wid, tall, b);
+    else if (shape === 'shells') this._drawCargoShells(ctx, item, g, len, wid, tall, b);
+    else if (shape === 'laser') this._drawCargoLaser(ctx, item, g, len, wid, tall, b);
+    else if (shape === 'turret') this._drawCargoTurret(ctx, item, g, len, wid, tall, b);
+    else if (shape === 'armor') this._drawCargoArmor(ctx, item, g, len, wid, tall, b);
+    else if (shape === 'thruster') this._drawCargoThruster(ctx, item, g, len, wid, tall, b);
+    else if (shape === 'engine') this._drawCargoEngine(ctx, item, g, len, wid, tall, b);
+    else if (shape === 'sensor') this._drawCargoSensor(ctx, item, g, len, wid, tall, b);
+    else if (item.family === 'upgrade') this._drawCargoLaser(ctx, item, g, len, wid, tall, b);
+    else this._drawCargoCrate(ctx, item, g, len, wid, tall, b);
+
+    ctx.restore();
+  }
+
+  /** Draw a closed / open industrial box shell (far faces first). */
+  _drawCargoBoxFaces(ctx, g, hl, hw, H, fill, fillDark, fillTop) {
+    const corners = [
+      g(-hl, -hw, 0),
+      g(hl, -hw, 0),
+      g(hl, hw, 0),
+      g(-hl, hw, 0),
+    ];
+    const tops = [
+      g(-hl, -hw, H),
+      g(hl, -hw, H),
+      g(hl, hw, H),
+      g(-hl, hw, H),
+    ];
+    const faces = [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 0],
+    ].map(([i, j], idx) => ({
+      i,
+      j,
+      y: (corners[i].y + corners[j].y + tops[i].y + tops[j].y) / 4,
+      idx,
+    }));
+    faces.sort((a, b) => a.y - b.y);
+    for (let f = 0; f < faces.length; f++) {
+      const { i, j } = faces[f];
+      ctx.fillStyle = f < 2 ? fillDark : fill;
+      ctx.beginPath();
+      ctx.moveTo(corners[i].x, corners[i].y);
+      ctx.lineTo(corners[j].x, corners[j].y);
+      ctx.lineTo(tops[j].x, tops[j].y);
+      ctx.lineTo(tops[i].x, tops[i].y);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Top plate
+    ctx.fillStyle = fillTop;
+    ctx.beginPath();
+    ctx.moveTo(tops[0].x, tops[0].y);
+    ctx.lineTo(tops[1].x, tops[1].y);
+    ctx.lineTo(tops[2].x, tops[2].y);
+    ctx.lineTo(tops[3].x, tops[3].y);
+    ctx.closePath();
+    ctx.fill();
+    return { corners, tops };
+  }
+
+  _drawCargoCrate(ctx, item, g, len, wid, tall) {
+    const hl = len * 0.5;
+    const hw = wid * 0.5;
+    const H = tall;
+    const fill = item.color || '#6a5538';
+    const fillDark = '#2a2218';
+    const fillTop = item.accent ? this._cargoMix(fill, item.accent, 0.25) : '#7a6848';
+    const { tops } = this._drawCargoBoxFaces(ctx, g, hl, hw, H, fill, fillDark, fillTop);
+
+    // Corner wear / banding
+    ctx.strokeStyle = 'rgba(20, 12, 6, 0.35)';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(tops[0].x, tops[0].y);
+    ctx.lineTo(tops[1].x, tops[1].y);
+    ctx.lineTo(tops[2].x, tops[2].y);
+    ctx.lineTo(tops[3].x, tops[3].y);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Hazard / stencil stripe on lid
+    const a = item.accent || '#c9a020';
+    const s0 = g(-hl * 0.7, -hw * 0.15, H + 0.2);
+    const s1 = g(hl * 0.7, hw * 0.15, H + 0.2);
+    ctx.strokeStyle = a;
+    ctx.globalAlpha = 0.55;
+    ctx.lineWidth = 1.4;
+    ctx.beginPath();
+    ctx.moveTo(s0.x, s0.y);
+    ctx.lineTo(s1.x, s1.y);
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+
+    // Latch nub
+    const latch = g(hl * 0.15, 0, H + 0.4);
+    ctx.fillStyle = '#8a9aa8';
+    ctx.fillRect(latch.x - 1.2, latch.y - 0.7, 2.4, 1.4);
+
+    // Scuff
+    const sc = g(-hl * 0.2, hw * 0.2, H * 0.55);
+    ctx.fillStyle = 'rgba(20, 12, 6, 0.28)';
+    ctx.fillRect(sc.x - 1.5, sc.y - 0.8, 3.2, 1.6);
+  }
+
+  _drawCargoFuel(ctx, item, g, len, wid, tall) {
+    const hl = len * 0.5;
+    const hw = wid * 0.5;
+    const wall = tall * 0.55;
+    const fill = item.color || '#2a6858';
+    const fillDark = '#142820';
+    // Open-top crate walls
+    this._drawCargoBoxFaces(ctx, g, hl, hw, wall, fill, fillDark, '#1a3028');
+
+    // Inner floor
+    const floor = [
+      g(-hl * 0.82, -hw * 0.78, 1.2),
+      g(hl * 0.82, -hw * 0.78, 1.2),
+      g(hl * 0.82, hw * 0.78, 1.2),
+      g(-hl * 0.82, hw * 0.78, 1.2),
+    ];
+    ctx.fillStyle = '#0e1814';
+    ctx.beginPath();
+    ctx.moveTo(floor[0].x, floor[0].y);
+    ctx.lineTo(floor[1].x, floor[1].y);
+    ctx.lineTo(floor[2].x, floor[2].y);
+    ctx.lineTo(floor[3].x, floor[3].y);
+    ctx.closePath();
+    ctx.fill();
+
+    // Sci-fi fuel cells (cylinders standing in the crate)
+    const accent = item.accent || '#40e0a0';
+    const cells = [
+      [-0.35, -0.28],
+      [0.35, -0.28],
+      [-0.35, 0.28],
+      [0.35, 0.28],
+      [0, 0],
+    ];
+    const cellH = tall * 0.85;
+    for (const [ua, uc] of cells) {
+      const base = g(ua * hl * 1.1, uc * hw * 1.1, wall * 0.15);
+      const top = g(ua * hl * 1.1, uc * hw * 1.1, wall * 0.15 + cellH);
+      ctx.strokeStyle = '#3a7060';
+      ctx.lineWidth = 2.4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(base.x, base.y);
+      ctx.lineTo(top.x, top.y);
+      ctx.stroke();
+      ctx.fillStyle = accent;
+      ctx.globalAlpha = 0.75;
+      ctx.beginPath();
+      ctx.arc(top.x, top.y, 1.35, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 0.35;
+      ctx.fillStyle = '#a0ffe0';
+      ctx.beginPath();
+      ctx.arc(top.x, top.y, 0.7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      // Collar ring
+      ctx.strokeStyle = '#8aa8a0';
+      ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.arc(base.x, base.y - cellH * 0.15, 1.5, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+  }
+
+  /**
+   * Open military ammo can — walls + foam floor + upright hinged lid + hardware.
+   * Matches the concept sheet look (olive/brown metal, rivets, handles, stencil).
+   * @returns {{ H: number, hl: number, hw: number, foamZ: number }}
+   */
+  _drawAmmoCanOpen(ctx, g, len, wid, tall, opts = {}) {
+    const hl = len * 0.5;
+    const hw = wid * 0.5;
+    const H = tall * (opts.wallH ?? 0.78);
+    const fill = opts.fill || '#4a3428';
+    const fillDark = opts.fillDark || '#241810';
+    const fillMid = opts.fillMid || this._cargoMix(fill, '#2a2018', 0.35);
+    const lidFill = opts.lidFill || this._cargoMix(fill, '#1a1410', 0.25);
+    const stencil = opts.stencil || '7.62';
+    const stencilColor = opts.stencilColor || 'rgba(200, 190, 150, 0.55)';
+
+    const corners = [
+      g(-hl, -hw, 0),
+      g(hl, -hw, 0),
+      g(hl, hw, 0),
+      g(-hl, hw, 0),
+    ];
+    const tops = [
+      g(-hl, -hw, H),
+      g(hl, -hw, H),
+      g(hl, hw, H),
+      g(-hl, hw, H),
+    ];
+    // Side walls only (open top) — far faces first
+    const faces = [
+      [0, 1],
+      [1, 2],
+      [2, 3],
+      [3, 0],
+    ].map(([i, j], idx) => ({
+      i,
+      j,
+      y: (corners[i].y + corners[j].y + tops[i].y + tops[j].y) / 4,
+      idx,
+    }));
+    faces.sort((a, b) => a.y - b.y);
+    for (let f = 0; f < faces.length; f++) {
+      const { i, j } = faces[f];
+      ctx.fillStyle = f < 2 ? fillDark : fill;
+      ctx.beginPath();
+      ctx.moveTo(corners[i].x, corners[i].y);
+      ctx.lineTo(corners[j].x, corners[j].y);
+      ctx.lineTo(tops[j].x, tops[j].y);
+      ctx.lineTo(tops[i].x, tops[i].y);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Foam / insert floor
+    const foamZ = H * 0.28;
+    const foam = [
+      g(-hl * 0.86, -hw * 0.78, foamZ),
+      g(hl * 0.86, -hw * 0.78, foamZ),
+      g(hl * 0.86, hw * 0.78, foamZ),
+      g(-hl * 0.86, hw * 0.78, foamZ),
+    ];
+    ctx.fillStyle = opts.foam || '#1a1610';
+    ctx.beginPath();
+    ctx.moveTo(foam[0].x, foam[0].y);
+    ctx.lineTo(foam[1].x, foam[1].y);
+    ctx.lineTo(foam[2].x, foam[2].y);
+    ctx.lineTo(foam[3].x, foam[3].y);
+    ctx.closePath();
+    ctx.fill();
+
+    // Inner wall lip (rim) so the open top reads as a can
+    const rimIn = [
+      g(-hl * 0.92, -hw * 0.88, H),
+      g(hl * 0.92, -hw * 0.88, H),
+      g(hl * 0.92, hw * 0.88, H),
+      g(-hl * 0.92, hw * 0.88, H),
+    ];
+    ctx.strokeStyle = fillMid;
+    ctx.lineWidth = 1.15;
+    ctx.beginPath();
+    ctx.moveTo(tops[0].x, tops[0].y);
+    ctx.lineTo(tops[1].x, tops[1].y);
+    ctx.lineTo(tops[2].x, tops[2].y);
+    ctx.lineTo(tops[3].x, tops[3].y);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(180, 160, 120, 0.22)';
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(rimIn[0].x, rimIn[0].y);
+    ctx.lineTo(rimIn[1].x, rimIn[1].y);
+    ctx.lineTo(rimIn[2].x, rimIn[2].y);
+    ctx.lineTo(rimIn[3].x, rimIn[3].y);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Corner rivets
+    const rivets = [
+      [-0.92, -0.88],
+      [0.92, -0.88],
+      [0.92, 0.88],
+      [-0.92, 0.88],
+    ];
+    for (const [ua, uc] of rivets) {
+      const p = g(ua * hl, uc * hw, H * 0.55);
+      ctx.fillStyle = '#8a8070';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 0.55, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#2a2418';
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 0.22, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Recessed carry handles on left / right faces
+    for (const side of [-1, 1]) {
+      const h0 = g(side * hl * 0.98, -hw * 0.28, H * 0.42);
+      const h1 = g(side * hl * 0.98, hw * 0.28, H * 0.42);
+      ctx.strokeStyle = '#1a1410';
+      ctx.lineWidth = 1.6;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(h0.x, h0.y);
+      ctx.lineTo(h1.x, h1.y);
+      ctx.stroke();
+      ctx.strokeStyle = '#6a6050';
+      ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(h0.x, h0.y - 0.35);
+      ctx.lineTo(h1.x, h1.y - 0.35);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+
+    // Latch on near face
+    const latch = g(0, hw * 0.98, H * 0.62);
+    ctx.fillStyle = '#7a8890';
+    ctx.beginPath();
+    ctx.ellipse(latch.x, latch.y, 1.5, 0.85, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = '#2a3038';
+    ctx.beginPath();
+    ctx.ellipse(latch.x, latch.y, 0.55, 0.35, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Stencil on near face
+    const mark = g(0, hw * 0.62, H * 0.48);
+    ctx.fillStyle = stencilColor;
+    ctx.font = 'bold 3.6px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(stencil, mark.x, mark.y);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+
+    // Upright hinged lid on far edge (~90°, concept-sheet style)
+    const lidH = tall * 0.95;
+    const lid = [
+      g(-hl * 0.94, -hw * 0.98, H + 0.15),
+      g(hl * 0.94, -hw * 0.98, H + 0.15),
+      g(hl * 0.88, -hw * 1.08, H + lidH),
+      g(-hl * 0.88, -hw * 1.08, H + lidH),
+    ];
+    ctx.fillStyle = lidFill;
+    ctx.beginPath();
+    ctx.moveTo(lid[0].x, lid[0].y);
+    ctx.lineTo(lid[1].x, lid[1].y);
+    ctx.lineTo(lid[2].x, lid[2].y);
+    ctx.lineTo(lid[3].x, lid[3].y);
+    ctx.closePath();
+    ctx.fill();
+    // Lid underside shadow + hinge nubs
+    ctx.fillStyle = 'rgba(10, 8, 4, 0.35)';
+    ctx.beginPath();
+    ctx.moveTo(lid[0].x, lid[0].y);
+    ctx.lineTo(lid[1].x, lid[1].y);
+    ctx.lineTo(g(hl * 0.7, -hw * 1.02, H + lidH * 0.35).x, g(hl * 0.7, -hw * 1.02, H + lidH * 0.35).y);
+    ctx.lineTo(g(-hl * 0.7, -hw * 1.02, H + lidH * 0.35).x, g(-hl * 0.7, -hw * 1.02, H + lidH * 0.35).y);
+    ctx.closePath();
+    ctx.fill();
+    for (const t of [-0.55, 0.55]) {
+      const hn = g(t * hl, -hw * 0.98, H + 0.2);
+      ctx.fillStyle = '#6a6050';
+      ctx.beginPath();
+      ctx.arc(hn.x, hn.y, 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    // Lid rim highlight
+    ctx.strokeStyle = 'rgba(200, 180, 130, 0.28)';
+    ctx.lineWidth = 0.65;
+    ctx.beginPath();
+    ctx.moveTo(lid[2].x, lid[2].y);
+    ctx.lineTo(lid[3].x, lid[3].y);
+    ctx.stroke();
+
+    // Wear scuffs on near face
+    const sc = g(-hl * 0.35, hw * 0.55, H * 0.7);
+    ctx.fillStyle = 'rgba(20, 12, 6, 0.3)';
+    ctx.fillRect(sc.x - 1.8, sc.y - 0.5, 3.6, 1.1);
+
+    return { H, hl, hw, foamZ };
+  }
+
+  /** Belt-ammo can — brown military box, two linked rows of tip-up 7.62 rounds. */
+  _drawCargoBullets(ctx, item, g, len, wid, tall) {
+    const fill = item.color || '#4a3428';
+    const { H, hl, hw, foamZ } = this._drawAmmoCanOpen(ctx, g, len, wid, tall, {
+      fill,
+      fillDark: '#241810',
+      fillMid: '#3a2a20',
+      lidFill: '#3a2820',
+      foam: '#14100c',
+      stencil: '7.62',
+      stencilColor: 'rgba(200, 190, 150, 0.55)',
+      wallH: 0.82,
+    });
+
+    const accent = item.accent || '#c9a020';
+    const brass = '#b89040';
+    const brassHi = '#e0c878';
+    const tipCol = '#3a4048';
+    const rows = [-0.32, 0.32];
+    const cols = 7;
+    // Sort rounds far→near so nearer bullets occlude
+    const rounds = [];
+    for (let r = 0; r < rows.length; r++) {
+      for (let i = 0; i < cols; i++) {
+        const t = (i / (cols - 1)) * 2 - 1;
+        const ax = t * hl * 0.72;
+        const ay = rows[r] * hw;
+        rounds.push({ ax, ay, r, i, depth: ay });
+      }
+    }
+    rounds.sort((a, b) => a.depth - b.depth);
+
+    // Belt links under each row
+    for (const row of rows) {
+      const a0 = g(-hl * 0.72, row * hw, foamZ + 0.8);
+      const a1 = g(hl * 0.72, row * hw, foamZ + 0.8);
+      ctx.strokeStyle = '#5a5548';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(a0.x, a0.y);
+      ctx.lineTo(a1.x, a1.y);
+      ctx.stroke();
+      ctx.strokeStyle = '#8a8070';
+      ctx.lineWidth = 0.45;
+      ctx.beginPath();
+      ctx.moveTo(a0.x, a0.y - 0.4);
+      ctx.lineTo(a1.x, a1.y - 0.4);
+      ctx.stroke();
+    }
+
+    for (const rd of rounds) {
+      const base = g(rd.ax, rd.ay, foamZ + 0.4);
+      const mid = g(rd.ax, rd.ay, H * 0.55);
+      const tip = g(rd.ax, rd.ay, H + tall * 0.18);
+      // Brass casing
+      ctx.strokeStyle = brass;
+      ctx.lineWidth = 2.15;
+      ctx.lineCap = 'butt';
+      ctx.beginPath();
+      ctx.moveTo(base.x, base.y);
+      ctx.lineTo(mid.x, mid.y);
+      ctx.stroke();
+      ctx.strokeStyle = brassHi;
+      ctx.lineWidth = 0.7;
+      ctx.beginPath();
+      ctx.moveTo(base.x - 0.45, base.y);
+      ctx.lineTo(mid.x - 0.45, mid.y);
+      ctx.stroke();
+      // Case mouth
+      ctx.fillStyle = accent;
+      ctx.beginPath();
+      ctx.ellipse(mid.x, mid.y, 1.05, 0.55, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Dark tip
+      ctx.strokeStyle = tipCol;
+      ctx.lineWidth = 1.55;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(mid.x, mid.y);
+      ctx.lineTo(tip.x, tip.y);
+      ctx.stroke();
+      ctx.fillStyle = '#5a6870';
+      ctx.beginPath();
+      ctx.arc(tip.x, tip.y, 0.55, 0, Math.PI * 2);
+      ctx.fill();
+      // Primer
+      ctx.fillStyle = '#d0a848';
+      ctx.beginPath();
+      ctx.ellipse(base.x, base.y + 0.15, 0.75, 0.4, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Link clip between neighbors
+      if (rd.i < cols - 1) {
+        const nx = ((rd.i + 1) / (cols - 1)) * 2 - 1;
+        const nBase = g(nx * hl * 0.72, rd.ay, foamZ + 1.0);
+        ctx.strokeStyle = '#6a6558';
+        ctx.lineWidth = 0.65;
+        ctx.beginPath();
+        ctx.moveTo(base.x, base.y - 0.3);
+        ctx.lineTo(nBase.x, nBase.y - 0.3);
+        ctx.stroke();
+      }
+    }
+    ctx.lineCap = 'butt';
+  }
+
+  /** Large-shell crate — olive military box, 3×2 tip-up 40mm artillery rounds. */
+  _drawCargoShells(ctx, item, g, len, wid, tall) {
+    const fill = item.color || '#4a5230';
+    const { H, hl, hw, foamZ } = this._drawAmmoCanOpen(ctx, g, len, wid, tall, {
+      fill,
+      fillDark: '#252818',
+      fillMid: '#3a4228',
+      lidFill: '#3a4224',
+      foam: '#141810',
+      stencil: '40mm',
+      stencilColor: 'rgba(200, 190, 150, 0.55)',
+      wallH: 0.72,
+    });
+
+    const accent = item.accent || '#d0a048';
+    const slots = [
+      [-0.55, -0.28],
+      [0, -0.28],
+      [0.55, -0.28],
+      [-0.55, 0.38],
+      [0, 0.38],
+      [0.55, 0.38],
+    ];
+    // Pocket rings in foam
+    for (const [ua, uc] of slots) {
+      const p = g(ua * hl * 0.9, uc * hw * 0.85, foamZ + 0.15);
+      ctx.strokeStyle = '#0c1008';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y, 2.4, 1.35, 0, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+
+    const sorted = slots
+      .map(([ua, uc]) => ({ ua, uc, depth: uc }))
+      .sort((a, b) => a.depth - b.depth);
+
+    for (const { ua, uc } of sorted) {
+      const ax = ua * hl * 0.9;
+      const ay = uc * hw * 0.85;
+      const base = g(ax, ay, foamZ + 0.35);
+      const mid = g(ax, ay, H + tall * 0.12);
+      const tip = g(ax, ay, H + tall * 0.68);
+      // Brass casing body
+      ctx.strokeStyle = '#8a6a30';
+      ctx.lineWidth = 4.6;
+      ctx.lineCap = 'butt';
+      ctx.beginPath();
+      ctx.moveTo(base.x, base.y);
+      ctx.lineTo(mid.x, mid.y);
+      ctx.stroke();
+      ctx.strokeStyle = accent;
+      ctx.lineWidth = 1.7;
+      ctx.beginPath();
+      ctx.moveTo(base.x - 0.7, base.y);
+      ctx.lineTo(mid.x - 0.7, mid.y);
+      ctx.stroke();
+      // Case mouth rim
+      ctx.fillStyle = '#c8a060';
+      ctx.beginPath();
+      ctx.ellipse(mid.x, mid.y, 2.25, 1.2, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#5a4830';
+      ctx.beginPath();
+      ctx.ellipse(mid.x, mid.y, 1.35, 0.7, 0, 0, Math.PI * 2);
+      ctx.fill();
+      // Dark ogive / warhead
+      ctx.strokeStyle = '#2e343c';
+      ctx.lineWidth = 3.4;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(mid.x, mid.y);
+      ctx.lineTo(tip.x, tip.y);
+      ctx.stroke();
+      ctx.fillStyle = '#5a6878';
+      ctx.beginPath();
+      ctx.arc(tip.x, tip.y, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+      // Band stripe on casing
+      const band = g(ax, ay, foamZ + (H - foamZ) * 0.55);
+      ctx.strokeStyle = 'rgba(40, 36, 28, 0.55)';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.ellipse(band.x, band.y, 2.1, 1.05, 0, 0, Math.PI * 2);
+      ctx.stroke();
+      // Primer disc
+      ctx.fillStyle = '#d0a848';
+      ctx.beginPath();
+      ctx.ellipse(base.x, base.y + 0.25, 1.7, 0.95, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#6a5028';
+      ctx.beginPath();
+      ctx.ellipse(base.x, base.y + 0.25, 0.55, 0.3, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.lineCap = 'butt';
+  }
+
+  /** Laser cannon — long emitter barrel + heatsink housing + mount. */
+  _drawCargoLaser(ctx, item, g, len, wid, tall) {
+    const accent = item.color || '#50a0c8';
+    const metal = '#4a5868';
+    const metalDark = '#1a2430';
+    // Mount plate
+    this._drawCargoBoxFaces(ctx, g, len * 0.22, wid * 0.42, tall * 0.35, metal, metalDark, '#6a7888');
+    // Main housing
+    const gH = (a, c, u = 0) => g(a - len * 0.08, c, u + tall * 0.2);
+    this._drawCargoBoxFaces(
+      ctx,
+      gH,
+      len * 0.28,
+      wid * 0.28,
+      tall * 0.55,
+      metal,
+      metalDark,
+      this._cargoMix(metal, accent, 0.3)
+    );
+    // Emitter barrel along forward
+    const b0 = g(-len * 0.05, 0, tall * 0.55);
+    const b1 = g(len * 0.48, 0, tall * 0.6);
+    ctx.strokeStyle = metalDark;
+    ctx.lineWidth = 3.6;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(b0.x, b0.y);
+    ctx.lineTo(b1.x, b1.y);
+    ctx.stroke();
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(b0.x, b0.y);
+    ctx.lineTo(b1.x, b1.y);
+    ctx.stroke();
+    // Emitter tip glow
+    ctx.fillStyle = accent;
+    ctx.globalAlpha = 0.85;
+    ctx.beginPath();
+    ctx.arc(b1.x, b1.y, 1.8, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 0.4;
+    ctx.fillStyle = '#c0f0ff';
+    ctx.beginPath();
+    ctx.arc(b1.x, b1.y, 0.9, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.globalAlpha = 1;
+    // Cooling fins
+    for (let i = -1; i <= 1; i++) {
+      const f0 = g(-len * 0.2, i * wid * 0.35, tall * 0.35);
+      const f1 = g(-len * 0.38, i * wid * 0.4, tall * 0.7);
+      ctx.strokeStyle = '#8a9aa8';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.moveTo(f0.x, f0.y);
+      ctx.lineTo(f1.x, f1.y);
+      ctx.stroke();
+    }
+    ctx.lineCap = 'butt';
+  }
+
+  /** Ball turret — cupola on ring base with twin barrels. */
+  _drawCargoTurret(ctx, item, g, len, wid, tall) {
+    const accent = item.color || '#708898';
+    const metal = '#4a5560';
+    const metalDark = '#1e2830';
+    // Ring base
+    const base = g(0, 0, 0);
+    ctx.fillStyle = metalDark;
+    ctx.beginPath();
+    ctx.ellipse(base.x, base.y + 1, len * 0.38, wid * 0.28, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = metal;
+    ctx.beginPath();
+    ctx.ellipse(base.x, base.y, len * 0.34, wid * 0.24, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#8a9aa8';
+    ctx.lineWidth = 0.9;
+    ctx.stroke();
+    // Cupola
+    const cup = g(0, 0, tall * 0.55);
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.ellipse(cup.x, cup.y, len * 0.22, wid * 0.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = metalDark;
+    ctx.beginPath();
+    ctx.ellipse(cup.x, cup.y - tall * 0.08, len * 0.14, wid * 0.12, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Twin barrels forward
+    for (const ac of [-wid * 0.12, wid * 0.12]) {
+      const t0 = g(len * 0.05, ac, tall * 0.5);
+      const t1 = g(len * 0.48, ac * 0.6, tall * 0.55);
+      ctx.strokeStyle = '#2a343c';
+      ctx.lineWidth = 2.2;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(t0.x, t0.y);
+      ctx.lineTo(t1.x, t1.y);
+      ctx.stroke();
+      ctx.fillStyle = '#8a9aa8';
+      ctx.beginPath();
+      ctx.arc(t1.x, t1.y, 0.9, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.lineCap = 'butt';
+  }
+
+  /** Armor plate panel — layered shield segment. */
+  _drawCargoArmor(ctx, item, g, len, wid, tall) {
+    const accent = item.color || '#6a7888';
+    const metalDark = '#2a343c';
+    // Sloped plate footprint
+    const p0 = g(-len * 0.4, -wid * 0.4, tall * 0.15);
+    const p1 = g(len * 0.42, -wid * 0.35, tall * 0.25);
+    const p2 = g(len * 0.38, wid * 0.4, tall * 0.2);
+    const p3 = g(-len * 0.42, wid * 0.38, tall * 0.12);
+    const t0 = g(-len * 0.38, -wid * 0.35, tall * 0.85);
+    const t1 = g(len * 0.4, -wid * 0.3, tall * 0.95);
+    const t2 = g(len * 0.35, wid * 0.35, tall * 0.9);
+    const t3 = g(-len * 0.4, wid * 0.32, tall * 0.8);
+    // Far/near faces
+    const faces = [
+      [p0, p1, t1, t0],
+      [p1, p2, t2, t1],
+      [p2, p3, t3, t2],
+      [p3, p0, t0, t3],
+    ].sort(
+      (a, b) =>
+        (a[0].y + a[1].y + a[2].y + a[3].y) / 4 -
+        (b[0].y + b[1].y + b[2].y + b[3].y) / 4
+    );
+    for (let i = 0; i < faces.length; i++) {
+      const [a, b2, c, d] = faces[i];
+      ctx.fillStyle = i < 2 ? metalDark : accent;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b2.x, b2.y);
+      ctx.lineTo(c.x, c.y);
+      ctx.lineTo(d.x, d.y);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.fillStyle = this._cargoMix(accent, '#c0d0e0', 0.25);
+    ctx.beginPath();
+    ctx.moveTo(t0.x, t0.y);
+    ctx.lineTo(t1.x, t1.y);
+    ctx.lineTo(t2.x, t2.y);
+    ctx.lineTo(t3.x, t3.y);
+    ctx.closePath();
+    ctx.fill();
+    // Rivet row
+    for (let i = -2; i <= 2; i++) {
+      const r = g(i * len * 0.12, 0, tall * 0.9);
+      ctx.fillStyle = '#c9a020';
+      ctx.globalAlpha = 0.55;
+      ctx.beginPath();
+      ctx.arc(r.x, r.y, 0.7, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  /** Maneuver thruster — mount flange + nozzle bell. */
+  _drawCargoThruster(ctx, item, g, len, wid, tall) {
+    const accent = item.color || '#5a8aaa';
+    const metal = '#4a5868';
+    const metalDark = '#1a2430';
+    // Flange / mount
+    this._drawCargoBoxFaces(ctx, g, len * 0.28, wid * 0.35, tall * 0.4, metal, metalDark, '#6a7888');
+    // Nozzle body along +along (exhaust aft = -along visually: use +along as nozzle mouth)
+    const n0 = g(-len * 0.05, 0, tall * 0.45);
+    const n1 = g(len * 0.42, 0, tall * 0.35);
+    ctx.strokeStyle = metalDark;
+    ctx.lineWidth = 5.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(n0.x, n0.y);
+    ctx.lineTo(n1.x, n1.y);
+    ctx.stroke();
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 2.4;
+    ctx.beginPath();
+    ctx.moveTo(n0.x, n0.y);
+    ctx.lineTo(n1.x, n1.y);
+    ctx.stroke();
+    // Bell flare at mouth
+    ctx.fillStyle = metalDark;
+    ctx.beginPath();
+    ctx.ellipse(n1.x, n1.y, 3.2, 2.2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#8a9aa8';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Throat glow
+    ctx.fillStyle = 'rgba(120, 200, 255, 0.55)';
+    ctx.beginPath();
+    ctx.ellipse(n1.x, n1.y, 1.6, 1.1, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // Feed lines
+    for (const ac of [-wid * 0.25, wid * 0.25]) {
+      const f0 = g(-len * 0.2, ac, tall * 0.55);
+      const f1 = g(len * 0.1, ac * 0.4, tall * 0.4);
+      ctx.strokeStyle = '#8a9aa8';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.rect(-w / 2, -h / 2, w, h);
-      ctx.fill();
+      ctx.moveTo(f0.x, f0.y);
+      ctx.lineTo(f1.x, f1.y);
       ctx.stroke();
-      ctx.strokeStyle = 'rgba(0,0,0,0.22)';
+    }
+    ctx.lineCap = 'butt';
+  }
+
+  /** Main engine — bulky core + intake + exhaust cluster. */
+  _drawCargoEngine(ctx, item, g, len, wid, tall) {
+    const accent = item.color || '#c87840';
+    const metal = '#4a4848';
+    const metalDark = '#221e1c';
+    // Core housing
+    this._drawCargoBoxFaces(
+      ctx,
+      g,
+      len * 0.32,
+      wid * 0.38,
+      tall * 0.85,
+      metal,
+      metalDark,
+      this._cargoMix(metal, accent, 0.35)
+    );
+    // Intake scoop (aft / -along)
+    const i0 = g(-len * 0.45, -wid * 0.25, tall * 0.3);
+    const i1 = g(-len * 0.45, wid * 0.25, tall * 0.3);
+    const i2 = g(-len * 0.45, wid * 0.2, tall * 0.75);
+    const i3 = g(-len * 0.45, -wid * 0.2, tall * 0.75);
+    ctx.fillStyle = '#0a1018';
+    ctx.beginPath();
+    ctx.moveTo(i0.x, i0.y);
+    ctx.lineTo(i1.x, i1.y);
+    ctx.lineTo(i2.x, i2.y);
+    ctx.lineTo(i3.x, i3.y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+    // Exhaust nozzles forward
+    for (const ac of [-wid * 0.22, 0, wid * 0.22]) {
+      const e0 = g(len * 0.28, ac, tall * 0.4);
+      const e1 = g(len * 0.48, ac, tall * 0.35);
+      ctx.strokeStyle = metalDark;
+      ctx.lineWidth = 2.8;
+      ctx.lineCap = 'round';
       ctx.beginPath();
-      ctx.moveTo(0, -h / 2);
-      ctx.lineTo(0, h / 2);
-      ctx.moveTo(-w / 2, 0);
-      ctx.lineTo(w / 2, 0);
+      ctx.moveTo(e0.x, e0.y);
+      ctx.lineTo(e1.x, e1.y);
       ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.12)';
-      ctx.fillRect(-w / 2 + 1, -h / 2 + 1, w - 2, 2);
-      ctx.restore();
-      return;
+      ctx.fillStyle = 'rgba(255, 160, 60, 0.55)';
+      ctx.beginPath();
+      ctx.arc(e1.x, e1.y, 1.4, 0, Math.PI * 2);
+      ctx.fill();
     }
+    // Status light
+    const lite = g(0, wid * 0.15, tall * 0.95);
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.arc(lite.x, lite.y, 1.2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineCap = 'butt';
+  }
 
-    const shape = item.shape || 'laser';
-    switch (shape) {
-      case 'laser': {
-        ctx.fillStyle = '#2a3848';
-        ctx.fillRect(-w * 0.48, -h * 0.28, w * 0.72, h * 0.56);
-        ctx.strokeStyle = '#8ab0c8';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(-w * 0.48, -h * 0.28, w * 0.72, h * 0.56);
-        ctx.fillStyle = item.color;
-        ctx.beginPath();
-        ctx.moveTo(w * 0.2, -h * 0.35);
-        ctx.lineTo(w * 0.5, 0);
-        ctx.lineTo(w * 0.2, h * 0.35);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = 'rgba(160, 230, 255, 0.7)';
-        ctx.fillRect(-w * 0.4, -h * 0.12, w * 0.45, h * 0.24);
-        ctx.fillStyle = '#c8d8e8';
-        ctx.fillRect(-w * 0.48, -h * 0.45, 3, h * 0.9);
-        break;
-      }
-      case 'turret': {
-        ctx.fillStyle = '#3a4858';
-        ctx.beginPath();
-        ctx.arc(0, h * 0.15, w * 0.42, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#a0b0c0';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.fillStyle = item.color;
-        ctx.fillRect(-2, -h * 0.48, 4, h * 0.55);
-        ctx.fillStyle = '#1a2430';
-        ctx.beginPath();
-        ctx.arc(0, h * 0.12, w * 0.18, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#d0d8e0';
-        ctx.lineWidth = 0.8;
-        ctx.beginPath();
-        ctx.moveTo(0, -h * 0.48);
-        ctx.lineTo(0, -h * 0.1);
-        ctx.stroke();
-        break;
-      }
-      case 'armor': {
-        ctx.fillStyle = item.color;
-        ctx.strokeStyle = '#b0c0d0';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(0, -h * 0.48);
-        ctx.lineTo(w * 0.45, -h * 0.15);
-        ctx.lineTo(w * 0.38, h * 0.42);
-        ctx.lineTo(-w * 0.38, h * 0.42);
-        ctx.lineTo(-w * 0.45, -h * 0.15);
-        ctx.closePath();
-        ctx.fill();
-        ctx.stroke();
-        ctx.strokeStyle = 'rgba(200, 220, 240, 0.45)';
-        ctx.beginPath();
-        ctx.moveTo(0, -h * 0.3);
-        ctx.lineTo(0, h * 0.25);
-        ctx.moveTo(-w * 0.22, -h * 0.05);
-        ctx.lineTo(w * 0.22, -h * 0.05);
-        ctx.stroke();
-        break;
-      }
-      case 'thruster': {
-        ctx.fillStyle = '#3a4a58';
-        ctx.fillRect(-w * 0.35, -h * 0.4, w * 0.7, h * 0.55);
-        ctx.strokeStyle = '#90a8b8';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(-w * 0.35, -h * 0.4, w * 0.7, h * 0.55);
-        ctx.fillStyle = item.color;
-        ctx.beginPath();
-        ctx.moveTo(-w * 0.4, h * 0.1);
-        ctx.lineTo(w * 0.4, h * 0.1);
-        ctx.lineTo(w * 0.28, h * 0.48);
-        ctx.lineTo(-w * 0.28, h * 0.48);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = 'rgba(120, 200, 255, 0.35)';
-        ctx.fillRect(-w * 0.18, -h * 0.28, w * 0.36, h * 0.28);
-        break;
-      }
-      case 'engine': {
-        ctx.fillStyle = '#3a3838';
-        ctx.beginPath();
-        ctx.ellipse(0, -h * 0.05, w * 0.42, h * 0.38, 0, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#c09060';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.fillStyle = item.color;
-        ctx.beginPath();
-        ctx.moveTo(-w * 0.35, h * 0.2);
-        ctx.lineTo(w * 0.35, h * 0.2);
-        ctx.lineTo(w * 0.22, h * 0.48);
-        ctx.lineTo(-w * 0.22, h * 0.48);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = 'rgba(255, 180, 80, 0.4)';
-        ctx.beginPath();
-        ctx.arc(0, -h * 0.08, w * 0.16, 0, Math.PI * 2);
-        ctx.fill();
-        break;
-      }
-      case 'sensor': {
-        ctx.fillStyle = '#2a3848';
-        ctx.fillRect(-w * 0.2, h * 0.05, w * 0.4, h * 0.35);
-        ctx.fillStyle = item.color;
-        ctx.beginPath();
-        ctx.arc(0, -h * 0.1, w * 0.38, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#b0e0d0';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        ctx.fillStyle = 'rgba(200, 255, 230, 0.55)';
-        ctx.beginPath();
-        ctx.arc(-w * 0.08, -h * 0.18, w * 0.12, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = '#80c0a8';
-        ctx.beginPath();
-        ctx.moveTo(0, -h * 0.48);
-        ctx.lineTo(0, -h * 0.28);
-        ctx.stroke();
-        break;
-      }
-      default: {
-        ctx.fillStyle = item.color;
-        ctx.strokeStyle = '#c8c0b0';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.rect(-w / 2, -h / 2, w, h);
-        ctx.fill();
-        ctx.stroke();
-        break;
-      }
+  /** Sensor array — dish on mast / mount. */
+  _drawCargoSensor(ctx, item, g, len, wid, tall) {
+    const accent = item.color || '#60b090';
+    const metal = '#4a5868';
+    const metalDark = '#1a2830';
+    // Pedestal
+    this._drawCargoBoxFaces(ctx, g, len * 0.18, wid * 0.22, tall * 0.45, metal, metalDark, '#6a7888');
+    // Mast
+    const m0 = g(0, 0, tall * 0.45);
+    const m1 = g(0, 0, tall * 0.85);
+    ctx.strokeStyle = '#8a9aa8';
+    ctx.lineWidth = 1.6;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(m0.x, m0.y);
+    ctx.lineTo(m1.x, m1.y);
+    ctx.stroke();
+    // Dish (tilted ellipse facing forward)
+    const dish = g(len * 0.08, 0, tall * 0.9);
+    ctx.fillStyle = metalDark;
+    ctx.beginPath();
+    ctx.ellipse(dish.x, dish.y, len * 0.32, wid * 0.28, 0.35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = this._cargoMix(accent, '#a0e0c8', 0.2);
+    ctx.beginPath();
+    ctx.ellipse(dish.x - 0.4, dish.y - 0.3, len * 0.26, wid * 0.22, 0.35, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.ellipse(dish.x, dish.y, len * 0.32, wid * 0.28, 0.35, 0, Math.PI * 2);
+    ctx.stroke();
+    // Feed horn
+    const horn = g(len * 0.22, 0, tall * 0.88);
+    ctx.fillStyle = '#c8d0d8';
+    ctx.beginPath();
+    ctx.arc(horn.x, horn.y, 1.3, 0, Math.PI * 2);
+    ctx.fill();
+    // Side secondary antenna
+    const a0 = g(-len * 0.1, wid * 0.25, tall * 0.5);
+    const a1 = g(-len * 0.15, wid * 0.4, tall * 1.05);
+    ctx.strokeStyle = '#8a9aa8';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(a0.x, a0.y);
+    ctx.lineTo(a1.x, a1.y);
+    ctx.stroke();
+    ctx.fillStyle = accent;
+    ctx.beginPath();
+    ctx.arc(a1.x, a1.y, 1.1, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.lineCap = 'butt';
+  }
+
+  /** Cheap hex mix for accents. */
+  _cargoMix(a, b, t) {
+    const parse = (hex) => {
+      const h = hex.replace('#', '');
+      return [
+        parseInt(h.slice(0, 2), 16),
+        parseInt(h.slice(2, 4), 16),
+        parseInt(h.slice(4, 6), 16),
+      ];
+    };
+    try {
+      const A = parse(a);
+      const B = parse(b);
+      const m = (i) => Math.round(A[i] + (B[i] - A[i]) * t);
+      return `rgb(${m(0)},${m(1)},${m(2)})`;
+    } catch {
+      return a;
     }
-
-    ctx.fillStyle = 'rgba(120, 200, 255, 0.7)';
-    ctx.fillRect(-1.5, -h / 2 - 3, 3, 2);
-    ctx.restore();
   }
 
   _drawDockPad(ctx, cx, cy, label, opts = {}) {
@@ -9941,123 +11745,224 @@ export class HangarBay {
       ctx.fillText(s.text, 0, 0);
       ctx.restore();
     }
-
-    // Small charger / desk props at hub ends
-    ctx.fillStyle = '#3a4a38';
-    ctx.fillRect(-hw - 12, y + 8, 10, 8);
-    ctx.fillRect(hw + 2, y + 8, 10, 8);
-    ctx.fillStyle = '#4a5868';
-    ctx.fillRect(-18, y + FORKLIFT_PARK_SPOT_H / 2 + 4, 36, 6);
+    // Chargers / tire racks / cones live in FORKLIFT_YARD_PROPS (2.5D set dressing)
   }
 
   /**
-   * Manned cab on the trolley — this universe has operators, not automation.
-   * Levers nudge with travel / hoist / claw grip.
+   * Manned cab on the trolley — worn industrial booth; operator watches the job target.
    */
   _drawCraneCabin(ctx, c, tx, by) {
-    const op = c.operator || {
-      suit: '#3a6a8a',
-      helmet: '#c8d0d8',
-    };
+    const op = c.operator || CRANE_CREW;
     const lev = c.levers || { travel: 0, hoist: 0, grip: 0 };
     const cabX = tx + 13;
     const cabY = by;
-    const w = 14;
-    const h = 12;
+    const w = 15;
+    const h = 13;
 
-    // Cab shell (offset east of hoist so cables stay clear)
-    ctx.fillStyle = '#3a4858';
+    // Cab shadow on bridge
+    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    ctx.beginPath();
+    ctx.ellipse(cabX, cabY + h / 2 + 2, w * 0.55, 3, 0, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Cab body — 2.5D shell
+    ctx.fillStyle = '#1a2834';
+    ctx.fillRect(cabX - w / 2, cabY - h / 2 + 2, w, h - 2);
+    ctx.fillStyle = CRANE_CREW.suitDark;
+    ctx.fillRect(cabX - w / 2, cabY - h / 2 + 2, 3, h - 2);
+    ctx.fillStyle = '#3a4a58';
+    ctx.fillRect(cabX - w / 2, cabY - h / 2, w, h);
+    ctx.fillStyle = '#4a5a68';
+    ctx.fillRect(cabX - w / 2, cabY - h / 2, w, 2.5);
     ctx.strokeStyle = '#9aacbc';
     ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.rect(cabX - w / 2, cabY - h / 2, w, h);
-    ctx.fill();
-    ctx.stroke();
+    ctx.strokeRect(cabX - w / 2, cabY - h / 2, w, h);
+    // Hazard stripe on roof
+    ctx.fillStyle = CRANE_CREW.stripe;
+    ctx.globalAlpha = 0.55;
+    ctx.fillRect(cabX - w / 2 + 1, cabY - h / 2 + 0.4, w - 2, 1.4);
+    ctx.globalAlpha = 1;
+    // Wear scuff
+    ctx.fillStyle = 'rgba(20, 12, 6, 0.3)';
+    ctx.fillRect(cabX + 2, cabY - 1, 4, 5);
 
-    // Roof lip
-    ctx.fillStyle = '#2a3848';
-    ctx.fillRect(cabX - w / 2 - 0.5, cabY - h / 2 - 1.5, w + 1, 2);
-
-    // Glass
-    ctx.fillStyle = 'rgba(70, 140, 180, 0.35)';
+    // Glass viewport
+    ctx.fillStyle = 'rgba(50, 110, 150, 0.38)';
     ctx.strokeStyle = 'rgba(160, 200, 220, 0.55)';
-    ctx.lineWidth = 0.7;
+    ctx.lineWidth = 0.75;
     ctx.beginPath();
-    ctx.rect(cabX - 5.5, cabY - 4.5, 11, 6.5);
+    ctx.rect(cabX - 5.8, cabY - 4.8, 11.6, 7);
     ctx.fill();
     ctx.stroke();
 
-    // Operator (seated, facing roughly toward hoist / bay center)
-    const faceLeft = tx < 0 ? 1 : -1;
-    ctx.fillStyle = op.suit;
-    ctx.fillRect(cabX - 2.2, cabY - 1.5, 4.4, 4.2);
-    ctx.fillStyle = op.helmet;
+    // Operator body (seated)
+    const headX = cabX;
+    const headY = cabY - 3.0;
+    ctx.fillStyle = op.suit || CRANE_CREW.suit;
+    ctx.fillRect(cabX - 2.4, cabY - 1.2, 4.8, 4.5);
+    ctx.fillStyle = CRANE_CREW.stripe;
+    ctx.globalAlpha = 0.7;
+    ctx.fillRect(cabX - 2.4, cabY - 0.2, 4.8, 1.1);
+    ctx.globalAlpha = 1;
+
+    // Head — 8-dir look at current task destination; helmet + distinct facemask
+    const oct = this._crewVisOctant(op);
+    const heading = oct * CREW_VIS_OCT;
+    const fx = Math.cos(heading);
+    const fy = Math.sin(heading);
+    const faceCam = fy; // +Y south / toward camera → full mask
+
+    // Helmet shell
+    ctx.fillStyle = op.helmet || CRANE_CREW.helmet;
     ctx.beginPath();
-    ctx.arc(cabX, cabY - 3.2, 2.1, 0, Math.PI * 2);
+    ctx.arc(headX, headY, 2.35, 0, Math.PI * 2);
     ctx.fill();
-    ctx.fillStyle = 'rgba(40, 80, 100, 0.45)';
-    ctx.fillRect(cabX - 1.4 * faceLeft - 0.6, cabY - 3.8, 2.2, 1.3);
+    // Helmet rim wear
+    ctx.strokeStyle = 'rgba(40, 28, 16, 0.4)';
+    ctx.lineWidth = 0.85;
+    ctx.beginPath();
+    ctx.arc(headX, headY, 2.35, 0.35, Math.PI * 1.15);
+    ctx.stroke();
+    // Brow stripe
+    ctx.strokeStyle = CRANE_CREW.stripe;
+    ctx.lineWidth = 1.05;
+    ctx.beginPath();
+    ctx.moveTo(headX - 1.6, headY - 1.55);
+    ctx.lineTo(headX + 1.6, headY - 1.55);
+    ctx.stroke();
+
+    // Facemask — dark plate offset toward look dir (hidden when facing fully away)
+    if (faceCam > -0.55) {
+      const maskScale = 0.55 + 0.45 * Math.max(0, Math.min(1, (faceCam + 0.55) / 1.55));
+      const mx = headX + fx * (1.15 * maskScale);
+      const my = headY + fy * (0.95 * maskScale);
+      const mask = op.mask || CRANE_CREW.mask;
+      // Mask body
+      ctx.fillStyle = mask;
+      ctx.beginPath();
+      ctx.ellipse(mx, my, 1.55 * maskScale, 1.4 * maskScale, heading, 0, Math.PI * 2);
+      ctx.fill();
+      // Mask rim (metal lip — reads separate from helmet)
+      ctx.strokeStyle = CRANE_CREW.maskRim;
+      ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.ellipse(mx, my, 1.55 * maskScale, 1.4 * maskScale, heading, 0, Math.PI * 2);
+      ctx.stroke();
+      // Visor glass inset in the mask
+      ctx.fillStyle = CRANE_CREW.visor;
+      ctx.beginPath();
+      ctx.ellipse(
+        mx + fx * 0.2,
+        my + fy * 0.15,
+        1.05 * maskScale,
+        0.78 * maskScale,
+        heading,
+        0,
+        Math.PI * 2
+      );
+      ctx.fill();
+      // Cheek vents (mask detail, not helmet)
+      ctx.fillStyle = 'rgba(120, 140, 160, 0.35)';
+      const rx = -fy;
+      const ry = fx;
+      ctx.fillRect(mx + rx * 0.95 * maskScale - 0.35, my + ry * 0.95 * maskScale - 0.5, 0.7, 1.0);
+      ctx.fillRect(mx - rx * 0.95 * maskScale - 0.35, my - ry * 0.95 * maskScale - 0.5, 0.7, 1.0);
+    } else {
+      // Back of helmet when looking north
+      ctx.fillStyle = 'rgba(40, 32, 24, 0.35)';
+      ctx.beginPath();
+      ctx.arc(headX + fx * 0.4, headY + fy * 0.4, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
 
     // Console shelf
-    ctx.fillStyle = '#1e2a36';
-    ctx.fillRect(cabX - 5, cabY + 2.2, 10, 2.4);
+    ctx.fillStyle = '#141c26';
+    ctx.fillRect(cabX - 5.5, cabY + 2.4, 11, 2.6);
     ctx.strokeStyle = '#6a7a88';
-    ctx.lineWidth = 0.6;
-    ctx.strokeRect(cabX - 5, cabY + 2.2, 10, 2.4);
+    ctx.lineWidth = 0.65;
+    ctx.strokeRect(cabX - 5.5, cabY + 2.4, 11, 2.6);
 
-    // Three levers: travel · hoist · grip
-    const baseY = cabY + 2.4;
+    // Three levers: XY travel · hoist up/down · claw open/close
+    const baseY = cabY + 2.65;
     const levers = [
-      { x: cabX - 3.2, t: lev.travel, color: '#c8a050' },
-      { x: cabX, t: lev.hoist, color: '#70b0d0' },
-      { x: cabX + 3.2, t: lev.grip, color: '#d08070' },
+      { x: cabX - 3.4, t: lev.travel, color: '#c8a050', label: 'XY' },
+      { x: cabX, t: lev.hoist, color: '#70b0d0', label: 'Z' },
+      { x: cabX + 3.4, t: lev.grip, color: '#d08070', label: 'C' },
     ];
     for (const L of levers) {
-      const ang = (L.t || 0) * 0.55;
-      const tipX = L.x + Math.sin(ang) * 3.2;
-      const tipY = baseY - Math.cos(ang) * 3.2;
-      ctx.strokeStyle = '#b0b8c0';
-      ctx.lineWidth = 1.1;
+      const throwAmt = Math.max(-1, Math.min(1, L.t || 0));
+      const a = throwAmt * 0.72;
+      const tipX = L.x + Math.sin(a) * 3.6;
+      const tipY = baseY - Math.cos(a) * 3.6;
+      // Gate slot
+      ctx.strokeStyle = 'rgba(90, 100, 110, 0.7)';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(L.x - Math.sin(0.72) * 1.6, baseY - Math.cos(0.72) * 1.6);
+      ctx.lineTo(L.x + Math.sin(0.72) * 1.6, baseY - Math.cos(0.72) * 1.6);
+      ctx.stroke();
+      // Stick
+      ctx.strokeStyle = '#c8d0d8';
+      ctx.lineWidth = 1.35;
       ctx.lineCap = 'round';
       ctx.beginPath();
       ctx.moveTo(L.x, baseY);
       ctx.lineTo(tipX, tipY);
       ctx.stroke();
+      // Knob
       ctx.fillStyle = L.color;
       ctx.beginPath();
-      ctx.arc(tipX, tipY, 1.15, 0, Math.PI * 2);
+      ctx.arc(tipX, tipY, 1.45, 0, Math.PI * 2);
       ctx.fill();
-      ctx.fillStyle = '#4a5560';
+      ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+      ctx.lineWidth = 0.6;
+      ctx.stroke();
+      // Pivot
+      ctx.fillStyle = '#3a4450';
       ctx.beginPath();
-      ctx.arc(L.x, baseY, 0.9, 0, Math.PI * 2);
+      ctx.arc(L.x, baseY, 1.05, 0, Math.PI * 2);
       ctx.fill();
+      // Tiny legend on console
+      ctx.fillStyle = 'rgba(180, 190, 200, 0.55)';
+      ctx.font = '4px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(L.label, L.x, baseY + 3.6);
     }
     ctx.lineCap = 'butt';
+    ctx.textAlign = 'left';
   }
 
   _drawOverhead(ctx) {
     const c = this.crane;
     const [rx0, rx1] = RUNWAY_X;
 
-    // Runway rails (length of bay — north/south travel)
-    ctx.strokeStyle = 'rgba(100, 130, 150, 0.7)';
-    ctx.lineWidth = 3.5;
+    // Runway rails
+    ctx.strokeStyle = 'rgba(90, 120, 140, 0.75)';
+    ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(rx0, BRIDGE_Y_MIN - 8);
     ctx.lineTo(rx0, BRIDGE_Y_MAX + 8);
     ctx.moveTo(rx1, BRIDGE_Y_MIN - 8);
     ctx.lineTo(rx1, BRIDGE_Y_MAX + 8);
     ctx.stroke();
+    ctx.strokeStyle = 'rgba(160, 180, 200, 0.25)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(rx0 - 1.5, BRIDGE_Y_MIN - 8);
+    ctx.lineTo(rx0 - 1.5, BRIDGE_Y_MAX + 8);
+    ctx.moveTo(rx1 + 1.5, BRIDGE_Y_MIN - 8);
+    ctx.lineTo(rx1 + 1.5, BRIDGE_Y_MAX + 8);
+    ctx.stroke();
 
-    // Runway structural beams
-    ctx.strokeStyle = 'rgba(70, 95, 115, 0.4)';
+    // Runway structural ties
+    ctx.strokeStyle = 'rgba(70, 95, 115, 0.45)';
     ctx.lineWidth = 2;
     for (let y = BRIDGE_Y_MIN; y <= BRIDGE_Y_MAX; y += 48) {
       ctx.beginPath();
-      ctx.moveTo(rx0 - 6, y);
-      ctx.lineTo(rx0 + 6, y);
-      ctx.moveTo(rx1 - 6, y);
-      ctx.lineTo(rx1 + 6, y);
+      ctx.moveTo(rx0 - 7, y);
+      ctx.lineTo(rx0 + 7, y);
+      ctx.moveTo(rx1 - 7, y);
+      ctx.lineTo(rx1 + 7, y);
       ctx.stroke();
     }
 
@@ -10068,46 +11973,74 @@ export class HangarBay {
     const hoist = c.hoist;
     const hook = this._craneHookPos();
 
-    // Bridge — slimmer load-bearing beam
+    // Bridge beam — thicker 2.5D girder
+    ctx.fillStyle = '#2a3848';
+    ctx.fillRect(rx0 - 3, by - 1, rx1 - rx0 + 6, 5);
+    ctx.fillStyle = '#5a6a78';
+    ctx.fillRect(rx0 - 3, by - 3.5, rx1 - rx0 + 6, 5);
     ctx.fillStyle = '#4a5a68';
-    ctx.strokeStyle = '#8a9aa8';
+    ctx.fillRect(rx0 - 3, by - 3.5, rx1 - rx0 + 6, 2);
+    ctx.strokeStyle = '#9aacbc';
     ctx.lineWidth = 1;
-    ctx.fillRect(rx0 - 2, by - 2.5, rx1 - rx0 + 4, 5);
-    ctx.strokeRect(rx0 - 2, by - 2.5, rx1 - rx0 + 4, 5);
-    ctx.fillStyle = '#3a4a58';
-    ctx.fillRect(rx0 - 2, by - 0.5, rx1 - rx0 + 4, 1.5);
-
-    // End trucks on runway
-    for (const rx of [rx0, rx1]) {
-      ctx.fillStyle = '#6a7888';
-      ctx.fillRect(rx - 4, by - 5, 8, 10);
-      ctx.strokeStyle = '#a8b8c8';
-      ctx.lineWidth = 0.8;
-      ctx.strokeRect(rx - 4, by - 5, 8, 10);
+    ctx.strokeRect(rx0 - 3, by - 3.5, rx1 - rx0 + 6, 7);
+    // Hazard dashes along near lip
+    ctx.fillStyle = 'rgba(201, 160, 32, 0.4)';
+    for (let x = rx0 + 8; x < rx1 - 8; x += 22) {
+      ctx.fillRect(x, by + 2.2, 10, 1.2);
     }
 
-    // Trolley — smaller carriage, parks north of cargo
+    // End trucks
+    for (const rx of [rx0, rx1]) {
+      ctx.fillStyle = '#1a2430';
+      ctx.fillRect(rx - 5, by - 2, 10, 9);
+      ctx.fillStyle = '#6a7888';
+      ctx.fillRect(rx - 5, by - 6, 10, 10);
+      ctx.strokeStyle = '#b0c0d0';
+      ctx.lineWidth = 0.85;
+      ctx.strokeRect(rx - 5, by - 6, 10, 10);
+      ctx.fillStyle = '#2a2a2a';
+      ctx.beginPath();
+      ctx.arc(rx - 2.5, by + 4, 2, 0, Math.PI * 2);
+      ctx.arc(rx + 2.5, by + 4, 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Trolley carriage
+    ctx.fillStyle = '#1a2430';
+    ctx.fillRect(tx - 9, by - 2, 18, 9);
     ctx.fillStyle = '#5a6a78';
-    ctx.strokeStyle = '#b0c0d0';
-    ctx.lineWidth = 0.9;
-    ctx.fillRect(tx - 8, by - 5, 16, 10);
-    ctx.strokeRect(tx - 8, by - 5, 16, 10);
+    ctx.fillRect(tx - 9, by - 6, 18, 10);
+    ctx.fillStyle = '#3a4a58';
+    ctx.fillRect(tx - 9, by - 6, 18, 2.5);
+    ctx.strokeStyle = '#c0d0e0';
+    ctx.lineWidth = 0.95;
+    ctx.strokeRect(tx - 9, by - 6, 18, 10);
     ctx.fillStyle = '#2a3848';
-    ctx.fillRect(tx - 3.5, by - 3, 7, 6);
+    ctx.fillRect(tx - 4, by - 3.5, 8, 6);
+    ctx.fillStyle = 'rgba(201, 160, 32, 0.45)';
+    ctx.fillRect(tx - 8, by - 5.5, 6, 1.2);
 
     this._drawCraneCabin(ctx, c, tx, by);
 
-    // Hoist cables — trolley (north) down to hook at cargo
-    ctx.strokeStyle = 'rgba(200, 210, 220, 0.65)';
+    // Hoist cables
+    ctx.strokeStyle = 'rgba(40, 44, 48, 0.75)';
+    ctx.lineWidth = 2.2;
+    ctx.beginPath();
+    ctx.moveTo(tx - 2.5, by + 5);
+    ctx.lineTo(hook.x - 2.5, hook.y);
+    ctx.moveTo(tx + 2.5, by + 5);
+    ctx.lineTo(hook.x + 2.5, hook.y);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(190, 200, 210, 0.55)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(tx - 2, by + 5);
-    ctx.lineTo(hook.x - 2, hook.y);
-    ctx.moveTo(tx + 2, by + 5);
-    ctx.lineTo(hook.x + 2, hook.y);
+    ctx.moveTo(tx - 2.5, by + 5);
+    ctx.lineTo(hook.x - 2.5, hook.y);
+    ctx.moveTo(tx + 2.5, by + 5);
+    ctx.lineTo(hook.x + 2.5, hook.y);
     ctx.stroke();
 
-    // Single aim shadow — deck target under trolley; visible raised, grows slightly as hoist lowers
+    // Aim shadow on deck
     const aimY = this._craneAimFloorY(c);
     const hoistT = Math.min(1, Math.max(0, hoist / HOIST_MAX));
     const rx = 8.5 + hoistT * 2.5;
@@ -10130,38 +12063,63 @@ export class HangarBay {
 
     const cargoPos = c.carried ? this._craneCargoDrawPos() : null;
 
-    // Hand / palm
-    ctx.fillStyle = '#6a7888';
-    ctx.strokeStyle = '#c8d0d8';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(hook.x - 6, hook.y);
-    ctx.lineTo(hook.x + 6, hook.y);
-    ctx.lineTo(hook.x + 4, hook.y + CLAW_PALM);
-    ctx.lineTo(hook.x - 4, hook.y + CLAW_PALM);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
-
-    // Carried cargo hangs from the fingers (top just above fingertip line)
-    if (c.carried && cargoPos) {
-      this._drawCargoItem(ctx, c.carried, cargoPos.x, cargoPos.y, 1);
-    }
-
-    // Fingers — open when empty, partial close around cargo
+    // —— Grabber hand (tip math LOCKED — do not change leftTip/rightTip/midTip/tipY) ——
     const open = c.claw ?? CLAW_OPEN;
     const palmY = hook.y + CLAW_PALM;
     const tipY = hook.y + CLAW_FINGER;
     const leftBase = hook.x - 4;
     const rightBase = hook.x + 4;
-    // Open spreads tips outward; grip tucks them in (not fully closed)
     const leftTip = hook.x - (2.2 + open * 5.5);
     const rightTip = hook.x + (2.2 + open * 5.5);
     const midTip = hook.x + (open - 0.5) * 0.8;
 
+    // Wrist block above palm
+    ctx.fillStyle = '#3a4550';
+    ctx.strokeStyle = '#a8b8c8';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(hook.x - 5, hook.y - 2);
+    ctx.lineTo(hook.x + 5, hook.y - 2);
+    ctx.lineTo(hook.x + 4.5, hook.y + 1);
+    ctx.lineTo(hook.x - 4.5, hook.y + 1);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Palm plate (same footprint as before, slightly thicker face)
+    ctx.fillStyle = '#5a6a78';
     ctx.strokeStyle = '#c8d0d8';
-    ctx.lineWidth = 1.35;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(hook.x - 6, hook.y);
+    ctx.lineTo(hook.x + 6, hook.y);
+    ctx.lineTo(hook.x + 4, palmY);
+    ctx.lineTo(hook.x - 4, palmY);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = 'rgba(20, 16, 10, 0.25)';
+    ctx.fillRect(hook.x - 3, hook.y + 1, 2, palmY - hook.y - 2);
+
+    // Carried cargo hangs from the fingers (top just above fingertip line)
+    if (c.carried && cargoPos) {
+      this._drawCargoItem(ctx, c.carried, cargoPos.x, cargoPos.y, 1, c.carried.restHeading ?? 0);
+    }
+
+    // Fingers — thicker industrial tines, endpoints unchanged
+    ctx.strokeStyle = '#2a343c';
+    ctx.lineWidth = 3.2;
     ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(leftBase, palmY);
+    ctx.lineTo(leftTip, tipY);
+    ctx.moveTo(rightBase, palmY);
+    ctx.lineTo(rightTip, tipY);
+    ctx.moveTo(hook.x, palmY);
+    ctx.lineTo(midTip, tipY + 1);
+    ctx.stroke();
+    ctx.strokeStyle = '#c8d0d8';
+    ctx.lineWidth = 1.45;
     ctx.beginPath();
     ctx.moveTo(leftBase, palmY);
     ctx.lineTo(leftTip, tipY);
@@ -10172,112 +12130,367 @@ export class HangarBay {
     ctx.stroke();
     ctx.lineCap = 'butt';
 
-    // Fingertip pads
-    ctx.fillStyle = '#a8b8c8';
+    // Fingertip pads — exact tip locations
+    ctx.fillStyle = '#8a9aa8';
     for (const [fx, fy] of [
       [leftTip, tipY],
       [rightTip, tipY],
       [midTip, tipY + 1],
     ]) {
       ctx.beginPath();
-      ctx.arc(fx, fy, 1.1, 0, Math.PI * 2);
+      ctx.arc(fx, fy, 1.35, 0, Math.PI * 2);
       ctx.fill();
+      ctx.fillStyle = '#d0d8e0';
+      ctx.beginPath();
+      ctx.arc(fx, fy, 0.7, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#8a9aa8';
     }
   }
 
   _drawMechanic(ctx, npc) {
-    ctx.save();
-    ctx.translate(npc.x, npc.y);
-    const flip = npc.facing < 0 ? -1 : 1;
-    ctx.scale(flip, 1);
+    const theme =
+      npc.theme ||
+      MECH_BAY_THEMES[npc.homeBay ?? 0] ||
+      MECH_BAY_THEMES[0];
+    const bob =
+      npc.state === 'flinch' || npc.state === 'clearHot'
+        ? Math.sin(npc.phase * 3) * 1.5
+        : Math.sin(npc.phase) * 0.8;
+    const duck =
+      npc.state === 'flinch' || npc.state === 'flee' || npc.state === 'clearHot'
+        ? 2
+        : 0;
+    const walking = [
+      'toPile',
+      'toShip',
+      'toExit',
+      'enterDoor',
+      'exitDoor',
+      'flee',
+      'clearHot',
+      'toFloorDrop',
+      'leaveHatch',
+      'linger',
+      'idleFluff',
+      'gossip',
+    ].includes(npc.state);
+    const stride = walking ? Math.sin(npc.phase) * 2.4 : 0;
 
-    // Under-deck emerge / descend (keep fully opaque once on deck)
+    const oct = this._crewVisOctant(npc);
+    const heading = oct * CREW_VIS_OCT;
+    const fx = Math.cos(heading);
+    const fy = Math.sin(heading);
+    const rx = -fy;
+    const ry = fx;
+    const alongScale = 0.78 + 0.22 * Math.abs(fx);
+    const acrossScale = 0.78 + 0.22 * Math.abs(fy);
+
+    // Under-deck emerge / descend
     let scale = 1;
+    let alpha = 1;
     if (npc.state === 'emerge') {
       scale = Math.min(1, 0.4 + ((npc.emergeT || 0) / 0.55) * 0.6);
+      alpha = 0.55 + scale * 0.45;
     } else if (npc.state === 'descend') {
       scale = Math.max(0.35, npc.stateT / 0.45);
-    }
-    ctx.scale(scale, scale);
-    if (npc.state === 'emerge' || npc.state === 'descend') {
-      ctx.globalAlpha = 0.55 + scale * 0.45;
+      alpha = 0.55 + scale * 0.45;
     }
 
-    const bob = npc.state === 'flinch' || npc.state === 'clearHot'
-      ? Math.sin(npc.phase * 3) * 1.5
-      : Math.sin(npc.phase) * 0.8;
-    const duck = npc.state === 'flinch' || npc.state === 'flee' || npc.state === 'clearHot' ? 2 : 0;
+    const g = (along, across, up = 0) => ({
+      x: npc.x + (fx * along * alongScale + rx * across * acrossScale) * scale,
+      y:
+        npc.y +
+        (fy * along * alongScale + ry * across * acrossScale) * scale +
+        bob -
+        up * scale,
+    });
 
-    ctx.fillStyle = 'rgba(0,0,0,0.25)';
+    const welding =
+      npc.state === 'workWeld' ||
+      npc.state === 'workShip' ||
+      npc.job === 'weld' ||
+      npc.job === 'installUpgrade' ||
+      npc.job === 'removeUpgrade';
+    const cargo = npc.cargo || npc._mechLift?.cargo;
+    const panicked =
+      npc.state === 'flee' || npc.state === 'flinch' || npc.state === 'clearHot';
+
+    ctx.save();
+    ctx.globalAlpha = alpha;
+
+    // Shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.28)';
     ctx.beginPath();
-    ctx.ellipse(0, 5, 5, 2, 0, 0, Math.PI * 2);
+    ctx.ellipse(
+      npc.x,
+      npc.y + 5 + bob,
+      5.5 * scale,
+      2.2 * scale,
+      heading * 0.12,
+      0,
+      Math.PI * 2
+    );
     ctx.fill();
 
-    ctx.strokeStyle = npc.suit;
-    ctx.lineWidth = 1.6;
-    const walking = [
-      'toPile', 'toShip', 'toExit', 'enterDoor', 'exitDoor',
-      'flee', 'clearHot', 'toFloorDrop', 'leaveHatch', 'linger',
-    ].includes(npc.state);
-    const stride = walking ? Math.sin(npc.phase) * 3 : 0;
+    // Legs — far then near by screen Y
+    const legL = {
+      hip: g(-0.6, -1.6, 3 + duck),
+      foot: g(-0.8 - stride * 0.15, -2.1, -0.2),
+      y: 0,
+    };
+    const legR = {
+      hip: g(-0.6, 1.6, 3 + duck),
+      foot: g(-0.8 + stride * 0.15, 2.1, -0.2),
+      y: 0,
+    };
+    legL.y = (legL.hip.y + legL.foot.y) / 2;
+    legR.y = (legR.hip.y + legR.foot.y) / 2;
+    const legs = [legL, legR].sort((a, b) => a.y - b.y);
+
+    const drawLeg = (leg) => {
+      ctx.strokeStyle = theme.suitDark;
+      ctx.lineWidth = 2.1 * scale;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(leg.hip.x, leg.hip.y);
+      ctx.lineTo(leg.foot.x, leg.foot.y);
+      ctx.stroke();
+      // Boot
+      ctx.fillStyle = theme.boot;
+      ctx.beginPath();
+      ctx.ellipse(leg.foot.x, leg.foot.y + 0.6, 2.1 * scale, 1.2 * scale, heading * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.lineCap = 'butt';
+    };
+
+    drawLeg(legs[0]);
+
+    // Tool belt / hips (far side of torso stack)
+    const hip = g(-0.4, 0, 3.2 + duck);
+    ctx.fillStyle = theme.suitWear;
     ctx.beginPath();
-    ctx.moveTo(-1.5, 1 + bob);
-    ctx.lineTo(-2 - stride * 0.3, 6);
-    ctx.moveTo(1.5, 1 + bob);
-    ctx.lineTo(2 + stride * 0.3, 6);
+    ctx.ellipse(hip.x, hip.y, 3.4 * scale, 2.0 * scale, heading * 0.1, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Torso — vertical faces sorted by Y
+    const t0 = g(-1.2, -2.4, 4 + duck);
+    const t1 = g(-1.2, 2.4, 4 + duck);
+    const t2 = g(1.6, 2.4, 4 + duck);
+    const t3 = g(1.6, -2.4, 4 + duck);
+    const torsoH = 6.5;
+    const torsoFaces = [
+      [t0, t1],
+      [t1, t2],
+      [t2, t3],
+      [t3, t0],
+    ].sort((e0, e1) => (e0[0].y + e0[1].y) / 2 - (e1[0].y + e1[1].y) / 2);
+    for (let i = 0; i < torsoFaces.length; i++) {
+      const [p0, p1] = torsoFaces[i];
+      ctx.fillStyle = i < 2 ? theme.suitWear : theme.suitDark;
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p1.x, p1.y - torsoH * scale);
+      ctx.lineTo(p0.x, p0.y - torsoH * scale);
+      ctx.closePath();
+      ctx.fill();
+    }
+    // Top / chest plate
+    ctx.fillStyle = theme.suit;
+    ctx.beginPath();
+    ctx.moveTo(t0.x, t0.y - torsoH * scale);
+    ctx.lineTo(t1.x, t1.y - torsoH * scale);
+    ctx.lineTo(t2.x, t2.y - torsoH * scale);
+    ctx.lineTo(t3.x, t3.y - torsoH * scale);
+    ctx.closePath();
+    ctx.fill();
+    // Bay stripe + scuff
+    const s0 = g(0.2, -2.0, 7.5 + duck);
+    const s1 = g(0.2, 2.0, 7.5 + duck);
+    ctx.strokeStyle = theme.stripe;
+    ctx.lineWidth = 1.5 * scale;
+    ctx.globalAlpha = alpha * 0.85;
+    ctx.beginPath();
+    ctx.moveTo(s0.x, s0.y);
+    ctx.lineTo(s1.x, s1.y);
+    ctx.stroke();
+    ctx.globalAlpha = alpha;
+    ctx.fillStyle = 'rgba(20, 14, 8, 0.22)';
+    const sc = g(0.4, -0.8, 8.2 + duck);
+    ctx.fillRect(sc.x - 1.5 * scale, sc.y, 3.2 * scale, 1.4 * scale);
+
+    // Backpack / O2 pack — draw before helmet if farther (negative along)
+    const pack = g(-2.4, 0, 7 + duck);
+    const chest = g(0.4, 0, 7 + duck);
+    const drawPack = () => {
+      ctx.fillStyle = theme.pack;
+      ctx.fillRect(
+        pack.x - 2.2 * scale,
+        pack.y - 4.5 * scale,
+        4.4 * scale,
+        5.5 * scale
+      );
+      ctx.fillStyle = 'rgba(180, 160, 80, 0.35)';
+      ctx.fillRect(
+        pack.x - 1.6 * scale,
+        pack.y - 3.8 * scale,
+        3.2 * scale,
+        1.1 * scale
+      );
+      ctx.strokeStyle = 'rgba(120, 130, 140, 0.45)';
+      ctx.lineWidth = 0.8 * scale;
+      ctx.strokeRect(
+        pack.x - 2.2 * scale,
+        pack.y - 4.5 * scale,
+        4.4 * scale,
+        5.5 * scale
+      );
+    };
+
+    if (pack.y <= chest.y) drawPack();
+
+    // Shoulders / arms
+    const armL = {
+      sh: g(0.2, -2.8, 9 + duck),
+      hand: g(MECH_HAND_REACH_X * 0.55, -3.2, 4.5 + duck),
+      y: 0,
+    };
+    const armR = {
+      sh: g(0.2, 2.8, 9 + duck),
+      hand: g(
+        welding || cargo ? MECH_HAND_REACH_X : MECH_HAND_REACH_X * 0.7,
+        3.0,
+        welding || cargo ? 5.5 + duck : 4.2 + duck
+      ),
+      y: 0,
+    };
+    // Prefer right arm as tool/cargo arm (matches facing-local +X hand reach when E/W)
+    if (cargo || welding) {
+      const handLocal = this._mechHandLocal(cargo || null);
+      // World hand from logic facing for cargo alignment; visual arm still uses octant
+      const face = npc.facing >= 0 ? 1 : -1;
+      armR.hand = {
+        x: npc.x + face * handLocal.x * scale,
+        y: npc.y + (handLocal.y + bob - duck * 0.3) * scale,
+      };
+    }
+    armL.y = (armL.sh.y + armL.hand.y) / 2;
+    armR.y = (armR.sh.y + armR.hand.y) / 2;
+    const arms = [armL, armR].sort((a, b) => a.y - b.y);
+
+    const drawArm = (arm, isToolArm) => {
+      ctx.strokeStyle = theme.suit;
+      ctx.lineWidth = 2.0 * scale;
+      ctx.lineCap = 'round';
+      ctx.beginPath();
+      ctx.moveTo(arm.sh.x, arm.sh.y);
+      ctx.lineTo(arm.hand.x, arm.hand.y);
+      ctx.stroke();
+      ctx.fillStyle = theme.glove;
+      ctx.beginPath();
+      ctx.arc(arm.hand.x, arm.hand.y, 1.5 * scale, 0, Math.PI * 2);
+      ctx.fill();
+      if (isToolArm && welding && !cargo) {
+        ctx.strokeStyle = theme.tool;
+        ctx.lineWidth = 1.35 * scale;
+        ctx.beginPath();
+        ctx.moveTo(arm.hand.x, arm.hand.y);
+        ctx.lineTo(
+          arm.hand.x + fx * 5.5 * scale,
+          arm.hand.y + fy * 5.5 * scale - 2.5 * scale
+        );
+        ctx.stroke();
+        if (npc.state === 'workWeld' || npc.state === 'workShip') {
+          const tipX = arm.hand.x + fx * 6.2 * scale;
+          const tipY = arm.hand.y + fy * 6.2 * scale - 3 * scale;
+          ctx.fillStyle = `rgba(160, 220, 255, ${0.5 + 0.5 * Math.sin(npc.phase * 4)})`;
+          ctx.beginPath();
+          ctx.arc(tipX, tipY, 2.2 * scale, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else if (isToolArm && !cargo && !welding) {
+        // Scanner / datapad
+        ctx.fillStyle = '#2a3a48';
+        ctx.fillRect(
+          arm.hand.x - 0.5 * scale,
+          arm.hand.y - 2.2 * scale,
+          3.2 * scale,
+          3.6 * scale
+        );
+        ctx.fillStyle = 'rgba(100, 220, 160, 0.55)';
+        ctx.fillRect(
+          arm.hand.x,
+          arm.hand.y - 1.6 * scale,
+          2.2 * scale,
+          1.6 * scale
+        );
+      }
+      ctx.lineCap = 'butt';
+    };
+
+    // Far arm first
+    drawArm(arms[0], arms[0] === armR);
+
+    // Helmet
+    const head = g(0.3, 0, 11.2 + duck);
+    ctx.fillStyle = theme.helmet;
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, 3.3 * scale, 0, Math.PI * 2);
+    ctx.fill();
+    // Helmet rim wear
+    ctx.strokeStyle = 'rgba(40, 30, 20, 0.35)';
+    ctx.lineWidth = 0.9 * scale;
+    ctx.beginPath();
+    ctx.arc(head.x, head.y, 3.3 * scale, 0.2, Math.PI * 1.1);
+    ctx.stroke();
+    // Visor toward forward
+    const v0 = g(1.6, -1.5, 11.5 + duck);
+    const v1 = g(1.6, 1.5, 11.5 + duck);
+    ctx.fillStyle = theme.visor;
+    ctx.beginPath();
+    ctx.moveTo(v0.x, v0.y - 1.2 * scale);
+    ctx.lineTo(v1.x, v1.y - 1.2 * scale);
+    ctx.lineTo(v1.x, v1.y + 1.0 * scale);
+    ctx.lineTo(v0.x, v0.y + 1.0 * scale);
+    ctx.closePath();
+    ctx.fill();
+    // Bay stripe on helmet brow
+    ctx.strokeStyle = theme.stripe;
+    ctx.lineWidth = 1.1 * scale;
+    ctx.beginPath();
+    ctx.moveTo(g(-0.2, -2.2, 12.2 + duck).x, g(-0.2, -2.2, 12.2 + duck).y);
+    ctx.lineTo(g(-0.2, 2.2, 12.2 + duck).x, g(-0.2, 2.2, 12.2 + duck).y);
     ctx.stroke();
 
-    ctx.fillStyle = npc.suit;
-    ctx.fillRect(-3, -4 + bob + duck, 6, 7);
+    if (pack.y > chest.y) drawPack();
 
-    ctx.fillStyle = npc.helmet;
-    ctx.beginPath();
-    ctx.arc(0, -6 + bob + duck, 3.2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = 'rgba(80, 160, 200, 0.45)';
-    ctx.fillRect(-2, -7 + bob + duck, 3, 2);
+    // Near arm
+    drawArm(arms[1], arms[1] === armR);
 
-    const cargo = npc.cargo || npc._mechLift?.cargo;
+    // Near leg
+    drawLeg(legs[1]);
+
+    // Cargo in world space (logic hand) so pick/place stay aligned
     if (cargo) {
       const world = this._mechCargoWorldPos(npc);
       if (world) {
-        const lx = (world.x - npc.x) * flip;
-        const ly = world.y - npc.y;
-        this._drawCargoItem(ctx, cargo, lx, ly, 0.72);
+        const head = this._crewVisOctant(npc) * CREW_VIS_OCT;
+        this._drawCargoItem(ctx, cargo, world.x, world.y, 0.72 * scale, head);
       }
-    } else if (
-      npc.state === 'workWeld' ||
-      npc.job === 'weld' ||
-      npc.job === 'installUpgrade' ||
-      npc.job === 'removeUpgrade'
-    ) {
-      // Welding torch / install tool
-      ctx.strokeStyle = '#c0c8d0';
-      ctx.lineWidth = 1.4;
-      ctx.beginPath();
-      ctx.moveTo(3, -1 + bob);
-      ctx.lineTo(8, -4 + bob);
-      ctx.stroke();
-      if (npc.state === 'workWeld' || npc.state === 'workShip') {
-        ctx.fillStyle = `rgba(160, 220, 255, ${0.5 + 0.5 * Math.sin(npc.phase * 4)})`;
-        ctx.beginPath();
-        ctx.arc(9, -5 + bob, 2.2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    } else {
-      ctx.fillStyle = '#2a3a48';
-      ctx.fillRect(3, -2 + bob, 3, 4);
-      ctx.fillStyle = 'rgba(100, 220, 160, 0.5)';
-      ctx.fillRect(3.5, -1.5 + bob, 2, 1.5);
     }
 
-    if (npc.state === 'flee' || npc.state === 'flinch' || npc.state === 'clearHot') {
-      ctx.strokeStyle = npc.helmet;
+    // Panic arms up
+    if (panicked) {
+      ctx.strokeStyle = theme.helmet;
+      ctx.lineWidth = 1.4 * scale;
+      const hL = g(-0.5, -3.5, 8 + duck);
+      const hR = g(-0.5, 3.5, 8 + duck);
       ctx.beginPath();
-      ctx.moveTo(-3, -2 + bob);
-      ctx.lineTo(-5, -6 + bob);
-      ctx.moveTo(3, -2 + bob);
-      ctx.lineTo(5, -5 + bob);
+      ctx.moveTo(hL.x, hL.y);
+      ctx.lineTo(hL.x - rx * 2 * scale, hL.y - 4 * scale);
+      ctx.moveTo(hR.x, hR.y);
+      ctx.lineTo(hR.x + rx * 2 * scale, hR.y - 3.5 * scale);
       ctx.stroke();
     }
 
@@ -10285,75 +12498,327 @@ export class HangarBay {
   }
 
   _drawForklift(ctx, npc) {
-    ctx.save();
-    ctx.translate(npc.x, npc.y);
-    const flip = npc.facing < 0 ? -1 : 1;
-    ctx.scale(flip, 1);
-
-    const bounce = Math.sin(npc.phase * 0.5) * 0.4;
+    const bounce = Math.sin(npc.phase * 0.5) * 0.35;
     const forkH = npc.forkH ?? FORK_RAISED;
     const forkDrop = forkH * FORK_DROP_VIS;
+    const oct = this._crewVisOctant(npc);
+    const heading = oct * CREW_VIS_OCT;
+    const fx = Math.cos(heading);
+    const fy = Math.sin(heading);
+    const rx = -fy;
+    const ry = fx;
+    // Foreshortening: length reads best E/W; width best N/S (2.5D look-down)
+    const alongScale = 0.72 + 0.28 * Math.abs(fx);
+    const acrossScale = 0.72 + 0.28 * Math.abs(fy);
+    const body = npc.body || '#c87830';
+    const bodyDark = '#6a3a18';
+    const bodyWear = '#8a5030';
+    const metal = '#8a9aa8';
+    const metalLit = '#b0c0d0';
+    const metalDark = '#4a5868';
 
-    ctx.fillStyle = 'rgba(0,0,0,0.3)';
-    ctx.beginPath();
-    ctx.ellipse(2, 8, 14, 4, 0, 0, Math.PI * 2);
-    ctx.fill();
+    // Ground-plane point. Hangar 2.5D: higher screen Y = nearer camera (draw later).
+    const g = (along, across) => ({
+      x: npc.x + fx * along * alongScale + rx * across * acrossScale,
+      y: npc.y + fy * along * alongScale + ry * across * acrossScale + bounce,
+    });
 
-    ctx.fillStyle = npc.body;
-    ctx.strokeStyle = '#e0a060';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(-10, 2 + bounce);
-    ctx.lineTo(8, 2 + bounce);
-    ctx.lineTo(10, -4 + bounce);
-    ctx.lineTo(-6, -4 + bounce);
-    ctx.closePath();
-    ctx.fill();
-    ctx.stroke();
+    const drawWheel = (p) => {
+      ctx.fillStyle = '#1a1a1a';
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y + 1.5, 3.1, 2.2, heading * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#3a3a3a';
+      ctx.beginPath();
+      ctx.ellipse(p.x, p.y + 1.2, 1.4, 1.0, heading * 0.2, 0, Math.PI * 2);
+      ctx.fill();
+    };
 
-    ctx.fillStyle = '#2a3848';
-    ctx.fillRect(-4, -10 + bounce, 8, 7);
-    ctx.fillStyle = 'rgba(120, 200, 255, 0.35)';
-    ctx.fillRect(-2.5, -9 + bounce, 5, 4);
+    const drawCounterweight = () => {
+      const a0 = g(-11, -5.5);
+      const a1 = g(-11, 5.5);
+      const a2 = g(-5.5, 5.5);
+      const a3 = g(-5.5, -5.5);
+      const h = 5;
+      // Vertical faces: far (low Y) first, near (high Y) last
+      const edges = [
+        [a0, a1],
+        [a1, a2],
+        [a2, a3],
+        [a3, a0],
+      ].sort((e0, e1) => (e0[0].y + e0[1].y) / 2 - (e1[0].y + e1[1].y) / 2);
+      ctx.fillStyle = '#2a3038';
+      ctx.beginPath();
+      ctx.moveTo(a0.x, a0.y);
+      ctx.lineTo(a1.x, a1.y);
+      ctx.lineTo(a2.x, a2.y);
+      ctx.lineTo(a3.x, a3.y);
+      ctx.closePath();
+      ctx.fill();
+      for (let i = 0; i < edges.length; i++) {
+        const [p0, p1] = edges[i];
+        ctx.fillStyle = i < 2 ? '#3a4450' : '#454e5a';
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y - h);
+        ctx.lineTo(p1.x, p1.y - h);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.lineTo(p0.x, p0.y);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = '#505a68';
+      ctx.beginPath();
+      ctx.moveTo(a0.x, a0.y - h);
+      ctx.lineTo(a1.x, a1.y - h);
+      ctx.lineTo(a2.x, a2.y - h);
+      ctx.lineTo(a3.x, a3.y - h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(200, 160, 40, 0.45)';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(a0.x, a0.y - h * 0.45);
+      ctx.lineTo(a1.x, a1.y - h * 0.45);
+      ctx.stroke();
+    };
 
-    const forkY = -8 + bounce + forkDrop * 0.35;
-    const forkTipY = -14 + bounce + forkDrop;
-    ctx.strokeStyle = '#8a9aa8';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(9, -4 + bounce);
-    ctx.lineTo(9, forkTipY);
-    ctx.stroke();
-    ctx.strokeStyle = '#b0c0d0';
-    ctx.beginPath();
-    ctx.moveTo(9, forkY);
-    ctx.lineTo(16, forkY);
-    ctx.moveTo(9, forkY + 3);
-    ctx.lineTo(16, forkY + 3);
-    ctx.stroke();
+    const drawChassis = () => {
+      const a0 = g(-6, -5);
+      const a1 = g(-6, 5);
+      const a2 = g(7, 5);
+      const a3 = g(7, -5);
+      const h = 6;
+      const edges = [
+        [a0, a1],
+        [a1, a2],
+        [a2, a3],
+        [a3, a0],
+      ].sort((e0, e1) => (e0[0].y + e0[1].y) / 2 - (e1[0].y + e1[1].y) / 2);
+      for (let i = 0; i < edges.length; i++) {
+        const [p0, p1] = edges[i];
+        ctx.fillStyle = i < 2 ? bodyWear : bodyDark;
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y);
+        ctx.lineTo(p1.x, p1.y);
+        ctx.lineTo(p1.x, p1.y - h);
+        ctx.lineTo(p0.x, p0.y - h);
+        ctx.closePath();
+        ctx.fill();
+      }
+      ctx.fillStyle = body;
+      ctx.beginPath();
+      ctx.moveTo(a0.x, a0.y - h);
+      ctx.lineTo(a1.x, a1.y - h);
+      ctx.lineTo(a2.x, a2.y - h);
+      ctx.lineTo(a3.x, a3.y - h);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = '#e0a060';
+      ctx.lineWidth = 0.9;
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(40, 24, 12, 0.22)';
+      const w0 = g(-2, -2.5);
+      const w1 = g(3, 1.5);
+      ctx.fillRect(w0.x - 2, w0.y - h - 1, 5, 2.2);
+      ctx.fillRect(w1.x - 1.5, w1.y - h - 0.5, 4, 1.6);
+      ctx.strokeStyle = 'rgba(20, 12, 6, 0.35)';
+      ctx.lineWidth = 0.7;
+      const s0 = g(1, -4.5);
+      const s1 = g(1, 4.5);
+      ctx.beginPath();
+      ctx.moveTo(s0.x, s0.y - h);
+      ctx.lineTo(s1.x, s1.y - h);
+      ctx.stroke();
+    };
 
-    const cargo = npc.cargo || npc._forkLift?.cargo;
-    if (cargo) {
+    const ropsPosts = [
+      g(-3.5, -4),
+      g(-3.5, 4),
+      g(2.5, 4),
+      g(2.5, -4),
+    ].sort((a, b) => a.y - b.y);
+    const roofH = 12;
+
+    const drawRopsPost = (p) => {
+      ctx.strokeStyle = metalDark;
+      ctx.lineWidth = 1.35;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y - 5);
+      ctx.lineTo(p.x, p.y - roofH);
+      ctx.stroke();
+    };
+
+    const drawRopsRoof = () => {
+      const posts = [
+        g(-3.5, -4),
+        g(-3.5, 4),
+        g(2.5, 4),
+        g(2.5, -4),
+      ];
+      ctx.strokeStyle = metal;
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(posts[0].x, posts[0].y - roofH);
+      ctx.lineTo(posts[1].x, posts[1].y - roofH);
+      ctx.lineTo(posts[2].x, posts[2].y - roofH);
+      ctx.lineTo(posts[3].x, posts[3].y - roofH);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(140, 150, 160, 0.35)';
+      ctx.lineWidth = 0.6;
+      const m0 = g(-0.5, -3.5);
+      const m1 = g(-0.5, 3.5);
+      ctx.beginPath();
+      ctx.moveTo(m0.x, m0.y - roofH + 1);
+      ctx.lineTo(m1.x, m1.y - roofH + 1);
+      ctx.stroke();
+    };
+
+    const drawCab = () => {
+      const a0 = g(-3, -3.5);
+      const a1 = g(-3, 3.5);
+      const a2 = g(2, 3.5);
+      const a3 = g(2, -3.5);
+      const h0 = 6;
+      const h1 = 11;
+      const faces = [
+        [a0, a1],
+        [a1, a2],
+        [a2, a3],
+        [a3, a0],
+      ].sort((e0, e1) => (e0[0].y + e0[1].y) / 2 - (e1[0].y + e1[1].y) / 2);
+      for (let i = 0; i < faces.length; i++) {
+        const [p0, p1] = faces[i];
+        ctx.fillStyle = i < 2 ? '#2a3848' : '#1e2834';
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y - h0);
+        ctx.lineTo(p1.x, p1.y - h0);
+        ctx.lineTo(p1.x, p1.y - h1);
+        ctx.lineTo(p0.x, p0.y - h1);
+        ctx.closePath();
+        ctx.fill();
+      }
+      // Windshield on the forward cab face (toward mast / +along)
+      const f0 = g(2, -3.5);
+      const f1 = g(2, 3.5);
+      ctx.fillStyle = 'rgba(120, 200, 255, 0.32)';
+      ctx.beginPath();
+      ctx.moveTo(f0.x, f0.y - h0 - 1);
+      ctx.lineTo(f1.x, f1.y - h0 - 1);
+      ctx.lineTo(f1.x, f1.y - h1 + 0.5);
+      ctx.lineTo(f0.x, f0.y - h1 + 0.5);
+      ctx.closePath();
+      ctx.fill();
+      const head = g(-0.2, 0);
+      ctx.fillStyle = '#c8d0d8';
+      ctx.beginPath();
+      ctx.arc(head.x, head.y - 9.5, 2.1, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = 'rgba(80, 160, 200, 0.4)';
+      ctx.fillRect(head.x - 1.4, head.y - 10.2, 2.2, 1.4);
+    };
+
+    const drawMast = () => {
+      const base = g(7.5, 0);
+      const mastH = 15;
+      ctx.fillStyle = metalDark;
+      ctx.fillRect(base.x - 2.2, base.y - mastH, 4.4, mastH - 2);
+      ctx.fillStyle = metal;
+      ctx.fillRect(base.x - 1.5, base.y - mastH, 1.1, mastH - 2);
+      ctx.fillRect(base.x + 0.4, base.y - mastH, 1.1, mastH - 2);
+      const carY = base.y - 10 + forkDrop * 0.55;
+      ctx.fillStyle = '#5a6878';
+      ctx.fillRect(base.x - 2.6, carY - 2, 5.2, 4);
+      ctx.strokeStyle = 'rgba(20, 16, 10, 0.4)';
+      ctx.lineWidth = 0.7;
+      ctx.strokeRect(base.x - 2.6, carY - 2, 5.2, 4);
+      const blink = 0.45 + 0.55 * Math.max(0, Math.sin(npc.phase * 1.7));
+      ctx.fillStyle = `rgba(255, 170, 40, ${0.35 + blink * 0.5})`;
+      ctx.beginPath();
+      ctx.arc(base.x, base.y - mastH - 1.2, 1.6, 0, Math.PI * 2);
+      ctx.fill();
+    };
+
+    const drawForks = () => {
+      const tineAlong0 = 8.5;
+      const tineAlong1 = FORK_TINE_TIP_X;
+      const tineLift = FORK_TINE_Y_BASE + forkDrop * 0.35;
+      ctx.strokeStyle = metalLit;
+      ctx.lineWidth = 1.7;
+      ctx.lineCap = 'round';
+      for (const across of [-2.2, 2.2]) {
+        const p0 = g(tineAlong0, across);
+        const p1 = g(tineAlong1, across);
+        ctx.beginPath();
+        ctx.moveTo(p0.x, p0.y + tineLift);
+        ctx.lineTo(p1.x, p1.y + tineLift);
+        ctx.stroke();
+      }
+      const b0 = g(tineAlong0, -3);
+      const b1 = g(tineAlong0, 3);
+      ctx.strokeStyle = metal;
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      ctx.moveTo(b0.x, b0.y + tineLift - 1);
+      ctx.lineTo(b1.x, b1.y + tineLift - 1);
+      ctx.stroke();
+      ctx.lineCap = 'butt';
+    };
+
+    const drawCargo = () => {
+      const cargo = npc.cargo || npc._forkLift?.cargo;
+      if (!cargo) return;
       const world = this._forkCargoWorldPos(npc);
       if (world) {
-        const lx = (world.x - npc.x) * flip;
-        const ly = world.y - npc.y;
-        this._drawCargoItem(ctx, cargo, lx, ly, 0.9);
+        const head = this._crewVisOctant(npc) * CREW_VIS_OCT;
+        this._drawCargoItem(ctx, cargo, world.x, world.y, 0.9, head);
       }
+    };
+
+    const drawMastForksCargo = () => {
+      drawMast();
+      drawForks();
+      drawCargo();
+    };
+
+    // --- Painter pass (far → near). Per-octant occlusion via screen Y. ---
+    ctx.fillStyle = 'rgba(0,0,0,0.32)';
+    ctx.beginPath();
+    ctx.ellipse(npc.x + fx * 1, npc.y + 7 + bounce, 13, 4.2, heading * 0.15, 0, Math.PI * 2);
+    ctx.fill();
+
+    const wheels = [
+      [-7.5, -4.8],
+      [-7.5, 4.8],
+      [4.5, -5.2],
+      [4.5, 5.2],
+    ]
+      .map(([al, ac]) => g(al, ac))
+      .sort((a, b) => a.y - b.y);
+    const farWheels = wheels.slice(0, 2);
+    const nearWheels = wheels.slice(2);
+
+    for (const w of farWheels) drawWheel(w);
+
+    drawCounterweight();
+    drawChassis();
+
+    for (const p of ropsPosts.slice(0, 2)) drawRopsPost(p);
+
+    const mastDepth = g(7.5, 0).y;
+    const cabDepth = g(-0.5, 0).y;
+    if (mastDepth <= cabDepth) {
+      drawMastForksCargo();
+      drawCab();
+    } else {
+      drawCab();
+      drawMastForksCargo();
     }
 
-    ctx.fillStyle = '#1a1a1a';
-    ctx.beginPath();
-    ctx.arc(-6, 5 + bounce, 3, 0, Math.PI * 2);
-    ctx.arc(4, 5 + bounce, 3, 0, Math.PI * 2);
-    ctx.fill();
+    drawRopsRoof();
+    for (const p of ropsPosts.slice(2)) drawRopsPost(p);
 
-    ctx.fillStyle = '#c8d0d8';
-    ctx.beginPath();
-    ctx.arc(0, -11 + bounce, 2, 0, Math.PI * 2);
-    ctx.fill();
-
-    ctx.restore();
+    for (const w of nearWheels) drawWheel(w);
   }
 
   _drawSparkles(ctx) {
