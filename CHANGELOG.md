@@ -8,6 +8,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ### Planned
 - Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
+- Hangar room / set-dressing editor (designer places props, 8-dir rotate, linger/gossip; Done saves layout file) — see `PROJECT.md`
 - Asteroid fragmentation on destroy
 - Fuel system for afterburner
 - Radar minimap in corner panel

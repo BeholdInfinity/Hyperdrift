@@ -136,12 +136,42 @@ src/
 ## Known gaps / next steps
 
 - Home Base: B2 player-request job queue still future; interim B2 uses the same captain checklist as B1/B3 (red floors + multi-unit requests; reroll 10–60s after complete; player owns launch) — see `GDD.md`
+- **Hangar room / set-dressing editor** — planned authoring tool; see [Hangar room editor (planned)](#hangar-room-editor-planned) below
 - **Ship component Mk variants** (hull, fuel, weapons, etc.): board shows random Mk 1–3 labels + size-based cargo Mk ladder only — lock real tiers / effects later (`OPEN_QUESTIONS.md` §12)
 - Ship silhouette / hardpoint design pass (hangar is ready for close inspection)
 - Asteroids destroy but don't fragment into smaller pieces yet
 - No fuel consumption on afterburner
 - Corner panels (Radar, Weapons, Navigation) are empty shells
 - Settings beyond controls sandbox (audio/graphics bindings)
+
+## Hangar room editor (planned)
+
+**Intent:** Give the designer full hands-on control of the little details that make the hangar feel lived-in — prop placement, rotation, linger stands, gossip spots — without asking an agent to nudge coordinates in chat.
+
+**Division of labor (explicit):**
+- **With AI:** bay / logistics *function* (jobs, pathing, checklist, crane/fork/mech behavior) and *look* of characters / major assets (draw passes, themes, silhouettes).
+- **Human in editor:** set dressing density, asymmetry, prop facing, linger and hangout points — the micro-composition that reads as a real workplace.
+
+Props and linger data are already mostly declarative (`HANGAR_PROPS`, `FORKLIFT_YARD_PROPS`, gossip waypoints in `HangarBay.js`). An editor is UI + save/load on top of that, not a new simulation.
+
+### Recommended MVP
+- Enter hangar **edit mode** (sandbox-style; pause or freeze crew jobs while editing)
+- **Select / drag** existing prop kinds; **rotate** in 8-dir facing (same octants as draw)
+- **Palette place / delete** for current prop kinds (workbench, terminal, racks, yard gear, etc.)
+- Edit **linger stand points** and **gossip waypoints** as visible markers (drag, add, remove, capacity if shown)
+- **Done** saves layout for the next hangar load — prefer writing `src/world/hangar-layout.json` (or similar) via a small `dev-server.py` POST endpoint so refresh + git both work; `localStorage` only as a fallback, not the primary path
+- Soft guards: tint / block drops on forklift road, bay danger lanes, and pad flight paths (warn, don’t silently allow bad placement)
+
+### Recommended follow-ups (after MVP)
+- Undo / redo, snap-to-grid, multi-select
+- “Copy as JS constants” backup if JSON load is disabled
+- Layer toggles (deck props / yard / linger / gossip / structural ghost)
+- Do **not** move structural sim geometry in v1 (pads, pile hardpoints, crane rails, door paths) — those stay code-owned until pathing is ready for authored overrides
+
+### Out of scope for first editor
+- Full spritesheet art pipeline
+- Editing ship silhouettes or flight FX
+- Multi-user / cloud layout sync
 
 ## Resuming in a new chat
 

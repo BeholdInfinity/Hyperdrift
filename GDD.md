@@ -54,7 +54,7 @@ The hangar bay is the prototype seed of **Home Base**: the place you start a new
 | Distinct upgrade parts + hold cargo (2.5D service-matched freight); destructible | |
 | B2 **LAUNCH** / dock landing (lift burst, pad turntable, doors, thrust) | |
 | B1–B3 captain service checklist; pilot door lights + status tickers; B1/B3 exit + elevator; B2 rerolls; empty-bay cargo sweep; elevator shafts | |
-| Jennings Station overworld exterior + approach dock | |
+| Jennings Station overworld exterior + approach dock | Hangar **room / set-dressing editor** (designer places props, 8-dir rotate, linger/gossip; Done saves layout) — see `PROJECT.md` |
 
 Entered from the title screen (**ENTER HANGAR**). **QUICK LAUNCH** skips straight to space near the station.
 
