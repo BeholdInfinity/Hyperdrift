@@ -31,6 +31,13 @@ User-requested work that did **not** finish this session (agents aborted mid-pas
 
 ---
 
+## [0.1.155] — 2026-07-15
+
+### Changed
+- **Hangar ships draw in angled 2.5D** (same Blueprint extrude / side-peek pipeline): player on B2 and B1/B3 visitors use `hangarShipView(angle)` so deck lift and visible hull sides snap to the nearest of 16 compass headings as pads turn, elevators rise, and launch/land sequences yaw. Flight and ambient space traffic stay top-down
+
+---
+
 ## [0.1.154] — 2026-07-15
 
 ### Fixed

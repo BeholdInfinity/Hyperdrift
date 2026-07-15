@@ -38,6 +38,7 @@ import {
 import {
   createPlayerStarter,
 } from '../ships/ShipGenerator.js';
+import { hangarShipView } from '../ships/ShipViews.js';
 import { padMkForSwapGroup } from '../ships/ShipClasses.js';
 import { getItem } from '../ships/ItemCatalog.js';
 import { Settings } from '../core/Settings.js';
@@ -9381,16 +9382,21 @@ export class HangarBay {
         ctx.restore();
         return;
       }
-      drawVisitorShip(ctx, {
-        shipDef: def,
-        thrusters: pad.thrusters,
-        velocity: { x: pad.shipVx || 0, y: pad.shipVy || 0 },
-        angle,
-        angularVelocity: 0,
-        miningLaserFiring: false,
-        muzzleFlash: 0,
-        getTurretLocalAngle: () => 0,
-      });
+      drawVisitorShip(
+        ctx,
+        {
+          shipDef: def,
+          thrusters: pad.thrusters,
+          velocity: { x: pad.shipVx || 0, y: pad.shipVy || 0 },
+          angle,
+          angularVelocity: 0,
+          miningLaserFiring: false,
+          muzzleFlash: 0,
+          getTurretLocalAngle: () => 0,
+        },
+        null,
+        hangarShipView(angle)
+      );
       ctx.restore();
     }
 
@@ -12340,16 +12346,21 @@ export class HangarBay {
       ctx.restore();
       return;
     }
-    drawVisitorShip(ctx, {
-      shipDef: def,
-      thrusters: pad.thrusters,
-      velocity: { x: pad.shipVx || 0, y: pad.shipVy || 0 },
-      angle,
-      angularVelocity: 0,
-      miningLaserFiring: false,
-      muzzleFlash: 0,
-      getTurretLocalAngle: () => 0,
-    });
+    drawVisitorShip(
+      ctx,
+      {
+        shipDef: def,
+        thrusters: pad.thrusters,
+        velocity: { x: pad.shipVx || 0, y: pad.shipVy || 0 },
+        angle,
+        angularVelocity: 0,
+        miningLaserFiring: false,
+        muzzleFlash: 0,
+        getTurretLocalAngle: () => 0,
+      },
+      null,
+      hangarShipView(angle)
+    );
     ctx.restore();
   }
 

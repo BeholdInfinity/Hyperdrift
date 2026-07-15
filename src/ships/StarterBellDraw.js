@@ -221,7 +221,7 @@ function extrudeAngled(ctx, footprint, h, cols, headingIndex) {
 }
 
 /**
- * Shared hull extrude. Sides / lift only in Blueprint 2.5D angled mode.
+ * Shared hull extrude. Sides / lift only in angled 2.5D (hangar / Blueprint).
  * @param {number} h depth strength in px
  */
 export function extrude(ctx, footprint, h, cols) {

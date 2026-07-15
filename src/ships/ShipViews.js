@@ -149,3 +149,12 @@ export function angledView(headingIndex = 0) {
       ANGLED_HEADING_COUNT,
   };
 }
+
+/**
+ * Hangar / inspection 2.5D view snapped to the nearest of 16 compass headings
+ * from a ship world angle (after the caller rotates by that angle).
+ * @param {number} angleRad
+ */
+export function hangarShipView(angleRad) {
+  return angledView(headingIndexFromAngle(angleRad));
+}

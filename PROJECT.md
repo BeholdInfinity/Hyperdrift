@@ -93,7 +93,7 @@ src/
 | Dorsal 360° combat turret (LMB, 3/s) + nose mining laser (RMB) | Done |
 | Circular viewport + corner UI placeholders | Done |
 | Title screen (ENTER HANGAR / QUICK LAUNCH / SETTINGS; version stamp) | Done |
-| Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Bay + launch/land; modular B1/B3 visitors; Dev REROLL B1/B3; 2.5D elevator shaft; title B2 elevator raise |
+| Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Bay + launch/land; modular B1/B3 visitors; Dev REROLL B1/B3; 2.5D elevator shaft; title B2 elevator raise; **ships draw in angled 2.5D** (16 headings track yaw) |
 | Jennings Station overworld exterior + dock prompt | Done |
 | Ambient space traffic (modular; cops always near station; off-screen spawn/despawn) | Done (v0.1.150–154); further tuning OK |
 | Settings controls sandbox (ship-only viewport) | Done |
@@ -155,6 +155,7 @@ src/
 ### Shipped recently (context)
 - Modular catalog + Dev Blueprint (2D default, 2.5D side peeks, pads, reset, hardpoint **variant** picker)
 - Hangar modular visitors (no theme strobe); Dev **REROLL B1/B3**; elevator shaft shares 2.5D depth curve
+- Hangar player + visitor ships use **angled 2.5D** (`hangarShipView`) — side peeks update with pad/ship yaw; flight/ambient stay top-down
 - Ambient traffic near Jennings: seeded cops always on station, sparse peers, off-screen spawn/despawn
 - Plumes draw under hull (player path)
 

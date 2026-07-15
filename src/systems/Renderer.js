@@ -115,15 +115,16 @@ export class Renderer {
   /**
    * Draw ship in a world-space canvas (already camera-transformed).
    * Used by hangar occlusion so the hull can sit behind the north wall.
+   * @param {{ mode?: string, headingIndex?: number }} [view]
    */
-  drawShipInWorld(ctx, ship) {
-    this.drawShipBodyAt(ctx, ship, ship.position.x, ship.position.y);
+  drawShipInWorld(ctx, ship, view) {
+    this.drawShipBodyAt(ctx, ship, ship.position.x, ship.position.y, view);
   }
 
-  /** Draw ship hull at a world offset (used by B2 elevator shaft clip pass). */
   /**
    * Draw ship hull at a world offset (used by B2 elevator shaft clip pass).
    * Pass an angled view for hangar / blueprint 2.5D.
+   * @param {{ mode?: string, headingIndex?: number }} [view]
    */
   drawShipBodyAt(ctx, ship, x = 0, y = 0, view) {
     const visualScale = ship.visualScale ?? 1;

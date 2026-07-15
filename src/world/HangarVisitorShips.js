@@ -16,6 +16,7 @@ import {
 } from '../ships/ShipRenderer.js';
 import { hexToRgba } from '../ships/Themes.js';
 import { topDownView } from '../ships/ShipViews.js';
+/** @typedef {import('../ships/ShipViews.js').ShipView} ShipView */
 
 /** @typedef {'scout'|'interceptor'|'patrol'|'gunship'|'freighter'|'tanker'|'hauler'|'cruiser'|'warden'} VisitorId */
 
@@ -343,11 +344,14 @@ export function drawVisitorPlumes(ctx, ship) {
 /**
  * Draw a visitor (or ambient) modular ship in local space (+X = nose).
  * Requires a locked shipDef — never rolls cosmetics in the draw path.
+ * Hangar passes an angled view so side peeks track pad yaw; ambient/flight
+ * omit it and stay top-down.
  * @param {CanvasRenderingContext2D} ctx
  * @param {object} ship — { shipDef, thrusters?, velocity?, angle?, … }
  * @param {{ thrusters?: object, velocity?: {x:number,y:number}, angle?: number, angularVelocity?: number }} [propulsion]
+ * @param {ShipView} [view]
  */
-export function drawVisitorShip(ctx, ship, propulsion = null) {
+export function drawVisitorShip(ctx, ship, propulsion = null, view = null) {
   if (!ship || typeof ship === 'string' || !ship.shipDef) return;
 
   const shipLike = propulsion
@@ -363,5 +367,5 @@ export function drawVisitorShip(ctx, ship, propulsion = null) {
   if (shipLike.thrusters) {
     drawVisitorPlumes(ctx, shipLike);
   }
-  drawModularShip(ctx, shipLike, topDownView());
+  drawModularShip(ctx, shipLike, view || topDownView());
 }

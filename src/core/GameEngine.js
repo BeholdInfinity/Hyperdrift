@@ -29,6 +29,7 @@ import {
   cloneShipDef,
 } from '../ships/BlueprintSandbox.js';
 import { padMkForClass } from '../ships/ShipClasses.js';
+import { hangarShipView } from '../ships/ShipViews.js';
 
 /** Slow title-screen drift (world units / sec) */
 const TITLE_DRIFT_SPEED = 52;
@@ -1782,22 +1783,27 @@ export class GameEngine {
     this.renderer.renderWorldLayer((worldCtx) => {
       this.hangarBay.renderDeck(worldCtx, space);
       this.hangarBay.renderCrew(worldCtx);
+      const playerView = this.ship
+        ? hangarShipView(this.ship.angle)
+        : null;
       this.hangarBay.renderElevatorTransits(worldCtx, {
         drawPlayerShip: (ctx) => {
-          if (this.ship) this.renderer.drawShipBodyAt(ctx, this.ship, 0, 0);
+          if (this.ship) {
+            this.renderer.drawShipBodyAt(ctx, this.ship, 0, 0, playerView);
+          }
         },
       });
       this.hangarBay.renderVisitors(worldCtx, {
         beforeOcclusion: (wctx) => {
           if (this.ship && shipOutside) {
             this._drawHangarHoverShadow(wctx);
-            this.renderer.drawShipInWorld(wctx, this.ship);
+            this.renderer.drawShipInWorld(wctx, this.ship, playerView);
           }
         },
         afterOcclusion: (wctx) => {
           if (this.ship && !shipOutside && !playerInShaft) {
             this._drawHangarHoverShadow(wctx);
-            this.renderer.drawShipInWorld(wctx, this.ship);
+            this.renderer.drawShipInWorld(wctx, this.ship, playerView);
           }
         },
       });

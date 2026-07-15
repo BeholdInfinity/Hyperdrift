@@ -78,6 +78,7 @@ export {
   angledLiftLocal,
   topDownView,
   angledView,
+  hangarShipView,
   beginShipDraw,
   endShipDraw,
   isAngledShipDraw,
