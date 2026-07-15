@@ -2,6 +2,7 @@ import { Entity } from './Entity.js';
 import { Vec2 } from '../utils/MathUtils.js';
 import { HARDPOINTS } from './ShipHardpoints.js';
 import { SHIP } from '../core/Constants.js';
+import { createPlayerStarter } from '../ships/ShipGenerator.js';
 
 export class Ship extends Entity {
   constructor(x = 0, y = 0) {
@@ -9,6 +10,8 @@ export class Ship extends Entity {
     this.angle = SHIP.SPAWN_ANGLE;
     this.mass = 1;
     this.momentOfInertia = 1;
+    /** @type {import('../ships/ShipDefinition.js').ShipDefinition} */
+    this.shipDef = createPlayerStarter();
     this.thrusters = {
       aftPort: 0,
       aftStarboard: 0,
@@ -36,6 +39,13 @@ export class Ship extends Entity {
     this.mainEngineWarmup = 0;
     /** Hangar hover altitude cue (1 = lifted; scales draw size) */
     this.visualScale = 1;
+  }
+
+  /** Resolved mounts from modular definition (falls back to legacy HARDPOINTS). */
+  getHardpoint(key) {
+    const table = this.shipDef?.hardpointsTable?.();
+    if (table?.[key]) return table[key];
+    return HARDPOINTS[key] || null;
   }
 
   getForward() {
@@ -70,15 +80,23 @@ export class Ship extends Entity {
     const tipDist =
       SHIP.TURRET_BARREL_LENGTH + SHIP.TURRET_MUZZLE_EXTRA - recoil;
     const dir = Vec2.fromAngle(this.turretAngle);
+    const mount = this.getHardpoint('dorsalTurret') || { x: 0, y: 0 };
+    const base = this._localToWorld(mount.x, mount.y);
     return {
-      x: this.position.x + dir.x * tipDist,
-      y: this.position.y + dir.y * tipDist,
+      x: base.x + dir.x * tipDist,
+      y: base.y + dir.y * tipDist,
     };
   }
 
   getMiningLaserOrigin() {
-    const hp = HARDPOINTS.miningLaser;
-    return this._localToWorld(hp.x, hp.y);
+    const hp = this.getHardpoint('miningLaser') || HARDPOINTS.miningLaser;
+    const base = this._localToWorld(hp.x, hp.y);
+    const dir = Vec2.fromAngle(this.getMiningLaserWorldAngle());
+    const tip = SHIP.MINING_LASER_MUZZLE_OFFSET;
+    return {
+      x: base.x + dir.x * tip,
+      y: base.y + dir.y * tip,
+    };
   }
 
   update(deltaTime) {

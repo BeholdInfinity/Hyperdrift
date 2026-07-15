@@ -10,21 +10,44 @@
 
 import { HANGAR, SHIP } from '../core/Constants.js';
 import { clamp } from '../utils/MathUtils.js';
-import { SHIP_EXTENT } from '../entities/ShipHardpoints.js';
+import { SHIP_EXTENT, HARDPOINTS } from '../entities/ShipHardpoints.js';
 import {
   drawVisitorShip,
   pickVisitorId,
   makeVisitorThrusters,
   getVisitorPropulsion,
   VISITOR_CATALOG,
+  equipPadVisitor,
+  clearPadVisitor,
+  createVisitorShipDef,
 } from './HangarVisitorShips.js';
+import {
+  upgradeKindFromItemId,
+  pickCatalogItemId,
+  pickAmbientCatalogUpgradeId,
+  pickUpgradeInstallRequest,
+  unequipHardpoint,
+  equipHardpoint,
+  emptySocketsForCategory,
+  pickStripKey,
+  needsStripBeforeInstall,
+  needsStripBeforeInstallKey,
+  categoryFromFreightLabel,
+  shipDefSwapGroup,
+} from '../ships/HangarLoadout.js';
+import {
+  createPlayerStarter,
+} from '../ships/ShipGenerator.js';
+import { padMkForSwapGroup } from '../ships/ShipClasses.js';
+import { getItem } from '../ships/ItemCatalog.js';
+import { Settings } from '../core/Settings.js';
 
 const FACE_SOUTH = Math.PI / 2;
 const FACE_NORTH = SHIP.SPAWN_ANGLE;
 const BAY = {
   HALF_W: 340,
   HALF_H: 200,
-  PAD_R: 38,
+  PAD_R: HANGAR.PAD_R,
   SIDE_PAD_X: HANGAR.SIDE_PAD_X,
   DOOR_HALF: 52,
   DOOR_H: 42,
@@ -608,17 +631,13 @@ function cargoBaySpec(mk) {
   return CARGO_BAY_SPECS[m];
 }
 
-function cargoMkForVisitor(visitorId) {
+function cargoMkForVisitor(visitorId, shipDef = null) {
+  if (shipDef?.classDef?.cargoMkDefault != null) {
+    return Math.max(0, Math.min(9, shipDef.classDef.cargoMkDefault | 0));
+  }
   if (visitorId && VISITOR_CARGO_MK[visitorId] != null) return VISITOR_CARGO_MK[visitorId];
-  if (visitorId && VISITOR_CATALOG[visitorId]) {
-    const sc = VISITOR_CATALOG[visitorId].scale;
-    if (sc < 0.65) return 0;
-    if (sc < 0.85) return 2;
-    if (sc < 1.05) return 3;
-    if (sc < 1.2) return 4;
-    if (sc < 1.3) return 5;
-    if (sc < 1.4) return 7;
-    return 9;
+  if (visitorId && VISITOR_CATALOG[visitorId]?.cargoMk != null) {
+    return VISITOR_CATALOG[visitorId].cargoMk;
   }
   return 5;
 }
@@ -764,6 +783,18 @@ function colMeta(col) {
   return { bay, lane, bayId: bayLabels()[bay] };
 }
 
+/**
+ * Weighted padMk for a fresh B1/B3 visitor — mostly `peerPadMk` (matches the
+ * player's own pad tier, e.g. Mk2 Standard), occasionally Mk1 (UltraLight +
+ * Light) for size variety. If the player is already Mk1, there's nothing
+ * smaller to roll, so it's always Mk1.
+ * @param {number} peerPadMk
+ */
+function rollVisitorPadMk(peerPadMk) {
+  if (peerPadMk <= 1) return 1;
+  return Math.random() < HANGAR.VISITOR_PEER_MK_CHANCE ? peerPadMk : 1;
+}
+
 function rowRole(row) {
   if (row === ROW.N) return 'upgrade';
   if (row === ROW.M) return 'cargo';
@@ -784,14 +815,22 @@ function thrusterActivity(ship) {
   return { maneuver, engine };
 }
 
-function rollSidePad(x, bayId, bayIndex) {
+function rollSidePad(x, bayId, bayIndex, peerPadMk = 2) {
+  /**
+   * Jennings: B2 is always Mk2 (Standard/player). B1/B3 physical pads are the
+   * same disc size, so they mostly roll the player's own pad tier (peer-sized
+   * neighbors) with an occasional smaller UltraLight/Light ship for variety.
+   */
+  const padMk = bayIndex === 1 ? 2 : rollVisitorPadMk(peerPadMk);
   const occupied = Math.random() < HANGAR.VISITOR_OCCUPY_CHANCE;
-  const visitorId = occupied ? pickVisitorId() : null;
-  return {
+  const visitorId = occupied ? pickVisitorId(padMk) : null;
+  const pad = {
     x,
     bayId,
     bayIndex,
-    visitorId,
+    padMk,
+    visitorId: null,
+    shipDef: null,
     cooldown: occupied
       ? rand(HANGAR.VISITOR_COOLDOWN_BUSY_MIN, HANGAR.VISITOR_COOLDOWN_BUSY_MAX)
       : rand(HANGAR.VISITOR_COOLDOWN_EMPTY_MIN, HANGAR.VISITOR_COOLDOWN_EMPTY_MAX),
@@ -803,12 +842,14 @@ function rollSidePad(x, bayId, bayIndex) {
     /** Turntable facing — empty pads point south; occupied face north */
     padAngle: occupied ? FACE_NORTH : FACE_SOUTH,
     padDrop: 0,
-    thrusters: visitorId ? makeVisitorThrusters(visitorId) : null,
+    thrusters: null,
     shipVx: 0,
     shipVy: 0,
     shipState: null,
     service: null,
   };
+  if (visitorId) equipPadVisitor(pad, visitorId);
+  return pad;
 }
 
 /** Curved request probability — mild deficits rarely ask; emptier curves up hard. */
@@ -860,7 +901,7 @@ function cargoServiceUnits(slotCount, fraction01, bias = 1) {
 
 /** Light visitor personality — combat leans ammo/hull; freighters lean cargo. */
 function visitorServiceBias(visitorId) {
-  const combat = ['scout', 'interceptor', 'patrol', 'gunship'];
+  const combat = ['scout', 'interceptor', 'patrol', 'gunship', 'warden'];
   const cargoHeavy = ['hauler', 'freighter', 'tanker'];
   if (combat.includes(visitorId)) return { ammo: 1.15, hull: 1.1, fuel: 1, cargo: 0.85 };
   if (cargoHeavy.includes(visitorId)) return { ammo: 0.9, hull: 1, fuel: 1, cargo: 1.2 };
@@ -911,7 +952,7 @@ function makeCargo(kind = null) {
   } else {
     k = { ...kind };
   }
-  return {
+  const cargo = {
     id: _cargoSeq++,
     label: k.label,
     family: k.family || 'cargo',
@@ -926,11 +967,30 @@ function makeCargo(kind = null) {
     /** Resting 8-dir yaw on piles / floor (carrier overrides while held). */
     restHeading: ((Math.random() * 8) | 0) * CREW_VIS_OCT,
   };
+  if (k.catalogItemId) {
+    cargo.catalogItemId = k.catalogItemId;
+    cargo.catalogCategory = k.catalogCategory;
+    cargo.catalogMk = k.catalogMk;
+    cargo.catalogTheme = k.catalogTheme;
+    cargo.catalogVariant = k.catalogVariant;
+  }
+  if (k.targetHardpointKey) cargo.targetHardpointKey = k.targetHardpointKey;
+  return cargo;
+}
+
+/** Build upgrade freight from ItemCatalog (falls back to legacy UPGRADE_KINDS). */
+function makeCatalogUpgradeCargo(itemId) {
+  const kind = upgradeKindFromItemId(itemId);
+  if (kind) return makeCargo(kind);
+  return makeCargo(pick(UPGRADE_KINDS));
 }
 
 function makeInboundCargo() {
-  // Forklift arrivals: mostly generic crates; upgrades uncommon (installs drive strip/swap)
-  if (Math.random() < 0.18) return makeCargo(pick(UPGRADE_KINDS));
+  // Forklift arrivals: mostly generic crates; upgrades from ItemCatalog only
+  if (Math.random() < 0.18) {
+    const id = pickAmbientCatalogUpgradeId('standard');
+    if (id) return makeCatalogUpgradeCargo(id);
+  }
   if (Math.random() < 0.12) return makeCargo(pick(SERVICE_CARGO));
   return makeCargo(pick(CRATE_VARIANTS));
 }
@@ -975,6 +1035,8 @@ export class HangarBay {
     this._npcUid = 1;
     this._floorDropSeq = 1;
     this._shipPos = { x: 0, y: 0 };
+    /** Live player Ship entity (set each hangar update) — owns shipDef loadout */
+    this._playerShip = null;
     this._shipAngle = SHIP.SPAWN_ANGLE;
     this.crane = null;
     this._pressure = 0; // <0 need more cargo, >0 need less
@@ -1003,7 +1065,9 @@ export class HangarBay {
     this.bayTicker = [[], [], []];
   }
 
-  reset() {
+  /** @param {object|null} [playerShip] — current player Ship (shipDef already applied); used to size B1/B3 peers */
+  reset(playerShip = null) {
+    if (playerShip) this._playerShip = playerShip;
     this.time = 0;
     this.npcs = [];
     this._sparkle = [];
@@ -1026,14 +1090,16 @@ export class HangarBay {
       x: 0,
       bayId: 'B2',
       bayIndex: 1,
+      padMk: 2,
       visitorId: 'player',
       shipState: null,
       service: null,
       seq: null,
     };
+    const peerPadMk = this._playerPadMk();
     this.sidePads = [
-      rollSidePad(-BAY.SIDE_PAD_X, 'B1', 0),
-      rollSidePad(BAY.SIDE_PAD_X, 'B3', 2),
+      rollSidePad(-BAY.SIDE_PAD_X, 'B1', 0, peerPadMk),
+      rollSidePad(BAY.SIDE_PAD_X, 'B3', 2, peerPadMk),
     ];
     this.piles = buildPileHardpoints();
     this._seedCargo();
@@ -1423,6 +1489,8 @@ export class HangarBay {
 
   /**
    * Service column rows — one row per job type (chunks of ≤5 pips; overflow repeats label).
+   * Install pips share the "Install" label; each unit still maps to a backend service item
+   * with targetHardpointKey / catalogItemId for strip→install simulation.
    */
   _boardTaskRows(bayIndex) {
     const pad = this._servicePad(bayIndex);
@@ -1444,6 +1512,8 @@ export class HangarBay {
       byType.get(it.type).units.push({
         color: this._boardUnitColor(bayIndex, svc, it),
         status: it.status,
+        serviceItemId: it.id,
+        targetHardpointKey: it.targetHardpointKey || null,
       });
     }
 
@@ -1951,24 +2021,31 @@ export class HangarBay {
     pad.padDrop = 0;
     pad.shipVx = 0;
     pad.shipVy = 0;
-    if (pad.visitorId) pad.thrusters = makeVisitorThrusters(pad.visitorId);
-    else pad.thrusters = null;
+    if (pad.visitorId) {
+      const def = this._ensurePadShipDef(pad);
+      pad.thrusters = makeVisitorThrusters(def);
+    } else {
+      pad.thrusters = null;
+      pad.shipDef = null;
+    }
     clearVisitorThrusters(pad);
   }
 
   _fireVisitorManeuverBurst(pad, power) {
     if (!pad.visitorId) return;
-    if (!pad.thrusters) pad.thrusters = makeVisitorThrusters(pad.visitorId);
+    const def = this._ensurePadShipDef(pad);
+    if (!pad.thrusters) pad.thrusters = makeVisitorThrusters(def);
     clearVisitorThrusters(pad);
-    const prop = getVisitorPropulsion(pad.visitorId);
+    const prop = getVisitorPropulsion(def);
     for (const m of prop.thrusters) pad.thrusters[m.key] = power;
   }
 
   _fireVisitorNoseBrake(pad, power) {
     if (!pad.visitorId) return;
-    if (!pad.thrusters) pad.thrusters = makeVisitorThrusters(pad.visitorId);
+    const def = this._ensurePadShipDef(pad);
+    if (!pad.thrusters) pad.thrusters = makeVisitorThrusters(def);
     clearVisitorThrusters(pad);
-    const prop = getVisitorPropulsion(pad.visitorId);
+    const prop = getVisitorPropulsion(def);
     const noses = prop.thrusters.filter((m) => m.key.startsWith('nose'));
     if (noses.length) {
       for (const m of noses) pad.thrusters[m.key] = power;
@@ -1981,7 +2058,8 @@ export class HangarBay {
 
   _fireVisitorEngine(pad, power) {
     if (!pad.visitorId) return;
-    if (!pad.thrusters) pad.thrusters = makeVisitorThrusters(pad.visitorId);
+    const def = this._ensurePadShipDef(pad);
+    if (!pad.thrusters) pad.thrusters = makeVisitorThrusters(def);
     clearVisitorThrusters(pad);
     pad.thrusters.mainEngine = power;
   }
@@ -1993,8 +2071,7 @@ export class HangarBay {
   }
 
   _finishVisitorLeave(pad, { clearCargo = true } = {}) {
-    pad.visitorId = null;
-    pad.thrusters = null;
+    clearPadVisitor(pad);
     pad.shipY = 0;
     pad.shipScale = 1;
     pad.shipHover = 0;
@@ -2025,10 +2102,320 @@ export class HangarBay {
     this._beginCaptainService(pad);
   }
 
+  /**
+   * Dev: restore starter loadout, purge B2 staging + in-transit freight,
+   * drop the old checklist, and roll a fresh captain service.
+   */
+  rerollPlayerService() {
+    const B2 = 1;
+
+    if (this._playerShip) {
+      this._playerShip.shipDef = createPlayerStarter();
+      this._playerShip.miningLaserRelAngle = 0;
+      this._playerShip.miningLaserFiring = false;
+      this._playerShip.miningLaserBeamLength = undefined;
+      this._playerShip.muzzleFlash = 0;
+      this._playerShip.turretRecoil = 0;
+      if (typeof this._playerShip.angle === 'number') {
+        this._playerShip.turretAngle = this._playerShip.angle;
+      }
+    }
+
+    // Drop the old checklist entirely (pips / tasks gone — not marked done)
+    this.playerBay.service = null;
+    this.playerBay.shipState = null;
+    this.playerArrivalPending = false;
+    this.bayClearing[B2] = false;
+
+    this._purgeBayFreightAndCrew(B2);
+    this._beginCaptainService(this.playerBay);
+    return true;
+  }
+
+  /**
+   * Dev: full reset of a neighbor pad (B1/B3) — cancels any in-flight
+   * arrival/departure, purges that bay's staging freight + mechanic/forklift
+   * claims, drops the old visitor + checklist, then immediately docks a
+   * fresh modular ship (new seed/class/theme, locked at create) already
+   * seated north — no slow arrival animation.
+   * @param {number} bayIndex 0 (B1) or 2 (B3)
+   * @returns {boolean} true if a pad existed at that index
+   */
+  rerollSidePadVisitor(bayIndex) {
+    const pad = this._sidePadForBay(bayIndex);
+    if (!pad) return false;
+
+    const prevVisitorId = pad.visitorId;
+
+    this.clearOps(bayIndex);
+    this._purgeBayFreightAndCrew(bayIndex);
+    this.bayClearing[bayIndex] = false;
+    pad.seq = null;
+    pad.service = null;
+    pad.shipState = null;
+    clearPadVisitor(pad);
+
+    pad.padMk = this._rollVisitorPadMk();
+    let visitorId = pickVisitorId(pad.padMk);
+    if (visitorId === prevVisitorId) {
+      const retry = pickVisitorId(pad.padMk);
+      if (retry) visitorId = retry;
+    }
+    equipPadVisitor(pad, visitorId);
+    this._finishVisitorArrive(pad);
+    return true;
+  }
+
+  /**
+   * Clear all staging piles, floor drops, and in-transit freight for a bay;
+   * park that bay's mechanics and any forklifts/crane jobs touching it.
+   */
+  _purgeBayFreightAndCrew(bay) {
+    for (const p of this.piles) {
+      if (p.bay === bay) p.items = [];
+    }
+    this.floorDrops = this.floorDrops.filter((d) => {
+      if (bayIndexFromX(d.x) === bay) return false;
+      if (d.cargo?.serviceBay === bay) return false;
+      return true;
+    });
+
+    for (const npc of this.npcs) {
+      if (!npc.alive) continue;
+
+      if (npc.kind === 'mechanic' && (npc.homeBay ?? npc.bay) === bay) {
+        npc.mechPhase = null;
+        npc.targetSlot = null;
+        npc._mechLift = null;
+        npc.mechHandT = 0;
+        npc.cargo = null;
+        npc.hullTarget = null;
+        npc.targetPile = null;
+        npc.lingerPile = null;
+        npc.stripCategory = null;
+        npc.stripHardpointKey = null;
+        npc.workHardpointKey = null;
+        npc.tripsLeft = 0;
+        this._clearBoardProgress(npc);
+        this._clearTaskClaim(npc);
+        this._parkMechanicIdle(npc);
+        continue;
+      }
+
+      if (npc.kind === 'forklift') {
+        const touches =
+          npc.cargo?.serviceBay === bay ||
+          npc._fetchBay === bay ||
+          npc._claimBay === bay ||
+          npc.targetPile?.bay === bay ||
+          npc.lingerPile?.bay === bay;
+        if (!touches) continue;
+        npc.cargo = null;
+        npc._fetchInbound = false;
+        npc._fetchBay = null;
+        npc._fetchItemId = null;
+        npc.targetPile = null;
+        npc.lingerPile = null;
+        npc.targetSlot = null;
+        npc.forkPhase = null;
+        npc._forkWorkT = 0;
+        npc._mechLift = null;
+        this._clearTaskClaim(npc);
+        this._parkForkliftAtHub(npc);
+      }
+    }
+
+    if (this.crane) {
+      const c = this.crane;
+      const carriedHere = c.carried?.serviceBay === bay;
+      const touches =
+        carriedHere ||
+        c.pickup?.bay === bay ||
+        c.dropoff?.bay === bay ||
+        (c.pickup?.isFloorDrop && bayIndexFromX(c.pickup.x) === bay);
+      if (carriedHere) c.carried = null;
+      if (touches) {
+        c.pickup = null;
+        c.dropoff = null;
+        c.pause = 0;
+        this._applyCraneJob(c, this._pickCraneJob());
+      }
+    }
+  }
+
+  /**
+   * Pad-Mk tier matching the player's current ship (Standard → Mk2, etc.),
+   * clamped to Mk2 — Jennings has no Mk3 bay yet, so a Heavy-flying player
+   * still gets Mk1/Mk2-scaled neighbors rather than nothing.
+   */
+  _playerPadMk() {
+    const group = shipDefSwapGroup(this._playerShip?.shipDef);
+    return Math.min(2, padMkForSwapGroup(group));
+  }
+
+  /** Fresh B1/B3 visitor padMk — mostly peer-sized to the player, sometimes smaller. */
+  _rollVisitorPadMk() {
+    return rollVisitorPadMk(this._playerPadMk());
+  }
+
+  /** Modular loadout for a bay — player Ship.shipDef or visitor pad.shipDef */
+  _shipDefForBay(bay) {
+    if (bay === 1) {
+      const def = this._playerShip?.shipDef;
+      if (def) return def;
+      if (this._playerShip && !this._playerShip.shipDef) {
+        this._playerShip.shipDef = createPlayerStarter();
+      }
+      return this._playerShip?.shipDef || null;
+    }
+    const pad = this._servicePad(bay);
+    return pad?.shipDef || null;
+  }
+
+  _ensurePadShipDef(pad) {
+    if (!pad) return null;
+    if (pad.bayIndex === 1) {
+      return this._shipDefForBay(1);
+    }
+    // Locked for the visit lifetime — never re-roll cosmetics while docked.
+    if (pad.shipDef) return pad.shipDef;
+    if (!pad.visitorId || pad.visitorId === 'player') return null;
+    pad.shipDef = createVisitorShipDef(pad.visitorId);
+    if (!pad.thrusters) pad.thrusters = makeVisitorThrusters(pad.shipDef);
+    return pad.shipDef;
+  }
+
+  /**
+   * Install catalog freight onto its target hardpoint (or an empty matching socket).
+   * @returns {boolean} false if target socket still occupied (caller should strip first)
+   */
+  _installCatalogPart(bay, cargo) {
+    const def = this._shipDefForBay(bay);
+    if (!def || !cargo) return true; // nothing to bind
+    let itemId = cargo.catalogItemId;
+    const cat =
+      cargo.catalogCategory ||
+      categoryFromFreightLabel(cargo.label) ||
+      getItem(itemId)?.category;
+    if (!cat) return true;
+
+    const mounts = def.resolveMounts();
+    const targetKey = cargo.targetHardpointKey;
+    if (targetKey) {
+      const m = mounts[targetKey];
+      if (!m) return true; // no such socket — drop the request cleanly
+      if (m.item) return false; // exact hardpoint occupied
+      if (!itemId) {
+        itemId = pickCatalogItemId(shipDefSwapGroup(def) || 'standard', cat, {
+          mk: m.socket.mk || 2,
+          playerEquipable: true,
+        });
+      }
+      if (!itemId) return true;
+      const result = equipHardpoint(def, targetKey, itemId);
+      if (!result.ok && result.reason === 'mk_too_high') {
+        const fallback = pickCatalogItemId(shipDefSwapGroup(def) || 'standard', cat, {
+          mk: m.socket.mk || 2,
+          playerEquipable: true,
+        });
+        if (fallback) return equipHardpoint(def, targetKey, fallback).ok;
+      }
+      return result.ok;
+    }
+
+    const empties = emptySocketsForCategory(def, cat);
+    if (!empties.length) {
+      const hasSocket = Object.values(mounts).some(
+        (m) => m.socket.category === cat
+      );
+      return !hasSocket;
+    }
+    const slot = empties[0];
+    const maxMk = slot.socket.mk || 2;
+    if (!itemId) {
+      itemId = pickCatalogItemId(shipDefSwapGroup(def) || 'standard', cat, {
+        mk: maxMk,
+        playerEquipable: true,
+      });
+    }
+    let item = getItem(itemId);
+    if (item && item.mk > maxMk) {
+      itemId = pickCatalogItemId(shipDefSwapGroup(def) || 'standard', cat, {
+        mk: maxMk,
+        playerEquipable: true,
+      });
+      item = getItem(itemId);
+    }
+    if (!itemId) return true;
+    const result = equipHardpoint(def, slot.key, itemId);
+    if (!result.ok && result.reason === 'mk_too_high') {
+      const fallback = pickCatalogItemId(shipDefSwapGroup(def) || 'standard', cat, {
+        mk: maxMk,
+        playerEquipable: true,
+      });
+      if (fallback) return equipHardpoint(def, slot.key, fallback).ok;
+    }
+    return result.ok;
+  }
+
+  /**
+   * Exact hardpoint to strip — prefer mechanic hint, else staged inbound targets.
+   */
+  _stripHardpointForBay(bay, preferKey = null) {
+    if (preferKey) return preferKey;
+    const def = this._shipDefForBay(bay);
+    if (!def) return null;
+    const upIn = this._bayPile(bay, 'in', ROW.N);
+    for (const c of upIn?.items || []) {
+      if (c.family !== 'upgrade' || !c.targetHardpointKey) continue;
+      if (needsStripBeforeInstallKey(def, c.targetHardpointKey)) {
+        return c.targetHardpointKey;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * Category to strip for a bay — prefer mechanic hint, else staged inbound
+   * parts that still need a free socket (legacy category path).
+   */
+  _stripCategoryForBay(bay, preferCategory = null) {
+    if (preferCategory) return preferCategory;
+    const def = this._shipDefForBay(bay);
+    if (!def) return null;
+    const upIn = this._bayPile(bay, 'in', ROW.N);
+    for (const c of upIn?.items || []) {
+      if (c.family !== 'upgrade') continue;
+      if (c.targetHardpointKey) continue; // handled by exact-key path
+      const cat =
+        c.catalogCategory ||
+        categoryFromFreightLabel(c.label) ||
+        getItem(c.catalogItemId)?.category;
+      if (cat && needsStripBeforeInstall(def, cat)) return cat;
+    }
+    return null;
+  }
+
+  /** Unequip a hardpoint and return catalog freight cargo (or null). */
+  _stripCatalogPart(bay, preferCategory = null, preferKey = null) {
+    const def = this._shipDefForBay(bay);
+    if (!def) return makeCargo(pick(UPGRADE_KINDS));
+    const keyHint = this._stripHardpointForBay(bay, preferKey);
+    const cat = keyHint ? null : this._stripCategoryForBay(bay, preferCategory);
+    const key = pickStripKey(def, cat, keyHint);
+    if (!key) return null;
+    const itemId = unequipHardpoint(def, key);
+    if (!itemId) return null;
+    const cargo = makeCatalogUpgradeCargo(itemId);
+    cargo.strippedFromKey = key;
+    return cargo;
+  }
+
   /** Roll need meters + captain checklist (visitors + interim B2 ambient). */
   _beginCaptainService(pad) {
     if (!pad?.visitorId) return;
-    const cargoMk = cargoMkForVisitor(pad.visitorId);
+    const shipDef = this._ensurePadShipDef(pad);
+    const cargoMk = cargoMkForVisitor(pad.visitorId, pad.shipDef);
     const bias = visitorServiceBias(pad.visitorId);
     const ammoBase = rand(0.05, 1);
     const cargoSpace = rand(0.05, 1);
@@ -2097,9 +2484,23 @@ export class HangarBay {
       pushN(unloadN, 'unloadCargo', { priority: 1 });
     }
 
+    // Upgrades: exact hardpoint + matching catalog item (forklift fetches that item)
     const upgradeCount = (Math.random() * 3) | 0; // 0–2
+    const usedHardpoints = new Set();
     for (let i = 0; i < upgradeCount; i++) {
-      push('upgrade', { kindLabel: pick(UPGRADE_KINDS).label, priority: 2 });
+      const req = pickUpgradeInstallRequest(shipDef, {
+        excludeKeys: [...usedHardpoints],
+      });
+      if (!req) break;
+      usedHardpoints.add(req.hardpointKey);
+      push('upgrade', {
+        kindLabel: req.kindLabel,
+        boardLabel: req.boardLabel,
+        catalogItemId: req.catalogItemId,
+        catalogCategory: req.catalogCategory,
+        targetHardpointKey: req.hardpointKey,
+        priority: 2,
+      });
     }
 
     const isPlayer = pad.bayIndex === 1;
@@ -2229,8 +2630,27 @@ export class HangarBay {
     it.status = 'staging';
     let cargo;
     if (it.type === 'upgrade') {
-      const kind = UPGRADE_KINDS.find((k) => k.label === it.kindLabel) || pick(UPGRADE_KINDS);
-      cargo = makeCargo(kind);
+      let itemId = it.catalogItemId;
+      if (!itemId) {
+        const cat =
+          it.catalogCategory ||
+          categoryFromFreightLabel(it.kindLabel) ||
+          'smallTurret';
+        const def = this._shipDefForBay(pad.bayIndex);
+        itemId = pickCatalogItemId(shipDefSwapGroup(def) || 'standard', cat, {
+          playerEquipable: true,
+        });
+      }
+      cargo = itemId
+        ? makeCatalogUpgradeCargo(itemId)
+        : makeCargo(
+            UPGRADE_KINDS.find((k) => k.label === it.kindLabel) || pick(UPGRADE_KINDS)
+          );
+      if (it.catalogCategory) cargo.catalogCategory = it.catalogCategory;
+      if (it.targetHardpointKey) cargo.targetHardpointKey = it.targetHardpointKey;
+      if (it.boardLabel) cargo.boardLabel = it.boardLabel;
+      // Always bind the exact catalog id from the Install request
+      if (it.catalogItemId) cargo.catalogItemId = it.catalogItemId;
     } else if (it.type === 'loadCargo' || it.kindLabel === 'CRATE') {
       cargo = makeCargo(pick(CRATE_VARIANTS));
     } else {
@@ -2247,6 +2667,7 @@ export class HangarBay {
   /** Prefer checklist-tagged freight when loading a service bay. */
   _takeServicePileCargo(pile, bay, job) {
     if (!pile?.items?.length) return null;
+    if (job === 'stageFerry') return this._pilePop(pile);
     const svc = this._servicePad(bay)?.service;
     if (!svc || svc.phase !== 'active') {
       return this._pilePop(pile);
@@ -2650,8 +3071,8 @@ export class HangarBay {
     clearVisitorThrusters(pad);
 
     if (kind === 'arrive') {
-      pad.visitorId = pickVisitorId();
-      pad.thrusters = makeVisitorThrusters(pad.visitorId);
+      pad.padMk = this._rollVisitorPadMk();
+      equipPadVisitor(pad, pickVisitorId(pad.padMk));
       pad.padAngle = FACE_SOUTH;
       pad.shipAngle = FACE_SOUTH;
       pad.shipY = HANGAR.LAND_START_Y;
@@ -2674,8 +3095,7 @@ export class HangarBay {
       this.beginOps(pad.bayIndex, 'elevator');
       pad.seq = { kind, phase: 'warn', t: 0 };
     } else if (kind === 'raiseLaunch' || kind === 'raiseArrive') {
-      pad.visitorId = null;
-      pad.thrusters = null;
+      clearPadVisitor(pad);
       pad.service = null;
       pad.shipState = null;
       pad.padAngle = FACE_SOUTH;
@@ -2738,8 +3158,7 @@ export class HangarBay {
         if (pad.shipY < HANGAR.LAUNCH_EXIT_Y || s.t > 5) {
           s.phase = 'doorsClose';
           s.t = 0;
-          pad.visitorId = null;
-          pad.thrusters = null;
+          clearPadVisitor(pad);
           pad.shipY = 0;
           pad.shipHover = 0;
           pad.shipScale = 1;
@@ -2885,8 +3304,7 @@ export class HangarBay {
           s.phase = 'below';
           s.t = 0;
           pad.padDrop = 1;
-          pad.visitorId = null;
-          pad.thrusters = null;
+          clearPadVisitor(pad);
         }
         break;
       }
@@ -2941,8 +3359,8 @@ export class HangarBay {
       case 'below':
         pad.padDrop = 1;
         if (s.t >= HANGAR.VISITOR_BELOW_TIME * 0.85) {
-          pad.visitorId = pickVisitorId();
-          pad.thrusters = makeVisitorThrusters(pad.visitorId);
+          pad.padMk = this._rollVisitorPadMk();
+          equipPadVisitor(pad, pickVisitorId(pad.padMk));
           pad.padAngle = FACE_NORTH;
           pad.shipAngle = FACE_NORTH;
           s.phase = 'riseShip';
@@ -3001,8 +3419,7 @@ export class HangarBay {
         if (pad.shipY < HANGAR.LAUNCH_EXIT_Y || s.t > 4.5) {
           s.phase = 'doorsClose';
           s.t = 0;
-          pad.visitorId = null;
-          pad.thrusters = null;
+          clearPadVisitor(pad);
           pad.shipY = 0;
           pad.shipHover = 0;
           pad.shipScale = 1;
@@ -3061,8 +3478,8 @@ export class HangarBay {
       case 'below':
         pad.padDrop = 1;
         if (s.t >= HANGAR.VISITOR_BELOW_TIME * 0.85) {
-          pad.visitorId = pickVisitorId();
-          pad.thrusters = makeVisitorThrusters(pad.visitorId);
+          pad.padMk = this._rollVisitorPadMk();
+          equipPadVisitor(pad, pickVisitorId(pad.padMk));
           pad.padAngle = FACE_NORTH;
           pad.shipAngle = FACE_NORTH;
           s.phase = 'riseShip';
@@ -3308,6 +3725,9 @@ export class HangarBay {
     if (job === 'takeOut' && pile?.id && extra != null) {
       return `takeOut:${pile.id}:${extra}`;
     }
+    if (job === 'stageFerry' && extra != null) {
+      return `stageFerry:${extra}`;
+    }
     if (pile?.id) return `${job}:${pile.id}`;
     if (bay != null) return `${job}:b${bay}`;
     return `${job}`;
@@ -3332,7 +3752,9 @@ export class HangarBay {
             ? npc.cargo?.serviceKey || npc.cargo?.id || npc.uid
             : job === 'takeOut'
               ? npc.targetSlot
-              : null;
+              : job === 'stageFerry'
+                ? `${npc.ferrySource?.id || pile?.id || ''}>${npc.ferryDest?.id || ''}`
+                : null;
     npc.claimKey = this._taskClaimKey(job, pile, bay, ex);
   }
 
@@ -3350,7 +3772,9 @@ export class HangarBay {
             ? exceptNpc?.cargo?.serviceKey || exceptNpc?.cargo?.id || exceptNpc?.uid
             : t.job === 'takeOut'
               ? t.targetSlot
-              : null;
+              : t.job === 'stageFerry'
+                ? `${t.ferrySource?.id || t.targetPile?.id || ''}>${t.ferryDest?.id || ''}`
+                : null;
       const key = this._taskClaimKey(t.job, t.targetPile, t.bay, extra);
       return !claimed.has(key);
     });
@@ -3377,10 +3801,10 @@ export class HangarBay {
   }
 
   /**
-   * Crane moves: doable (src has item + dest has room) or blocked (src has item, dest full).
-   * Clearing a full pile that others are waiting on is prioritized.
+   * Staging ferry moves for one bay (S↔N/M, misshelf fixes, outbound lower).
+   * Shared by crane and idle bay mechanics.
    */
-  _enumerateCraneTasks() {
+  _enumerateBayStagingTasks(bay) {
     const tasks = [];
     const push = (pickup, dropoff, weight = 1) => {
       if (!pickup || !dropoff || pickup.id === dropoff.id) return;
@@ -3389,63 +3813,46 @@ export class HangarBay {
       tasks.push({
         pickup,
         dropoff,
+        bay,
         weight,
         status: full ? 'blocked' : 'doable',
         clears: pickup.items.length >= PILE_CAP,
       });
     };
 
-    for (let bay = 0; bay < 3; bay++) {
-      const inS = this._bayPile(bay, 'in', ROW.S);
-      const inM = this._bayPile(bay, 'in', ROW.M);
-      const inN = this._bayPile(bay, 'in', ROW.N);
-      const outS = this._bayPile(bay, 'out', ROW.S);
-      const outM = this._bayPile(bay, 'out', ROW.M);
-      const outN = this._bayPile(bay, 'out', ROW.N);
-      const clearing = !!this.bayClearing[bay];
+    const inS = this._bayPile(bay, 'in', ROW.S);
+    const inM = this._bayPile(bay, 'in', ROW.M);
+    const inN = this._bayPile(bay, 'in', ROW.N);
+    const outS = this._bayPile(bay, 'out', ROW.S);
+    const outM = this._bayPile(bay, 'out', ROW.M);
+    const outN = this._bayPile(bay, 'out', ROW.N);
+    const clearing = !!this.bayClearing[bay];
 
-      // Empty-bay sweep: dump every hardpoint down to south-out for forklift haul-off
-      if (clearing) {
-        push(inS, outS, 16);
-        push(inM, outS, 16);
-        push(inN, outS, 16);
-        push(outM, outS, 16);
-        push(outN, outS, 16);
-        continue;
-      }
+    if (clearing) {
+      push(inS, outS, 16);
+      push(inM, outS, 16);
+      push(inN, outS, 16);
+      push(outM, outS, 16);
+      push(outN, outS, 16);
+      return tasks;
+    }
 
-      // Inbound lift: don't keep stuffing mid/top that are already stocked
-      if (inS?.items.length && this._bayAcceptsCargo(bay)) {
-        const svcPad = this._servicePad(bay);
-        const svc = svcPad?.service;
-        const svcActive = svc?.phase === 'active';
-        if (svcActive) {
-          const pending = this._serviceNeedsStaging(svcPad).filter(
-            (it) => it.status === 'pending' || it.status === 'staging'
-          );
-          const liftIdx = inS.items.findIndex(
-            (c) =>
-              pending.some((it) => this._cargoMatchesServiceItem(c, it, bay))
-          );
-          if (liftIdx >= 0) {
-            if (liftIdx !== inS.items.length - 1) {
-              const [item] = inS.items.splice(liftIdx, 1);
-              inS.items.push(item);
-            }
-            const top = inS.items[inS.items.length - 1];
-            const svcBoost = top.serviceKey ? 6 : 0;
-            if (top.family === 'upgrade') {
-              const nCount = inN?.items.length || 0;
-              if (nCount < PILE_CAP) push(inS, inN, (nCount === 0 ? 5 : 2) + svcBoost);
-            } else {
-              const mCount = inM?.items.length || 0;
-              if (mCount < PILE_CAP) push(inS, inM, (mCount < 2 ? 5 : 1) + svcBoost);
-            }
-          } else {
-            // Non-matching south freight blocks checklist bring-in — sweep it out
-            push(inS, outS, 10);
+    if (inS?.items.length && this._bayAcceptsCargo(bay)) {
+      const svcPad = this._servicePad(bay);
+      const svc = svcPad?.service;
+      const svcActive = svc?.phase === 'active';
+      if (svcActive) {
+        const pending = this._serviceNeedsStaging(svcPad).filter(
+          (it) => it.status === 'pending' || it.status === 'staging'
+        );
+        const liftIdx = inS.items.findIndex((c) =>
+          pending.some((it) => this._cargoMatchesServiceItem(c, it, bay))
+        );
+        if (liftIdx >= 0) {
+          if (liftIdx !== inS.items.length - 1) {
+            const [item] = inS.items.splice(liftIdx, 1);
+            inS.items.push(item);
           }
-        } else {
           const top = inS.items[inS.items.length - 1];
           const svcBoost = top.serviceKey ? 6 : 0;
           if (top.family === 'upgrade') {
@@ -3455,43 +3862,66 @@ export class HangarBay {
             const mCount = inM?.items.length || 0;
             if (mCount < PILE_CAP) push(inS, inM, (mCount < 2 ? 5 : 1) + svcBoost);
           }
+        } else {
+          push(inS, outS, 10);
+        }
+      } else {
+        const top = inS.items[inS.items.length - 1];
+        const svcBoost = top.serviceKey ? 6 : 0;
+        if (top.family === 'upgrade') {
+          const nCount = inN?.items.length || 0;
+          if (nCount < PILE_CAP) push(inS, inN, (nCount === 0 ? 5 : 2) + svcBoost);
+        } else {
+          const mCount = inM?.items.length || 0;
+          if (mCount < PILE_CAP) push(inS, inM, (mCount < 2 ? 5 : 1) + svcBoost);
         }
       }
+    }
 
-      // Fix misshelved freight: cargo on UP → CG (or south-out); upgrades on CG → UP
-      const fixMisshelf = (src, prefer, fallback, weight) => {
-        if (!src?.items.length) return;
-        const top = src.items[src.items.length - 1];
-        const wantUpgrade = top.family === 'upgrade';
-        const srcIsUpgrade = src.role === 'upgrade';
-        if (wantUpgrade === srcIsUpgrade) return;
-        if (prefer && prefer.items.length < PILE_CAP) push(src, prefer, weight);
-        else if (fallback && fallback.items.length < PILE_CAP) push(src, fallback, weight - 1);
-      };
-      fixMisshelf(inN, inM, outS, 22);
-      fixMisshelf(inM, inN, outS, 22);
-      fixMisshelf(outN, outM, outS, 20);
-      fixMisshelf(outM, outN, outS, 20);
-
-      // Outbound lower to storage
-      push(outN, outS, 4);
-      push(outM, outS, 4);
-
-      // Cap clears — never dump visitor checklist freight off-station
-      const safeExport = (pile) => {
-        if (!pile?.items.length) return false;
-        const top = pile.items[pile.items.length - 1];
-        return !top.serviceKey;
-      };
-      if (inM?.items.length >= PILE_CAP && safeExport(inM)) push(inM, outS, 12);
-      if (inN?.items.length >= PILE_CAP && safeExport(inN)) push(inN, outS, 12);
-      if (outM?.items.length >= PILE_CAP) push(outM, outS, 12);
-      if (outN?.items.length >= PILE_CAP) push(outN, outS, 12);
-
-      if (this._pressure > 0) {
-        if (safeExport(inM)) push(inM, outS, 2);
-        if (safeExport(inN)) push(inN, outS, 2);
+    const fixMisshelf = (src, prefer, fallback, weight) => {
+      if (!src?.items.length) return;
+      const top = src.items[src.items.length - 1];
+      const wantUpgrade = top.family === 'upgrade';
+      const srcIsUpgrade = src.role === 'upgrade';
+      if (wantUpgrade === srcIsUpgrade) return;
+      if (prefer && prefer.items.length < PILE_CAP) push(src, prefer, weight);
+      else if (fallback && fallback.items.length < PILE_CAP) {
+        push(src, fallback, weight - 1);
       }
+    };
+    fixMisshelf(inN, inM, outS, 22);
+    fixMisshelf(inM, inN, outS, 22);
+    fixMisshelf(outN, outM, outS, 20);
+    fixMisshelf(outM, outN, outS, 20);
+
+    push(outN, outS, 4);
+    push(outM, outS, 4);
+
+    const safeExport = (pile) => {
+      if (!pile?.items.length) return false;
+      const top = pile.items[pile.items.length - 1];
+      return !top.serviceKey;
+    };
+    if (inM?.items.length >= PILE_CAP && safeExport(inM)) push(inM, outS, 12);
+    if (inN?.items.length >= PILE_CAP && safeExport(inN)) push(inN, outS, 12);
+    if (outM?.items.length >= PILE_CAP) push(outM, outS, 12);
+    if (outN?.items.length >= PILE_CAP) push(outN, outS, 12);
+
+    if (this._pressure > 0) {
+      if (safeExport(inM)) push(inM, outS, 2);
+      if (safeExport(inN)) push(inN, outS, 2);
+    }
+    return tasks;
+  }
+
+  /**
+   * Crane moves: doable (src has item + dest has room) or blocked (src has item, dest full).
+   * Clearing a full pile that others are waiting on is prioritized.
+   */
+  _enumerateCraneTasks() {
+    const tasks = [];
+    for (let bay = 0; bay < 3; bay++) {
+      for (const t of this._enumerateBayStagingTasks(bay)) tasks.push(t);
     }
     return tasks;
   }
@@ -3545,8 +3975,14 @@ export class HangarBay {
     if (floorJob) return floorJob;
 
     const tasks = this._enumerateCraneTasks();
-    const doable = tasks.filter((t) => t.status === 'doable');
-    const blocked = tasks.filter((t) => t.status === 'blocked');
+    const mechBusy = this._mechanicStagingPileIds();
+    const free = tasks.filter((t) => {
+      if (mechBusy.has(t.pickup.id)) return false;
+      if (mechBusy.has(t.dropoff.id)) return false;
+      return true;
+    });
+    const doable = free.filter((t) => t.status === 'doable');
+    const blocked = free.filter((t) => t.status === 'blocked');
     const blockedDestIds = new Set(blocked.map((t) => t.dropoff.id));
 
     // 1) Hard priority: empty a pile someone is blocked waiting to drop onto
@@ -3582,6 +4018,69 @@ export class HangarBay {
 
     // 4) Nothing doable — park at home (recheck soon); don't camp blocked piles
     return { mode: 'idle', pickup: null, dropoff: null };
+  }
+
+  /** Piles idle bay mechs are already ferrying — crane should leave them alone. */
+  _mechanicStagingPileIds() {
+    const ids = new Set();
+    for (const n of this.npcs) {
+      if (n.kind !== 'mechanic' || !n.alive || n.job !== 'stageFerry') continue;
+      if (!n.cargo && n.targetPile?.id) ids.add(n.targetPile.id);
+      if (n.ferrySource?.id && !n.cargo) ids.add(n.ferrySource.id);
+      if (n.cargo && n.ferryDest?.id) ids.add(n.ferryDest.id);
+      if (n.cargo && n.targetPile?.id) ids.add(n.targetPile.id);
+    }
+    return ids;
+  }
+
+  /**
+   * Crane lost the race for this staging move — a bay mech already has the freight
+   * (or is mid-handoff) from the same pickup toward the same dropoff.
+   */
+  _craneStagingBeatenByMech(c) {
+    if (!c || c.carried || !c.pickup || c.pickup.isFloorDrop) return false;
+    const srcId = c.pickup.id;
+    const destId = c.dropoff?.id;
+    if (!srcId || srcId === 'craneHome') return false;
+    for (const n of this.npcs) {
+      if (n.kind !== 'mechanic' || !n.alive || n.job !== 'stageFerry') continue;
+      const nSrc = n.ferrySource?.id || (!n.cargo ? n.targetPile?.id : null);
+      if (nSrc !== srcId) continue;
+      if (destId && n.ferryDest?.id && n.ferryDest.id !== destId) continue;
+      if (n.cargo || n._mechLift?.cargo) return true;
+    }
+    return false;
+  }
+
+  /**
+   * Mechanic lost the race for this help-crane ferry — crane already holds freight
+   * from the same source toward the same dest (or is lowering onto that pickup).
+   */
+  _mechStagingBeatenByCrane(npc) {
+    if (!npc || npc.job !== 'stageFerry' || npc.cargo || npc._mechLift?.cargo) {
+      return false;
+    }
+    const c = this.crane;
+    if (!c || c.pickup?.isFloorDrop) return false;
+    const srcId = npc.ferrySource?.id || npc.targetPile?.id;
+    const destId = npc.ferryDest?.id;
+    if (!srcId) return false;
+    if (c.pickup?.id !== srcId) return false;
+    if (destId && c.dropoff?.id && c.dropoff.id !== destId) return false;
+    if (c.carried) return true;
+    return c.phase === 'lowerPickup' || c.phase === 'raisePickup';
+  }
+
+  /** Drop a lost staging-ferry assist and return to idle fluff. */
+  _abandonMechanicStagingFerry(npc) {
+    npc.mechPhase = null;
+    npc.targetSlot = null;
+    npc._mechLift = null;
+    npc.mechHandT = 0;
+    this._clearTaskClaim(npc);
+    npc.ferryDest = null;
+    npc.ferrySource = null;
+    this._beginIdleFluff(npc);
   }
 
   _floorDropClaimedByMechanic(drop) {
@@ -3835,6 +4334,7 @@ export class HangarBay {
       this._shipPos.x = ship.position.x;
       this._shipPos.y = ship.position.y;
     }
+    this._playerShip = ship || null;
 
     const act = thrusterActivity(ship);
     const weaponPulse =
@@ -4380,8 +4880,8 @@ export class HangarBay {
   _updateCrane(dt) {
     const c = this.crane;
     if (!c) return;
-    const moveSpeed = 88;
-    const hoistSpeed = 50;
+    const moveSpeed = 120;
+    const hoistSpeed = 55;
     const near = (a, b, eps = 2.5) => Math.abs(a - b) < eps;
 
     this._updateCraneClaw(dt);
@@ -4461,6 +4961,11 @@ export class HangarBay {
         }
         c.hoist = HOIST_RAISED;
         c.hookTargetY = null;
+        // Mech already grabbed this staging move — pick something else
+        if (this._craneStagingBeatenByMech(c)) {
+          this._applyCraneJob(c, this._pickCraneJob());
+          break;
+        }
         // Dest filled while en route — switch to next doable or linger
         if (c.dropoff && c.dropoff.items.length >= PILE_CAP) {
           this._applyCraneJob(c, this._pickCraneJob());
@@ -4487,10 +4992,20 @@ export class HangarBay {
         break;
       }
       case 'lowerPickup': {
+        if (this._craneStagingBeatenByMech(c)) {
+          c.hookTargetY = null;
+          this._applyCraneJob(c, this._pickCraneJob());
+          break;
+        }
         const pickItem = c.pickup?.isFloorDrop
           ? null
           : this._craneLockPickup(c);
         const cargo = pickItem ?? c.pickup?.items?.[0];
+        if (!cargo && !c.pickup?.isFloorDrop) {
+          c.hookTargetY = null;
+          this._applyCraneJob(c, this._pickCraneJob());
+          break;
+        }
         if (pickItem) {
           const pos = this._itemWorldPos(c.pickup, pickItem);
           c.trolleyX = this._clampTrolleyX(pos.x);
@@ -4741,15 +5256,33 @@ export class HangarBay {
           needs('upgrade') ||
           upIn.items.some((c) => c.family === 'upgrade' && c.serviceKey));
       if (serviceInstall) {
-        tasks.push({
-          job: 'installUpgrade',
-          targetPad: pad,
-          bay,
-          targetPile: upIn,
-          status: 'doable',
-          weight: svcActive ? 9 : upIn.items.length >= PILE_CAP ? 8 : 4,
-          clears: upIn.items.length >= PILE_CAP,
+        const def = this._shipDefForBay(bay);
+        const mounts = def?.resolveMounts?.() || {};
+        // Only install when a staged part's target hardpoint is empty (or category fallback)
+        const canInstall = upIn.items.some((c) => {
+          if (c.family !== 'upgrade') return false;
+          if (c.targetHardpointKey) {
+            const m = mounts[c.targetHardpointKey];
+            return m && !m.item;
+          }
+          const cat =
+            c.catalogCategory ||
+            categoryFromFreightLabel(c.label) ||
+            getItem(c.catalogItemId)?.category;
+          if (!cat || !def) return true;
+          return emptySocketsForCategory(def, cat).length > 0;
         });
+        if (canInstall) {
+          tasks.push({
+            job: 'installUpgrade',
+            targetPad: pad,
+            bay,
+            targetPile: upIn,
+            status: 'doable',
+            weight: svcActive ? 9 : upIn.items.length >= PILE_CAP ? 8 : 4,
+            clears: upIn.items.length >= PILE_CAP,
+          });
+        }
       }
     }
 
@@ -4766,17 +5299,49 @@ export class HangarBay {
       });
     }
 
-    // Strip a mount only when a replacement is staged (swap)
-    if (upOut && upIn?.items.length && needs('upgrade')) {
-      tasks.push({
-        job: 'removeUpgrade',
-        targetPad: pad,
-        bay,
-        targetPile: upOut,
-        status: upOut.items.length < PILE_CAP ? 'doable' : 'blocked',
-        weight: 3,
-        clears: false,
-      });
+    // Strip only the exact hardpoint named by a staged Install part (if occupied)
+    if (upOut && needs('upgrade')) {
+      const def = this._shipDefForBay(bay);
+      const staged = (upIn?.items || []).filter((c) => c.family === 'upgrade');
+      let stripHardpointKey = null;
+      let stripCategory = null;
+      for (const c of staged) {
+        if (c.targetHardpointKey && needsStripBeforeInstallKey(def, c.targetHardpointKey)) {
+          stripHardpointKey = c.targetHardpointKey;
+          stripCategory =
+            c.catalogCategory ||
+            categoryFromFreightLabel(c.label) ||
+            getItem(c.catalogItemId)?.category;
+          break;
+        }
+      }
+      if (!stripHardpointKey) {
+        for (const c of staged) {
+          if (c.targetHardpointKey) continue;
+          const cat =
+            c.catalogCategory ||
+            categoryFromFreightLabel(c.label) ||
+            getItem(c.catalogItemId)?.category;
+          if (cat && needsStripBeforeInstall(def, cat)) {
+            stripCategory = cat;
+            break;
+          }
+        }
+      }
+      if ((stripHardpointKey || stripCategory) && def) {
+        tasks.push({
+          job: 'removeUpgrade',
+          targetPad: pad,
+          bay,
+          targetPile: upOut,
+          status: upOut.items.length < PILE_CAP ? 'doable' : 'blocked',
+          weight: 10,
+          clears: false,
+          stripCategory,
+          stripHardpointKey,
+          tripsLeft: 1,
+        });
+      }
     }
     return tasks;
   }
@@ -4789,8 +5354,47 @@ export class HangarBay {
     const pads = this._dockTargets().filter((p) => bayIndexFromX(p.x) === homeBay);
     const servicePad = this._servicePad(homeBay);
 
-    // Already carrying — must deliver to matching outbound pile (or linger if full)
+    // Already carrying — deliver ferry dest or outbound unload pile
     if (npc.cargo) {
+      if (npc.job === 'stageFerry') {
+        const dest =
+          this._pileById(npc.ferryDest?.id) || npc.ferryDest || null;
+        const pad =
+          pads[0] ||
+          (servicePad
+            ? {
+                x: servicePad.x,
+                y: 0,
+                bayId: servicePad.bayId,
+                bayIndex: homeBay,
+                occupied: true,
+              }
+            : null);
+        if (!pad || !dest) return { mode: 'idle' };
+        if (dest.items.length < PILE_CAP) {
+          return {
+            mode: 'work',
+            job: 'stageFerry',
+            targetPad: pad,
+            bay: homeBay,
+            targetPile: dest,
+            ferryDest: dest,
+            ferrySource: npc.ferrySource || null,
+            tripsLeft: 1,
+            weight: 5,
+          };
+        }
+        return {
+          mode: 'linger',
+          job: 'stageFerry',
+          targetPad: pad,
+          bay: homeBay,
+          targetPile: dest,
+          ferryDest: dest,
+          tripsLeft: 1,
+          weight: 3,
+        };
+      }
       const pad =
         pads[0] ||
         (servicePad
@@ -4853,7 +5457,9 @@ export class HangarBay {
     const doable = free.filter((t) => t.status === 'doable');
     const blocked = free.filter((t) => t.status === 'blocked');
 
-    let pool = doable.filter((t) => t.job === 'weld' && t.service);
+    // Strip-before-install must beat install attempts (otherwise weld-loop on full sockets)
+    let pool = doable.filter((t) => t.job === 'removeUpgrade');
+    if (!pool.length) pool = doable.filter((t) => t.job === 'weld' && t.service);
     if (!pool.length) pool = doable.filter((t) => t.clears);
     if (!pool.length) {
       pool = doable.filter(
@@ -4873,7 +5479,73 @@ export class HangarBay {
       return { mode: 'linger', ...wait };
     }
 
+    // Idle helper: bay staging ferry only while the crane is busy elsewhere
+    if (this._craneIsBusy()) {
+      const ferry = this._pickMechanicStagingFerry(npc, homeBay);
+      if (ferry) return ferry;
+    }
+
     return { mode: 'idle' };
+  }
+
+  /** True when the overhead crane is mid-job (mechs may help stage their bay). */
+  _craneIsBusy() {
+    const c = this.crane;
+    if (!c) return true;
+    if ((c.pause || 0) >= 50) return true; // frozen for bay ops
+    return c.phase !== 'idle';
+  }
+
+  /**
+   * Idle mechanic staging ferry for their home bay only.
+   * Skips piles the crane is already working.
+   */
+  _pickMechanicStagingFerry(npc, homeBay) {
+    const tasks = this._enumerateBayStagingTasks(homeBay);
+    const crane = this.crane;
+    const free = this._filterUnclaimed(
+      tasks
+        .filter((t) => t.status === 'doable')
+        .filter((t) => {
+          if (crane?.pickup?.id && t.pickup.id === crane.pickup.id) return false;
+          if (crane?.carried && crane.dropoff?.id === t.dropoff.id) return false;
+          return true;
+        })
+        .map((t) => ({
+          job: 'stageFerry',
+          targetPile: t.pickup,
+          ferryDest: t.dropoff,
+          ferrySource: t.pickup,
+          bay: homeBay,
+          status: 'doable',
+          weight: t.weight || 1,
+          clears: t.clears,
+          tripsLeft: 1,
+        })),
+      npc
+    );
+    let pool = free.filter((t) => t.clears);
+    if (!pool.length) pool = free;
+    const chosen = this._pickWeighted(pool);
+    if (!chosen) return null;
+    const svcPad = this._servicePad(homeBay);
+    const pad =
+      this._dockTargets().find((p) => bayIndexFromX(p.x) === homeBay) ||
+      (svcPad
+        ? {
+            x: svcPad.x,
+            y: 0,
+            bayId: svcPad.bayId,
+            bayIndex: homeBay,
+            occupied: true,
+          }
+        : null);
+    if (!pad) return null;
+    return {
+      mode: 'work',
+      ...chosen,
+      targetPad: pad,
+    };
   }
 
   _assignMechanicRoute(npc) {
@@ -4892,8 +5564,18 @@ export class HangarBay {
     npc.targetPad = pick.targetPad;
     npc.bay = pick.bay ?? npc.homeBay;
     npc.targetPile = pick.targetPile;
-    npc.tripsLeft = 2 + ((Math.random() * 3) | 0);
+    npc.tripsLeft =
+      pick.tripsLeft != null
+        ? pick.tripsLeft
+        : pick.job === 'removeUpgrade'
+          ? 1
+          : 2 + ((Math.random() * 3) | 0);
     npc.taskMode = pick.mode;
+    npc.stripCategory = pick.stripCategory || null;
+    npc.stripHardpointKey = pick.stripHardpointKey || null;
+    npc.ferryDest = pick.ferryDest || null;
+    npc.ferrySource =
+      pick.ferrySource || (pick.job === 'stageFerry' ? pick.targetPile : null);
     if (pick.mode === 'linger') {
       npc.lingerPile = pick.targetPile;
     }
@@ -5122,15 +5804,28 @@ export class HangarBay {
       pick.job === 'installUpgrade' ||
       pick.job === 'unloadShip' ||
       pick.job === 'removeUpgrade' ||
+      pick.job === 'stageFerry' ||
       pick.mode === 'linger';
     if (!useful) return false;
-    npc.tripsLeft = Math.max(1, npc.tripsLeft || 1);
+    npc.tripsLeft = Math.max(
+      1,
+      pick.tripsLeft != null
+        ? pick.tripsLeft
+        : pick.job === 'removeUpgrade'
+          ? 1
+          : npc.tripsLeft || 1
+    );
     npc.job = pick.job;
     npc.targetPad = pick.targetPad;
     npc.bay = pick.bay ?? npc.homeBay;
     npc.targetPile = pick.targetPile;
     npc.taskMode = pick.mode;
     npc.lingerPile = pick.mode === 'linger' ? pick.targetPile : null;
+    npc.stripCategory = pick.stripCategory || null;
+    npc.stripHardpointKey = pick.stripHardpointKey || null;
+    npc.ferryDest = pick.ferryDest || null;
+    npc.ferrySource =
+      pick.ferrySource || (pick.job === 'stageFerry' ? pick.targetPile : null);
     npc.exitArmed = true;
     npc.exitStair = STAIRS[npc.homeBay] || this._nearestStair(npc.x);
     npc.hullTarget = null;
@@ -5943,6 +6638,7 @@ export class HangarBay {
   /** Peek which pile item a mechanic would take (no removal). */
   _peekServicePileCargo(pile, bay, job) {
     if (!pile?.items?.length) return null;
+    if (job === 'stageFerry') return pile.items[pile.items.length - 1];
     const svc = this._servicePad(bay)?.service;
     if (!svc || svc.phase !== 'active') {
       return pile.items[pile.items.length - 1];
@@ -5979,8 +6675,12 @@ export class HangarBay {
     const ap = this._mechApproachForSlot(pile, slotIdx);
     if (npc) npc.facing = ap.facing;
     let cargo = null;
-    const loading = npc?.job === 'loadShip' || npc?.job === 'installUpgrade';
-    const unloading = npc?.job === 'unloadShip' || npc?.job === 'removeUpgrade';
+    const ferryPick = npc?.job === 'stageFerry' && !npc.cargo;
+    const ferryDrop = npc?.job === 'stageFerry' && !!npc.cargo;
+    const loading =
+      npc?.job === 'loadShip' || npc?.job === 'installUpgrade' || ferryPick;
+    const unloading =
+      npc?.job === 'unloadShip' || npc?.job === 'removeUpgrade' || ferryDrop;
     if (unloading && npc?.cargo) cargo = npc.cargo;
     else if (loading && pile?.items?.length) {
       const bay = npc?.bay ?? bayIndexFromX(npc?.targetPad?.x ?? npc?.x ?? 0);
@@ -6021,8 +6721,12 @@ export class HangarBay {
   /** Slot index for the next mechanic pick or place on this pile. */
   _mechResolveSlot(npc, pile) {
     if (!pile) return -1;
-    const loading = npc.job === 'loadShip' || npc.job === 'installUpgrade';
-    const unloading = npc.job === 'unloadShip' || npc.job === 'removeUpgrade';
+    const ferryPick = npc.job === 'stageFerry' && !npc.cargo;
+    const ferryDrop = npc.job === 'stageFerry' && !!npc.cargo;
+    const loading =
+      npc.job === 'loadShip' || npc.job === 'installUpgrade' || ferryPick;
+    const unloading =
+      npc.job === 'unloadShip' || npc.job === 'removeUpgrade' || ferryDrop;
     if (loading && !npc.cargo) {
       const bay = npc.bay ?? bayIndexFromX(npc.targetPad?.x ?? npc.x);
       const peek = this._peekServicePileCargo(pile, bay, npc.job);
@@ -6166,7 +6870,10 @@ export class HangarBay {
     npc._mechLift = null;
     npc.mechHandT = 0;
     const p = this._pileById(npc.targetPile?.id);
-    const unloading = npc.job === 'unloadShip' || npc.job === 'removeUpgrade';
+    const unloading =
+      npc.job === 'unloadShip' ||
+      npc.job === 'removeUpgrade' ||
+      (npc.job === 'stageFerry' && !!npc.cargo);
     if (unloading && npc.cargo && p && p.items.length >= PILE_CAP) {
       this._beginNextMechanicTrip(npc);
       return;
@@ -6189,6 +6896,38 @@ export class HangarBay {
     npc.mechHandT = 0;
     const loading = npc.job === 'loadShip' || npc.job === 'installUpgrade';
     const unloading = npc.job === 'unloadShip' || npc.job === 'removeUpgrade';
+    if (npc.job === 'stageFerry') {
+      if (npc.cargo) {
+        // Picked up at source — walk to dest staging pile
+        const dest = this._pileById(npc.ferryDest?.id) || npc.ferryDest;
+        if (!dest) {
+          this._depositCargoSafe(npc.cargo, npc.homeBay ?? npc.bay, npc) ||
+            this._dropFloorCargo(npc);
+          npc.cargo = null;
+          this._clearTaskClaim(npc);
+          this._beginIdleFluff(npc);
+          return;
+        }
+        npc.targetPile = dest;
+        npc.targetSlot = null;
+        this._applyTaskClaim(npc, 'stageFerry', dest, npc.bay ?? npc.homeBay);
+        npc.state = 'toPile';
+        return;
+      }
+      // No cargo: successful dest drop, or failed pick (crane/someone beat us)
+      const destId = npc.ferryDest?.id;
+      const atDest = destId && npc.targetPile?.id === destId;
+      if (!atDest) {
+        this._abandonMechanicStagingFerry(npc);
+        return;
+      }
+      this._clearTaskClaim(npc);
+      npc.ferryDest = null;
+      npc.ferrySource = null;
+      this._noteBayTaskComplete(npc);
+      this._beginIdleFluff(npc);
+      return;
+    }
     if (loading && npc.cargo) {
       npc.hullTarget = null;
       npc.state = 'toShip';
@@ -6212,8 +6951,12 @@ export class HangarBay {
     const slotIdx = npc.targetSlot ?? 0;
     const creep = pile ? this._mechCreepForSlot(pile, slotIdx, npc) : null;
     const back = pile ? this._mechApproachForSlot(pile, slotIdx) : null;
-    const loading = npc.job === 'loadShip' || npc.job === 'installUpgrade';
-    const unloading = npc.job === 'unloadShip' || npc.job === 'removeUpgrade';
+    const ferryPick = npc.job === 'stageFerry' && !npc.cargo;
+    const ferryDrop = npc.job === 'stageFerry' && !!npc.cargo;
+    const loading =
+      npc.job === 'loadShip' || npc.job === 'installUpgrade' || ferryPick;
+    const unloading =
+      npc.job === 'unloadShip' || npc.job === 'removeUpgrade' || ferryDrop;
     const walk = 27;
 
     switch (npc.mechPhase) {
@@ -6974,13 +7717,78 @@ export class HangarBay {
     return oct;
   }
 
-  _shipLocalToWorld(padX, padY, lx, ly) {
-    const a = SHIP.SPAWN_ANGLE;
+  _shipLocalToWorld(padX, padY, lx, ly, angle = null) {
+    const a = angle ?? this.playerPadAngle ?? SHIP.SPAWN_ANGLE;
     const cos = Math.cos(a);
     const sin = Math.sin(a);
     return {
       x: padX + lx * cos - ly * sin,
       y: padY + lx * sin + ly * cos,
+    };
+  }
+
+  /** Hardpoint key for the mechanic's current install/remove job. */
+  _upgradeHardpointKeyForNpc(npc, bay) {
+    if (npc.job === 'installUpgrade') {
+      return npc.cargo?.targetHardpointKey || npc.workHardpointKey || null;
+    }
+    if (npc.job === 'removeUpgrade') {
+      return (
+        npc.stripHardpointKey ||
+        npc.workHardpointKey ||
+        this._stripHardpointForBay(bay, null)
+      );
+    }
+    return null;
+  }
+
+  /**
+   * Stand just outside a specific ship hardpoint (install / uninstall weld spot).
+   */
+  _shipHardpointApproach(pad, hardpointKey) {
+    const bay =
+      typeof pad.bayIndex === 'number' ? pad.bayIndex : bayIndexFromX(pad.x);
+    const angle =
+      bay === 1 ? this.playerPadAngle ?? SHIP.SPAWN_ANGLE : SHIP.SPAWN_ANGLE;
+    const def = this._shipDefForBay(bay);
+    const socket =
+      def?.resolveMounts?.()?.[hardpointKey]?.socket ||
+      HARDPOINTS[hardpointKey] ||
+      null;
+    if (!socket) return this._shipHullApproach(pad, 'upgrade');
+
+    const padY = pad.y ?? 0;
+    const onHull = this._shipLocalToWorld(pad.x, padY, socket.x, socket.y, angle);
+    const dx = onHull.x - pad.x;
+    const dy = onHull.y - padY;
+    const len = Math.hypot(dx, dy);
+
+    // Center / near-center mounts (dorsal turret): approach from a beam flank
+    if (len < 5) {
+      const side = Math.random() < 0.5 ? -1 : 1;
+      const stand = this._shipLocalToWorld(
+        pad.x,
+        padY,
+        socket.x * 0.35 + 2,
+        side * (SHIP_EXTENT.BEAM * 0.48),
+        angle
+      );
+      return {
+        x: stand.x,
+        y: stand.y,
+        hardpointKey,
+        workX: onHull.x,
+        workY: onHull.y,
+      };
+    }
+
+    const standR = len + 3.2;
+    return {
+      x: pad.x + (dx / len) * standR,
+      y: padY + (dy / len) * standR,
+      hardpointKey,
+      workX: onHull.x,
+      workY: onHull.y,
     };
   }
 
@@ -7034,7 +7842,11 @@ export class HangarBay {
       ly = rand(-7, 7);
     }
     const padY = pad.y ?? 0;
-    const onHull = this._shipLocalToWorld(pad.x, padY, lx, ly);
+    const bay =
+      typeof pad.bayIndex === 'number' ? pad.bayIndex : bayIndexFromX(pad.x);
+    const angle =
+      bay === 1 ? this.playerPadAngle ?? SHIP.SPAWN_ANGLE : SHIP.SPAWN_ANGLE;
+    const onHull = this._shipLocalToWorld(pad.x, padY, lx, ly, angle);
     const dx = onHull.x - pad.x;
     const dy = onHull.y - padY;
     const len = Math.hypot(dx, dy) || 1;
@@ -7050,6 +7862,13 @@ export class HangarBay {
   _mechanicJobValid(npc) {
     if (npc.job === 'weld') return this._padWorkable(npc.targetPad);
     if (npc.job === 'idle' || npc.taskMode === 'despawn') return false;
+    if (npc.job === 'stageFerry') {
+      if (this._mechStagingBeatenByCrane(npc)) return false;
+      const p = this._pileById(npc.targetPile?.id);
+      if (!p) return false;
+      if (npc.cargo) return p.items.length < PILE_CAP;
+      return p.items.length > 0;
+    }
     if (!this._padWorkable(npc.targetPad) &&
         (npc.job === 'loadShip' || npc.job === 'unloadShip' ||
           npc.job === 'installUpgrade' || npc.job === 'removeUpgrade')) {
@@ -7105,7 +7924,11 @@ export class HangarBay {
       npc.state = 'toShip';
       return;
     }
-    if (npc.job === 'loadShip' || npc.job === 'installUpgrade') {
+    if (
+      npc.job === 'loadShip' ||
+      npc.job === 'installUpgrade' ||
+      npc.job === 'stageFerry'
+    ) {
       npc.state = npc.targetPile ? 'toPile' : 'idleFluff';
       if (npc.state === 'idleFluff') this._beginIdleFluff(npc);
     } else if (npc.job === 'unloadShip' || npc.job === 'removeUpgrade') {
@@ -7155,6 +7978,11 @@ export class HangarBay {
     npc.targetSlot = null;
     npc.taskMode = pick.mode;
     npc.lingerPile = pick.mode === 'linger' ? pick.targetPile : null;
+    npc.stripCategory = pick.stripCategory || null;
+    npc.stripHardpointKey = pick.stripHardpointKey || null;
+    npc.ferryDest = pick.ferryDest || null;
+    npc.ferrySource = pick.ferrySource || (pick.job === 'stageFerry' ? pick.targetPile : null);
+    if (pick.tripsLeft != null) npc.tripsLeft = pick.tripsLeft;
     npc.exitStair = STAIRS[npc.homeBay] || this._nearestStair(npc.targetPad?.x ?? npc.x);
     this._applyTaskClaim(npc, pick.job, pick.targetPile, pick.bay);
     this._startMechanicJob(npc);
@@ -7171,6 +7999,8 @@ export class HangarBay {
     npc.hullTarget = null;
     npc.lingerTarget = null;
     npc.gossipWp = null;
+    npc.ferryDest = null;
+    npc.ferrySource = null;
     const idleSec = npc.secSinceLastBayTask || 0;
     // Fresh off a job → near-bay; long idle → wing / gossip
     const wingBias = Math.min(1, idleSec / 60);
@@ -7686,7 +8516,13 @@ export class HangarBay {
           npc.targetSlot = null;
           npc.taskMode = wake.mode;
           npc.lingerPile = wake.mode === 'linger' ? wake.targetPile : null;
-          npc.tripsLeft = 2 + ((Math.random() * 3) | 0);
+          npc.ferryDest = wake.ferryDest || null;
+          npc.ferrySource =
+            wake.ferrySource || (wake.job === 'stageFerry' ? wake.targetPile : null);
+          npc.tripsLeft =
+            wake.tripsLeft != null
+              ? wake.tripsLeft
+              : 2 + ((Math.random() * 3) | 0);
           this._applyTaskClaim(npc, wake.job, wake.targetPile, wake.bay);
           this._startMechanicJob(npc);
           break;
@@ -7735,7 +8571,27 @@ export class HangarBay {
           this._beginNextMechanicTrip(npc);
           break;
         }
-        const unloading = npc.job === 'unloadShip' || npc.job === 'removeUpgrade';
+        // Crane got this staging crate first — drop the assist
+        if (
+          npc.job === 'stageFerry' &&
+          !npc.cargo &&
+          this._mechStagingBeatenByCrane(npc)
+        ) {
+          this._abandonMechanicStagingFerry(npc);
+          break;
+        }
+        if (
+          npc.job === 'stageFerry' &&
+          !npc.cargo &&
+          !p.items.length
+        ) {
+          this._abandonMechanicStagingFerry(npc);
+          break;
+        }
+        const unloading =
+          npc.job === 'unloadShip' ||
+          npc.job === 'removeUpgrade' ||
+          (npc.job === 'stageFerry' && !!npc.cargo);
         if (unloading && p.items.length >= PILE_CAP && npc.cargo) {
           this._beginNextMechanicTrip(npc);
           break;
@@ -7783,6 +8639,12 @@ export class HangarBay {
           npc.targetSlot = null;
           npc.taskMode = 'work';
           npc.lingerPile = null;
+          npc.stripCategory = pick.stripCategory || null;
+          npc.stripHardpointKey = pick.stripHardpointKey || null;
+          npc.ferryDest = pick.ferryDest || null;
+          npc.ferrySource =
+            pick.ferrySource || (pick.job === 'stageFerry' ? pick.targetPile : null);
+          if (pick.tripsLeft != null) npc.tripsLeft = pick.tripsLeft;
           this._applyTaskClaim(npc, pick.job, pick.targetPile, pick.bay);
           this._startMechanicJob(npc);
         } else if (pick.mode === 'linger') {
@@ -7792,6 +8654,12 @@ export class HangarBay {
           npc.targetPile = pick.targetPile;
           npc.targetSlot = null;
           npc.lingerPile = pick.targetPile;
+          npc.stripCategory = pick.stripCategory || null;
+          npc.stripHardpointKey = pick.stripHardpointKey || null;
+          npc.ferryDest = pick.ferryDest || null;
+          npc.ferrySource =
+            pick.ferrySource || (pick.job === 'stageFerry' ? pick.targetPile : null);
+          if (pick.tripsLeft != null) npc.tripsLeft = pick.tripsLeft;
           this._applyTaskClaim(npc, pick.job, pick.targetPile, pick.bay);
           npc.stateT = 0.55;
         } else {
@@ -7801,6 +8669,15 @@ export class HangarBay {
         break;
       }
       case 'workPile': {
+        if (
+          npc.job === 'stageFerry' &&
+          !npc.cargo &&
+          !npc._mechLift?.cargo &&
+          this._mechStagingBeatenByCrane(npc)
+        ) {
+          this._abandonMechanicStagingFerry(npc);
+          break;
+        }
         if (npc.mechPhase) {
           this._updateMechPileWork(npc, dt);
           break;
@@ -7832,11 +8709,22 @@ export class HangarBay {
           break;
         }
         if (!npc.hullTarget) {
-          const mode =
-            npc.job === 'weld' ? 'weld'
-              : (npc.job === 'installUpgrade' || npc.job === 'removeUpgrade') ? 'upgrade'
-                : 'cargo';
-          npc.hullTarget = this._shipHullApproach(pad, mode);
+          const bay =
+            npc.bay ?? bayIndexFromX(npc.targetPad?.x ?? npc.x);
+          if (npc.job === 'installUpgrade' || npc.job === 'removeUpgrade') {
+            const hpKey = this._upgradeHardpointKeyForNpc(npc, bay);
+            npc.workHardpointKey = hpKey;
+            npc.hullTarget = hpKey
+              ? this._shipHardpointApproach(pad, hpKey)
+              : this._shipHullApproach(pad, 'upgrade');
+          } else {
+            const mode = npc.job === 'weld' ? 'weld' : 'cargo';
+            npc.hullTarget = this._shipHullApproach(pad, mode);
+          }
+        }
+        // Face the hardpoint / hull work spot while approaching
+        if (npc.hullTarget?.workX != null) {
+          npc.facing = npc.hullTarget.workX >= npc.x ? 1 : -1;
         }
         if (this._mechMove(npc, npc.hullTarget.x, npc.hullTarget.y, walk, dt)) {
           if (npc.job === 'weld') {
@@ -7896,9 +8784,11 @@ export class HangarBay {
         const upgrading =
           npc.job === 'installUpgrade' || npc.job === 'removeUpgrade';
         if (upgrading && Math.random() < 0.6) {
+          const wx = npc.hullTarget?.workX ?? npc.x;
+          const wy = npc.hullTarget?.workY ?? npc.y;
           this._sparkle.push({
-            x: npc.x + rand(-4, 4),
-            y: npc.y + rand(-5, 2),
+            x: wx + rand(-3, 3),
+            y: wy + rand(-3, 3),
             life: rand(0.12, 0.35),
             max: 0.35,
             r: rand(0.8, 2.2),
@@ -7909,6 +8799,27 @@ export class HangarBay {
         const bay = npc.bay ?? bayIndexFromX(npc.targetPad?.x ?? npc.x);
 
         if ((npc.job === 'loadShip' || npc.job === 'installUpgrade') && npc.cargo) {
+          if (npc.job === 'installUpgrade') {
+            const ok = this._installCatalogPart(bay, npc.cargo);
+            if (!ok) {
+              // Socket still occupied — return part to UP-in and strip first
+              const failedCat =
+                npc.cargo.catalogCategory ||
+                categoryFromFreightLabel(npc.cargo.label) ||
+                getItem(npc.cargo.catalogItemId)?.category;
+              const failedKey = npc.cargo.targetHardpointKey || null;
+              const upIn = this._bayPile(bay, 'in', ROW.N);
+              if (upIn && upIn.items.length < PILE_CAP) {
+                upIn.items.push(npc.cargo);
+                npc.cargo = null;
+                npc.stripCategory = failedCat || npc.stripCategory;
+                npc.stripHardpointKey = failedKey || npc.stripHardpointKey;
+                this._clearBoardProgress(npc);
+                this._beginNextMechanicTrip(npc);
+                break;
+              }
+            }
+          }
           this._completeLoadService(bay, npc.cargo, npc.job);
           this._clearBoardProgress(npc);
           this._noteBayTaskComplete(npc);
@@ -7957,7 +8868,25 @@ export class HangarBay {
             this._beginNextMechanicTrip(npc);
             break;
           }
-          npc.cargo = makeCargo(pick(UPGRADE_KINDS));
+          const stripped = this._stripCatalogPart(
+            bay,
+            npc.stripCategory,
+            npc.stripHardpointKey
+          );
+          if (!stripped) {
+            // Don't weld-loop forever if strip can't resolve a part
+            npc._stripFailCount = (npc._stripFailCount || 0) + 1;
+            if (npc._stripFailCount >= 2) {
+              npc._stripFailCount = 0;
+              this._clearTaskClaim(npc);
+              this._beginIdleFluff(npc);
+            } else {
+              this._beginNextMechanicTrip(npc);
+            }
+            break;
+          }
+          npc._stripFailCount = 0;
+          npc.cargo = stripped;
           npc.targetPile = dest;
           npc.targetSlot = null;
           this._applyTaskClaim(npc, 'removeUpgrade', npc.targetPile, bay);
@@ -8255,6 +9184,25 @@ export class HangarBay {
   }
 
   /**
+   * Shared 2.5D depth curve for the elevator shaft. `t` is descent progress
+   * (0 = deck level, 1 = shaft floor). Both the static well drawing and the
+   * moving pad+ship sample this same curve, so the hole and the descent read
+   * as one tilted shaft (south = the hangar's screen-down "away/below"
+   * direction, matching the north-lift convention used for raised height)
+   * instead of a flat vertical drop into a circle.
+   */
+  _shaftDepthAt(t) {
+    const tt = Math.min(1, Math.max(0, t));
+    const scaleX = 1 - tt * 0.58;
+    return {
+      south: tt * BAY.PAD_R * 0.62,
+      scaleX,
+      scaleY: scaleX * (1 - tt * 0.3),
+      alpha: Math.max(0, 1 - tt * 0.9),
+    };
+  }
+
+  /**
    * 2.5D elevator shaft. Inner opening radius = pad radius (exact match).
    * Rim sits just outside the pad circumference; interior is the deep well.
    */
@@ -8263,17 +9211,18 @@ export class HangarBay {
     this._drawElevationShaftRim(ctx, cx, cy);
   }
 
-  /** Dark cylindrical well — clipped to pad circle. */
+  /** Dark well — clipped to pad circle; rings/lines follow `_shaftDepthAt`. */
   _drawElevationShaftWell(ctx, cx, cy) {
     const r = BAY.PAD_R;
+    const deep = this._shaftDepthAt(1);
     ctx.save();
     ctx.translate(cx, cy);
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.clip();
 
-    // Depth gradient: steel-blue near the lip → near-black at the deep south
-    const grad = ctx.createLinearGradient(0, -r, 0, r * 0.85);
+    // Depth gradient: steel-blue near the lip → near-black at the shaft floor
+    const grad = ctx.createLinearGradient(0, -r, 0, deep.south + r * deep.scaleY);
     grad.addColorStop(0, '#2a3848');
     grad.addColorStop(0.35, '#1a2430');
     grad.addColorStop(0.7, '#0a1018');
@@ -8281,49 +9230,55 @@ export class HangarBay {
     ctx.fillStyle = grad;
     ctx.fillRect(-r, -r, r * 2, r * 2);
 
-    // Soft radial falloff toward deep center (offset slightly south)
-    const radial = ctx.createRadialGradient(0, r * 0.22, r * 0.1, 0, r * 0.15, r);
+    // Soft radial falloff toward the shaft floor (same point the descent ends at)
+    const radial = ctx.createRadialGradient(
+      0, deep.south * 0.6, r * 0.1,
+      0, deep.south, r
+    );
     radial.addColorStop(0, 'rgba(0, 0, 0, 0.75)');
     radial.addColorStop(0.55, 'rgba(0, 0, 0, 0.25)');
     radial.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = radial;
     ctx.fillRect(-r, -r, r * 2, r * 2);
 
-    // Vertical cylinder guide lines (left / center / right)
+    // Wall guide lines converge on the same vanishing point the pad/ship sink
+    // toward — reads as a shaft tilted south, not a straight vertical bore
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
     ctx.lineWidth = 1.1;
-    for (const lx of [-r * 0.52, 0, r * 0.52]) {
+    for (const lx of [-r * 0.55, 0, r * 0.55]) {
       ctx.beginPath();
-      ctx.moveTo(lx, -r * 0.92);
-      ctx.lineTo(lx * 0.35, r * 0.72);
+      ctx.moveTo(lx, -r * 0.95);
+      ctx.lineTo(lx * 0.12, deep.south);
       ctx.stroke();
     }
 
-    // Curved depth rings — deeper rings smaller + shifted south (2.5D look-down)
+    // Curved depth rings sampled from the shared depth curve — deeper rings
+    // smaller, flatter, and shifted south, matching the descending pad/ship
     for (const [t, alpha] of [
       [0.28, 0.45],
       [0.52, 0.55],
       [0.78, 0.7],
     ]) {
-      const rr = r * (1 - t * 0.72);
-      const oy = t * r * 0.38;
+      const d = this._shaftDepthAt(t);
+      const rr = r * d.scaleX;
+      const ry = r * d.scaleY;
       ctx.strokeStyle = `rgba(0, 0, 0, ${alpha})`;
       ctx.lineWidth = 1.15;
       ctx.beginPath();
-      ctx.ellipse(0, oy, rr, rr * 0.92, 0, 0, Math.PI * 2);
+      ctx.ellipse(0, d.south, rr, ry, 0, 0, Math.PI * 2);
       ctx.stroke();
       // Subtle face highlight on the north lip of each ring
       ctx.strokeStyle = `rgba(90, 120, 145, ${0.12 * (1 - t)})`;
       ctx.lineWidth = 0.8;
       ctx.beginPath();
-      ctx.ellipse(0, oy, rr, rr * 0.92, 0, Math.PI * 1.15, Math.PI * 1.85);
+      ctx.ellipse(0, d.south, rr, ry, 0, Math.PI * 1.15, Math.PI * 1.85);
       ctx.stroke();
     }
 
-    // Deep void
+    // Deep void at the shaft floor — where the descending pad/ship fade out
     ctx.fillStyle = '#000';
     ctx.beginPath();
-    ctx.ellipse(0, r * 0.42, r * 0.22, r * 0.18, 0, 0, Math.PI * 2);
+    ctx.ellipse(0, deep.south, r * deep.scaleX * 0.5, r * deep.scaleY * 0.5, 0, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();
@@ -8394,18 +9349,16 @@ export class HangarBay {
   _drawElevatorTransit(ctx, pad) {
     const drop = pad.padDrop || 0;
     const r = BAY.PAD_R;
-    const south = drop * 48;
-    const sc = 1 - drop * 0.55;
-    const alpha = Math.max(0, 1 - drop * 0.92);
+    const d = this._shaftDepthAt(drop);
 
     ctx.save();
     ctx.beginPath();
     ctx.arc(pad.x, 0, r, 0, Math.PI * 2);
     ctx.clip();
 
-    ctx.globalAlpha = alpha;
-    ctx.translate(pad.x, south);
-    ctx.scale(sc, sc);
+    ctx.globalAlpha = d.alpha;
+    ctx.translate(pad.x, d.south);
+    ctx.scale(d.scaleX, d.scaleY);
 
     this._drawDockPad(ctx, 0, 0, pad.bayId, {
       active: false,
@@ -8422,13 +9375,32 @@ export class HangarBay {
       ctx.translate(0, hover * 2);
       ctx.scale(pad.shipScale || 1, pad.shipScale || 1);
       ctx.rotate(angle);
-      drawVisitorShip(ctx, pad.visitorId, {
+      const def = pad.shipDef || this._ensurePadShipDef(pad);
+      if (!def) {
+        ctx.restore();
+        ctx.restore();
+        return;
+      }
+      drawVisitorShip(ctx, {
+        shipDef: def,
         thrusters: pad.thrusters,
         velocity: { x: pad.shipVx || 0, y: pad.shipVy || 0 },
         angle,
         angularVelocity: 0,
+        miningLaserFiring: false,
+        muzzleFlash: 0,
+        getTurretLocalAngle: () => 0,
       });
       ctx.restore();
+    }
+
+    // Merge into the shaft's own darkness as it sinks, matching the well gradient
+    if (drop > 0.05) {
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = `rgba(2, 4, 8, ${Math.min(0.75, drop * 0.8)})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.05, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     ctx.restore();
@@ -8438,18 +9410,16 @@ export class HangarBay {
   _drawPlayerElevatorTransit(ctx, drawPlayerShip) {
     const drop = this.playerPadDrop || 0;
     const r = BAY.PAD_R;
-    const south = drop * 48;
-    const sc = 1 - drop * 0.55;
-    const alpha = Math.max(0, 1 - drop * 0.92);
+    const d = this._shaftDepthAt(drop);
 
     ctx.save();
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.clip();
 
-    ctx.globalAlpha = alpha;
-    ctx.translate(0, south);
-    ctx.scale(sc, sc);
+    ctx.globalAlpha = d.alpha;
+    ctx.translate(0, d.south);
+    ctx.scale(d.scaleX, d.scaleY);
 
     this._drawDockPad(ctx, 0, 0, 'B2', {
       active: true,
@@ -8461,6 +9431,15 @@ export class HangarBay {
 
     if (drop < 0.92 && drawPlayerShip) {
       drawPlayerShip(ctx);
+    }
+
+    // Merge into the shaft's own darkness as it sinks, matching the well gradient
+    if (drop > 0.05) {
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = `rgba(2, 4, 8, ${Math.min(0.75, drop * 0.8)})`;
+      ctx.beginPath();
+      ctx.arc(0, 0, r * 1.05, 0, Math.PI * 2);
+      ctx.fill();
     }
 
     ctx.restore();
@@ -11356,11 +12335,20 @@ export class HangarBay {
     ctx.scale(sc, sc * (1 - drop * 0.1));
     ctx.rotate(angle);
 
-    drawVisitorShip(ctx, pad.visitorId, {
+    const def = pad.shipDef || this._ensurePadShipDef(pad);
+    if (!def) {
+      ctx.restore();
+      return;
+    }
+    drawVisitorShip(ctx, {
+      shipDef: def,
       thrusters: pad.thrusters,
       velocity: { x: pad.shipVx || 0, y: pad.shipVy || 0 },
       angle,
       angularVelocity: 0,
+      miningLaserFiring: false,
+      muzzleFlash: 0,
+      getTurretLocalAngle: () => 0,
     });
     ctx.restore();
   }

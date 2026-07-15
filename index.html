@@ -33,6 +33,7 @@
         <button id="start-btn">ENTER HANGAR</button>
         <button id="quick-launch-btn" class="secondary-btn">QUICK LAUNCH</button>
         <button id="settings-title-btn" class="secondary-btn">SETTINGS</button>
+        <button id="blueprint-title-btn" class="secondary-btn dev-only-btn hidden" type="button">BLUEPRINT (DEV)</button>
       </div>
       <div id="build-meta" class="build-meta">
         <p id="build-stamp" class="build-stamp">v0.1.42 · Last edit: loading…</p>
@@ -60,9 +61,115 @@
       </div>
       <p class="hangar-hint">Thrusters, engine &amp; weapons live · ship docked · scroll to zoom · <kbd>ESC</kbd> or Back</p>
       <button id="hangar-back-btn" class="menu-btn">Back to Title</button>
+      <div id="hangar-dev-panel" class="hangar-dev-panel hidden">
+        <button id="hangar-reroll-svc-btn" class="hangar-dev-btn" type="button">REROLL SERVICES</button>
+        <button id="hangar-reroll-b1-btn" class="hangar-dev-btn" type="button" title="Reset bay B1 and dock a new visitor ship">REROLL B1</button>
+        <button id="hangar-reroll-b3-btn" class="hangar-dev-btn" type="button" title="Reset bay B3 and dock a new visitor ship">REROLL B3</button>
+        <button id="hangar-blueprint-btn" class="hangar-dev-btn" type="button">BLUEPRINT</button>
+        <div class="hangar-sim-speed" role="group" aria-label="Simulation speed">
+          <span class="hangar-sim-speed-label">SIM</span>
+          <button type="button" class="hangar-sim-btn" data-sim-speed="0.5" title="Slowdown (0.5×)">SLOW</button>
+          <button type="button" class="hangar-sim-btn" data-sim-speed="0" title="Pause sim">PAUSE</button>
+          <button type="button" class="hangar-sim-btn active" data-sim-speed="1" title="Play (1× default)">PLAY</button>
+          <button type="button" class="hangar-sim-btn" data-sim-speed="2" title="Speedup (2×)">FAST</button>
+          <button type="button" class="hangar-sim-btn" data-sim-speed="4" title="Speedup 2× (4×)">FAST2X</button>
+          <span id="hangar-sim-speed-readout" class="hangar-sim-speed-readout">1×</span>
+        </div>
+      </div>
     </div>
 
     <button id="hangar-launch-btn" class="hangar-launch-btn hidden" type="button">LAUNCH</button>
+
+    <div id="blueprint-hud" class="hidden">
+      <header class="bp-topbar">
+        <div class="bp-topbar-brand">
+          <span class="bp-topbar-kicker">DEV</span>
+          <span class="bp-topbar-title">BLUEPRINT</span>
+        </div>
+        <p class="bp-topbar-sub" id="bp-status">Modular ship sandbox</p>
+      </header>
+
+      <aside class="bp-dock bp-dock-left" id="blueprint-panel">
+        <section class="bp-card">
+          <h3 class="bp-card-title">Hull identity</h3>
+          <div class="bp-row">
+            <span class="bp-label">Group</span>
+            <button type="button" class="bp-cycle" data-bp="group" data-dir="-1" aria-label="Previous group">◀</button>
+            <span class="bp-value" id="bp-group">Standard</span>
+            <button type="button" class="bp-cycle" data-bp="group" data-dir="1" aria-label="Next group">▶</button>
+          </div>
+          <div class="bp-row">
+            <span class="bp-label">Class</span>
+            <button type="button" class="bp-cycle" data-bp="class" data-dir="-1" aria-label="Previous class">◀</button>
+            <span class="bp-value" id="bp-class">Generalist</span>
+            <button type="button" class="bp-cycle" data-bp="class" data-dir="1" aria-label="Next class">▶</button>
+          </div>
+          <p class="bp-meta" id="bp-identity-meta">Pad Mk2 · scale 1</p>
+          <p class="bp-meta bp-theme-blurb" id="bp-theme-blurb"></p>
+        </section>
+
+        <section class="bp-card bp-card-sections">
+          <h3 class="bp-card-title">Sections <span class="bp-card-hint">click to inspect</span></h3>
+          <div id="bp-sections" class="bp-sections"></div>
+        </section>
+
+        <section class="bp-card">
+          <h3 class="bp-card-title">Presets</h3>
+          <div class="bp-btn-row">
+            <button type="button" class="bp-action bp-reset" id="bp-reset-btn" title="Restore Generalist Mid Mk2 starter and default camera">Reset to default</button>
+          </div>
+          <div class="bp-btn-row">
+            <button type="button" class="bp-action" id="bp-random-btn">Random</button>
+            <button type="button" class="bp-action bp-apply" id="bp-apply-btn">Apply to ship</button>
+          </div>
+        </section>
+      </aside>
+
+      <aside class="bp-dock bp-dock-right">
+        <section class="bp-card">
+          <h3 class="bp-card-title">Camera</h3>
+          <div class="bp-stat-grid">
+            <div class="bp-stat">
+              <span class="bp-stat-label">Mode</span>
+              <span class="bp-stat-value" id="bp-view-mode">2.5D · angled</span>
+            </div>
+            <div class="bp-stat">
+              <span class="bp-stat-label">Heading</span>
+              <span class="bp-stat-value" id="bp-heading">N</span>
+            </div>
+          </div>
+          <div class="bp-btn-row">
+            <button type="button" class="bp-action" id="bp-view-btn">Switch to 2D</button>
+            <button type="button" class="bp-action" id="bp-explode-btn">Exploded view</button>
+          </div>
+          <div class="bp-btn-row">
+            <button type="button" class="bp-action" id="bp-rot-left">⟲</button>
+            <button type="button" class="bp-action" id="bp-rot-right">⟳</button>
+            <button type="button" class="bp-action" id="bp-spin-btn">Auto-spin</button>
+          </div>
+          <div class="bp-btn-row">
+            <button type="button" class="bp-action" id="bp-live-btn">Live controls</button>
+          </div>
+          <p class="bp-hint" id="bp-hint"><kbd>Q</kbd>/<kbd>E</kbd> yaw · <kbd>SCROLL</kbd> zoom · <kbd>ESC</kbd> back</p>
+        </section>
+
+        <section class="bp-card bp-card-grow">
+          <h3 class="bp-card-title">Mount roster <span class="bp-card-hint">variant per hardpoint</span></h3>
+          <div id="bp-mount-roster" class="bp-mounts"></div>
+        </section>
+      </aside>
+
+      <section class="bp-inspector" id="bp-inspector" aria-label="Selection inspector">
+        <header class="bp-inspector-head">
+          <span class="bp-inspector-title">Selection</span>
+          <span class="bp-inspector-sel" id="bp-inspector-sel">—</span>
+          <button type="button" class="bp-inspector-copy" id="bp-inspector-copy" title="Copy report">Copy</button>
+        </header>
+        <pre class="bp-inspector-body" id="bp-inspector-body"></pre>
+      </section>
+
+      <button id="blueprint-back-btn" class="menu-btn">Back</button>
+    </div>
 
     <div id="controls-hud" class="hidden">
       <div class="controls-banner">
@@ -75,6 +182,11 @@
         <p><kbd>SPACE</kbd> Main engine &nbsp; <kbd>SHIFT</kbd> Afterburner &nbsp; <kbd>ALT</kbd> Brakes</p>
         <p><kbd>CAPS</kbd> Precision &nbsp; <kbd>LMB</kbd> Turret &nbsp; <kbd>RMB</kbd> Mining laser</p>
         <p><kbd>SCROLL</kbd> Zoom &nbsp; <kbd>ESC</kbd> Back</p>
+        <label class="settings-toggle">
+          <input type="checkbox" id="dev-mode-toggle" />
+          <span>Dev Mode</span>
+        </label>
+        <p class="settings-toggle-hint">Hangar: Reroll, sim speed, Blueprint · Title: Blueprint button</p>
       </div>
       <button id="controls-back-btn" class="menu-btn">Back</button>
     </div>

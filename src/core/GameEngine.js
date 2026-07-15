@@ -13,8 +13,22 @@ import { NebulaField } from '../world/NebulaField.js';
 import { SpeedStreaks } from '../world/SpeedStreaks.js';
 import { HangarBay, hangarDefaultZoom } from '../world/HangarBay.js';
 import { Station } from '../world/Station.js';
-import { PHYSICS, HANGAR, SHIP } from '../core/Constants.js';
+import { AmbientTrafficSystem } from '../world/AmbientTrafficSystem.js';
+import {
+  PHYSICS,
+  HANGAR,
+  SHIP,
+  BLUEPRINT,
+  PAD_MK_RADIUS,
+  PAD_MK4_TEASE_RADIUS,
+  STATION,
+} from '../core/Constants.js';
 import { Vec2, angleDifference } from '../utils/MathUtils.js';
+import {
+  BlueprintSandbox,
+  cloneShipDef,
+} from '../ships/BlueprintSandbox.js';
+import { padMkForClass } from '../ships/ShipClasses.js';
 
 /** Slow title-screen drift (world units / sec) */
 const TITLE_DRIFT_SPEED = 52;
@@ -45,7 +59,7 @@ export class GameEngine {
     this.canvas = canvas;
     this.running = false;
     this.paused = false;
-    /** @type {'title'|'playing'|'hangar'|'controls'} */
+    /** @type {'title'|'playing'|'hangar'|'controls'|'blueprint'} */
     this.mode = 'title';
     this.lastTime = 0;
 
@@ -63,11 +77,18 @@ export class GameEngine {
     this.speedStreaks = new SpeedStreaks();
     this.hangarBay = new HangarBay();
     this.station = new Station();
+    this.ambientTraffic = new AmbientTrafficSystem();
 
     this.ship = null;
     this._sandboxShip = null;
+    /** @type {BlueprintSandbox|null} */
+    this._blueprint = null;
+    this._blueprintReturn = 'title';
+    this._pendingBlueprintDef = null;
     this.precisionActive = false;
     this.gameTime = 0;
+    /** Dev sim clock scale: 0=pause, 0.5=slow, 1=normal, 2=fast, 4=fast2x */
+    this.simSpeed = 1;
     this._titleHeading = Math.random() * Math.PI * 2;
     this._titleFade = 0;
     this._titleHasDrawn = false;
@@ -89,6 +110,7 @@ export class GameEngine {
     this._hangarHud = document.getElementById('hangar-hud');
     this._overlay = document.getElementById('overlay');
     this._controlsHud = document.getElementById('controls-hud');
+    this._blueprintHud = document.getElementById('blueprint-hud');
     this._dockHud = document.getElementById('dock-hud');
     this._hangarLaunchBtn = document.getElementById('hangar-launch-btn');
 
@@ -107,6 +129,18 @@ export class GameEngine {
     window.addEventListener('resize', () => this.renderer.resize());
     this.renderer.resize();
     this._setTitleFade(0);
+  }
+
+  /** Dev tool: scale simulation clock (0 pauses sim; render still runs). */
+  setSimSpeed(speed) {
+    const n = Number(speed);
+    if (!Number.isFinite(n) || n < 0) return this.simSpeed;
+    this.simSpeed = n;
+    return this.simSpeed;
+  }
+
+  getSimSpeed() {
+    return this.simSpeed;
   }
 
   _setTitleFade(opacity) {
@@ -140,13 +174,16 @@ export class GameEngine {
     this._clearPlaySession();
     const spawn = this.station.getExitSpawn();
     this.ship = new Ship(spawn.x, spawn.y);
+    this._applyPendingBlueprint(this.ship);
     this.ship.angle = spawn.angle;
     this.ship.turretAngle = spawn.angle;
     this.precisionActive = false;
     this.entityManager.add(this.ship, 'ship');
     this.mode = 'playing';
     this.paused = false;
+    this.simSpeed = 1;
     this._hangarSeq = null;
+    this.ambientTraffic.reset();
     this._setTitleFade(1);
     this.canvas.style.opacity = '1';
     this.input.enable();
@@ -169,9 +206,10 @@ export class GameEngine {
     this._dockPos.x = HANGAR.PLAYER_PAD_X;
     this._dockPos.y = 0;
     this.ship = new Ship(this._dockPos.x, this._dockPos.y);
+    this._applyPendingBlueprint(this.ship);
     this.precisionActive = false;
     this.entityManager.add(this.ship, 'ship');
-    this.hangarBay.reset();
+    this.hangarBay.reset(this.ship);
     this.hangarBay.warmStartHeadless();
     this._dockLocked = true;
     this._hangarSeq = null;
@@ -188,6 +226,7 @@ export class GameEngine {
 
     this.mode = 'hangar';
     this.paused = false;
+    this.simSpeed = 1;
     this._setTitleFade(1);
     this.canvas.style.opacity = '1';
     this.input.enable();
@@ -214,6 +253,7 @@ export class GameEngine {
     this.input.disable();
     this._clearPlaySession();
     this.hangarBay.clearOps();
+    this.simSpeed = 1;
     this.mode = 'title';
     this.paused = false;
     this._titleHasDrawn = true;
@@ -298,6 +338,121 @@ export class GameEngine {
     return 'title';
   }
 
+  /**
+   * Dev blueprint mode — instant modular ship sandbox.
+   * @param {'title'|'hangar'} [returnTo]
+   */
+  beginBlueprint(returnTo = 'title') {
+    this._blueprintReturn = returnTo === 'hangar' ? 'hangar' : 'title';
+    this._savedCam = {
+      x: this.camera.position.x,
+      y: this.camera.position.y,
+      userZoom: this.camera.userZoom,
+      targetUserZoom: this.camera.targetUserZoom,
+      speedZoom: this.camera.speedZoom,
+      effectiveZoom: this.camera.effectiveZoom,
+    };
+
+    this._blueprint = new BlueprintSandbox();
+    if (this.ship?.shipDef) {
+      this._blueprint.syncFromDef(this.ship.shipDef);
+      this._sandboxShip = new Ship(0, 0);
+      this._sandboxShip.shipDef = cloneShipDef(this.ship.shipDef);
+    } else {
+      this._sandboxShip = new Ship(0, 0);
+      this._sandboxShip.shipDef = this._blueprint.resetStarter();
+    }
+    this._sandboxShip.angle = this._blueprint.shipAngle();
+    this._sandboxShip.turretAngle = this._sandboxShip.angle;
+    this._sandboxShip.velocity.set(0, 0);
+    this._sandboxShip.angularVelocity = 0;
+
+    this.mode = 'blueprint';
+    this.input.enable();
+    this.input.paused = false;
+    this.renderer.setLayoutMode('blueprint');
+    this.camera.position.set(0, 0);
+    this.camera.offset.set(0, 0);
+    const z = BLUEPRINT.ZOOM_DEFAULT;
+    this.camera.userZoom = z;
+    this.camera.targetUserZoom = z;
+    this.camera.speedZoom = 1;
+    this.camera.effectiveZoom = z;
+    this._setTitleFade(1);
+    this.canvas.style.opacity = '1';
+    if (this._blueprintHud) this._blueprintHud.classList.remove('hidden');
+    if (this._controlsHud) this._controlsHud.classList.add('hidden');
+    if (this._hangarHud) this._hangarHud.classList.add('hidden');
+    this._setLaunchBtnVisible(false);
+    this._setDockHud(false);
+    if (typeof this.onBlueprintEnter === 'function') this.onBlueprintEnter();
+  }
+
+  /** Rebuild sandbox ship from current blueprint selectors. */
+  blueprintApplySpec(rebuildFn) {
+    if (!this._blueprint || !this._sandboxShip) return null;
+    const def = rebuildFn.call(this._blueprint);
+    this._sandboxShip.shipDef = def;
+    this._sandboxShip.angle = this._blueprint.shipAngle();
+    this._sandboxShip.turretAngle = this._sandboxShip.angle;
+    return this._blueprint;
+  }
+
+  getBlueprint() {
+    return this._blueprint;
+  }
+
+  /** Copy current blueprint onto the live player ship (hangar / next flight). */
+  applyBlueprintToPlayer() {
+    if (!this._blueprint || !this._sandboxShip?.shipDef) return false;
+    const def = cloneShipDef(this._sandboxShip.shipDef);
+    if (this.ship) {
+      this.ship.shipDef = def;
+      return true;
+    }
+    // Cache for next hangar / play session
+    this._pendingBlueprintDef = def;
+    return true;
+  }
+
+  exitBlueprint() {
+    if (this.mode !== 'blueprint') return null;
+    this._sandboxShip = null;
+    this._blueprint = null;
+    if (this._blueprintHud) this._blueprintHud.classList.add('hidden');
+    this.renderer.setLayoutMode('default');
+    const ret = this._blueprintReturn;
+
+    if (ret === 'hangar') {
+      this.mode = 'hangar';
+      this.input.enable();
+      this.input.paused = false;
+      if (this._savedCam) {
+        this.camera.position.set(this._savedCam.x, this._savedCam.y);
+        this.camera.userZoom = this._savedCam.userZoom;
+        this.camera.targetUserZoom = this._savedCam.targetUserZoom;
+        this.camera.speedZoom = this._savedCam.speedZoom;
+        this.camera.effectiveZoom = this._savedCam.effectiveZoom;
+        this.camera.offset.set(0, 0);
+      }
+      if (this._hangarHud) this._hangarHud.classList.remove('hidden');
+      this._setLaunchBtnVisible(true);
+      return 'hangar';
+    }
+
+    this.input.disable();
+    this.mode = 'title';
+    this.paused = false;
+    this._titleHasDrawn = true;
+    this._setTitleFade(1);
+    this.camera.position.set(this._spaceCam.x || 0, this._spaceCam.y || 0);
+    this.camera.effectiveZoom = 1;
+    this.camera.userZoom = 1;
+    this.camera.targetUserZoom = 1;
+    this.camera.speedZoom = 1;
+    return 'title';
+  }
+
   /** End run and return to title. */
   returnToMainMenu() {
     if (this.paused) {
@@ -320,6 +475,7 @@ export class GameEngine {
     this.camera.speedZoom = 1;
     if (this._hangarHud) this._hangarHud.classList.add('hidden');
     if (this._controlsHud) this._controlsHud.classList.add('hidden');
+    if (this._blueprintHud) this._blueprintHud.classList.add('hidden');
     if (this._buildStamp) this._buildStamp.classList.remove('hidden');
     this._setLaunchBtnVisible(false);
     this._setDockHud(false);
@@ -331,6 +487,12 @@ export class GameEngine {
     this.ship = null;
     this.precisionActive = false;
     this.speedStreaks = new SpeedStreaks();
+  }
+
+  _applyPendingBlueprint(ship) {
+    if (!ship || !this._pendingBlueprintDef) return;
+    ship.shipDef = cloneShipDef(this._pendingBlueprintDef);
+    this._pendingBlueprintDef = null;
   }
 
   stop() {
@@ -471,6 +633,8 @@ export class GameEngine {
     this.entityManager.add(this.ship, 'ship');
 
     this.mode = 'playing';
+    this.simSpeed = 1;
+    this.ambientTraffic.reset();
     this.camera.position.set(spawn.x, spawn.y);
     this.camera.userZoom = 1;
     this.camera.targetUserZoom = 1;
@@ -537,7 +701,7 @@ export class GameEngine {
   _loop(timestamp) {
     if (!this.running) return;
 
-    const deltaTime = Math.min((timestamp - this.lastTime) / 1000, 0.05);
+    const rawDt = Math.min((timestamp - this.lastTime) / 1000, 0.05);
     this.lastTime = timestamp;
 
     if (this.mode === 'playing' && this.input.consumePauseToggle()) {
@@ -550,9 +714,14 @@ export class GameEngine {
     } else if (this.mode === 'controls' && this.input.consumePauseToggle()) {
       const dest = this.exitControls();
       if (typeof this.onControlsExit === 'function') this.onControlsExit(dest);
+    } else if (this.mode === 'blueprint' && this.input.consumePauseToggle()) {
+      const dest = this.exitBlueprint();
+      if (typeof this.onBlueprintExit === 'function') this.onBlueprintExit(dest);
     }
 
-    if (!this.paused) {
+    const speed = this.simSpeed;
+    if (!this.paused && speed > 0) {
+      const deltaTime = Math.min(rawDt * speed, 0.05 * Math.max(1, speed));
       this.gameTime += deltaTime;
       if (this.mode === 'title') {
         this._updateTitle(deltaTime);
@@ -560,11 +729,14 @@ export class GameEngine {
         this._updateHangar(deltaTime);
       } else if (this.mode === 'controls') {
         this._updateControls(deltaTime);
+      } else if (this.mode === 'blueprint') {
+        this._updateBlueprint(deltaTime);
       } else {
         this.update(deltaTime);
       }
-    } else if (this.ship) {
-      this._updateHUD();
+    } else if (this.paused || speed <= 0) {
+      // Menu pause or sim-speed pause — keep HUD/readouts, freeze sim
+      if (this.ship && this.mode === 'playing') this._updateHUD();
     }
 
     this.render();
@@ -614,9 +786,12 @@ export class GameEngine {
       );
 
       this.shipController.update(this.ship, this.input, false, deltaTime);
+      // Pad clamps: thruster FX still live from controller, hull stays locked to turntable
       this.ship.position.x = this._dockPos.x;
       this.ship.position.y = this._dockPos.y;
       this.ship.velocity.set(0, 0);
+      this.ship.angularVelocity = 0;
+      this.ship.angle = this.hangarBay.playerPadAngle ?? SHIP.SPAWN_ANGLE;
 
       this.weaponSystem.update(
         this.ship,
@@ -1010,6 +1185,63 @@ export class GameEngine {
     this.renderer.emitThrusterParticles(ship, this.particleSystem);
   }
 
+  _updateBlueprint(deltaTime) {
+    const ship = this._sandboxShip;
+    const bp = this._blueprint;
+    if (!ship || !bp) return;
+
+    const zoomWheel = this.input.consumeZoomDelta();
+
+    if (bp.liveControls) {
+      // Hangar-style: thruster / engine / weapon FX from ShipController.
+      // Position locked at origin (no flight). Yaw is allowed so BP can rotate.
+      // Auto-spin is cleared when live controls turn on — do not re-apply here.
+      this.precisionActive = false;
+      this.shipController.update(ship, this.input, false, deltaTime);
+      ship.position.set(0, 0);
+      ship.velocity.set(0, 0);
+
+      const aimWorld = this.camera.screenToWorld(
+        this.input.mouseScreen.x,
+        this.input.mouseScreen.y,
+        this.renderer.centerX,
+        this.renderer.centerY
+      );
+      this.weaponSystem.update(ship, this.input, aimWorld, true, [], deltaTime);
+      this.entityManager.update(deltaTime);
+      this.particleSystem.update(deltaTime);
+      this.renderer.emitThrusterParticles(ship, this.particleSystem);
+    } else {
+      // Inspect mode: Q/E yaw + optional auto-spin; no thruster / weapon sim.
+      let yaw = 0;
+      if (this.input.isKeyDown('q')) yaw -= 1.6 * deltaTime;
+      if (this.input.isKeyDown('e')) yaw += 1.6 * deltaTime;
+      if (bp.autoSpin) yaw += bp.spinRadPerSec * deltaTime;
+      if (yaw !== 0) {
+        ship.angle += yaw;
+      } else {
+        ship.angle = bp.shipAngle();
+      }
+      ship.turretAngle = ship.angle;
+      ship.position.set(0, 0);
+      ship.velocity.set(0, 0);
+      ship.angularVelocity = 0;
+      this._clearShipThrusters(ship);
+    }
+
+    const prevHeading = bp.headingIndex;
+    bp.syncHeadingFromAngle(ship.angle);
+    if (bp.headingIndex !== prevHeading) {
+      if (typeof this.onBlueprintHeadingChange === 'function') {
+        this.onBlueprintHeadingChange();
+      }
+    }
+
+    this.camera.position.set(0, 0);
+    this.camera.offset.set(0, 0);
+    this.camera.updateBlueprint(ship.position, deltaTime, zoomWheel);
+  }
+
   update(deltaTime) {
     if (!this.ship) return;
 
@@ -1074,6 +1306,18 @@ export class GameEngine {
     );
 
     this.renderer.emitThrusterParticles(this.ship, this.particleSystem);
+    const zoom = Math.max(0.001, this.camera.effectiveZoom);
+    this.ambientTraffic.update(deltaTime, {
+      player: this.ship,
+      station: { x: STATION.WORLD_X, y: STATION.WORLD_Y },
+      asteroids: asteroids,
+      camera: {
+        x: this.camera.position.x,
+        y: this.camera.position.y,
+        // World-space radius of the circular play viewport
+        viewRadius: this.renderer.viewportRadius / zoom,
+      },
+    });
     this._updateHUD(capsDesired);
 
     const canDock = this.station.canRequestDock(
@@ -1152,6 +1396,11 @@ export class GameEngine {
       return;
     }
 
+    if (this.mode === 'blueprint') {
+      this._renderBlueprint();
+      return;
+    }
+
     this.renderer.setupCircularClip();
     this._renderBackground({ fullscreen: false, includeWorldNebulae: true });
 
@@ -1171,6 +1420,10 @@ export class GameEngine {
       this.asteroidSystem.getActiveAsteroids(),
       this.camera
     );
+
+    this.renderer.renderWorldLayer((ctx) => {
+      this.ambientTraffic.render(ctx);
+    }, this.camera);
 
     this.renderer.renderProjectiles(
       [...this.entityManager.getByType('projectile')],
@@ -1235,6 +1488,277 @@ export class GameEngine {
       this.renderer.renderShip(this._sandboxShip, this.camera);
     }
     this.renderer.endCircularClip();
+  }
+
+  _renderBlueprint() {
+    this.renderer.setupCircularClip();
+    const ctx = this.renderer.ctx;
+    ctx.fillStyle = '#060a12';
+    ctx.fillRect(
+      this.renderer.centerX - this.renderer.viewportRadius,
+      this.renderer.centerY - this.renderer.viewportRadius,
+      this.renderer.viewportRadius * 2,
+      this.renderer.viewportRadius * 2
+    );
+
+    const g = ctx.createRadialGradient(
+      this.renderer.centerX,
+      this.renderer.centerY,
+      16,
+      this.renderer.centerX,
+      this.renderer.centerY,
+      this.renderer.viewportRadius
+    );
+    g.addColorStop(0, 'rgba(30, 55, 80, 0.55)');
+    g.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(
+      this.renderer.centerX,
+      this.renderer.centerY,
+      this.renderer.viewportRadius,
+      0,
+      Math.PI * 2
+    );
+    ctx.fill();
+
+    this._drawBlueprintField(ctx);
+    this._drawBlueprintPadRings(ctx);
+
+    this.renderer.renderProjectiles(
+      [...this.entityManager.getByType('projectile')],
+      this.camera
+    );
+    this.renderer.renderParticles(
+      this.particleSystem.particles,
+      this.camera,
+      this._sandboxShip
+    );
+    if (this._sandboxShip) {
+      this.renderer.renderShip(
+        this._sandboxShip,
+        this.camera,
+        this._blueprint?.shipView()
+      );
+    }
+    this.renderer.endCircularClip();
+  }
+
+  /**
+   * Blueprint drafting field — fine/major grid + radial construction lines.
+   * Full-strength outside the outermost pad disc; a fainter, wider-spaced
+   * echo continues inside the pads so the field reads as one continuous
+   * sheet (pad Mk rings redraw on top in `_drawBlueprintPadRings` and stay
+   * the dominant read).
+   */
+  _drawBlueprintField(ctx) {
+    const cx = this.renderer.centerX;
+    const cy = this.renderer.centerY;
+    const zoom = this.camera.effectiveZoom;
+    const yScale = this._blueprint?.viewMode === 'angled' ? 0.72 : 1;
+    const padOuter = Math.max(
+      PAD_MK_RADIUS[1] || 0,
+      PAD_MK_RADIUS[2] || 0,
+      PAD_MK_RADIUS[3] || 0
+    );
+    const viewR = this.renderer.viewportRadius;
+    // World extent: enough to cover the play circle at current zoom
+    const extent = Math.max(viewR / Math.max(0.001, zoom), padOuter + 24) * 1.35;
+    const minor = 12;
+    const majorEvery = 4; // every 48 world units
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(zoom, zoom * yScale);
+
+    // Clip to exterior of the outermost pad (donut: big square minus pad disc)
+    ctx.beginPath();
+    ctx.rect(-extent, -extent, extent * 2, extent * 2);
+    ctx.ellipse(0, 0, padOuter, padOuter, 0, 0, Math.PI * 2, true);
+    ctx.clip('evenodd');
+
+    // Soft fade so the field dies toward the viewport rim
+    const fade = ctx.createRadialGradient(0, 0, padOuter * 0.9, 0, 0, extent);
+    fade.addColorStop(0, 'rgba(60, 110, 160, 0.22)');
+    fade.addColorStop(0.55, 'rgba(40, 80, 120, 0.12)');
+    fade.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+    // Minor grid
+    ctx.strokeStyle = 'rgba(70, 115, 155, 0.16)';
+    ctx.lineWidth = 1 / zoom;
+    ctx.beginPath();
+    const n = Math.ceil(extent / minor);
+    for (let i = -n; i <= n; i++) {
+      const p = i * minor;
+      ctx.moveTo(p, -extent);
+      ctx.lineTo(p, extent);
+      ctx.moveTo(-extent, p);
+      ctx.lineTo(extent, p);
+    }
+    ctx.stroke();
+
+    // Major grid
+    ctx.strokeStyle = 'rgba(100, 160, 210, 0.28)';
+    ctx.lineWidth = 1.25 / zoom;
+    ctx.beginPath();
+    for (let i = -n; i <= n; i++) {
+      if (i % majorEvery !== 0) continue;
+      const p = i * minor;
+      ctx.moveTo(p, -extent);
+      ctx.lineTo(p, extent);
+      ctx.moveTo(-extent, p);
+      ctx.lineTo(extent, p);
+    }
+    ctx.stroke();
+
+    // Radial construction lines (16 headings) — read as “out into the distance”
+    ctx.strokeStyle = 'rgba(120, 180, 220, 0.2)';
+    ctx.lineWidth = 1 / zoom;
+    ctx.setLineDash([6 / zoom, 5 / zoom]);
+    ctx.beginPath();
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      const c = Math.cos(a);
+      const s = Math.sin(a);
+      ctx.moveTo(c * (padOuter + 1.5), s * (padOuter + 1.5));
+      ctx.lineTo(c * extent, s * extent);
+    }
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Light wash over the field (clipped)
+    ctx.fillStyle = fade;
+    ctx.fillRect(-extent, -extent, extent * 2, extent * 2);
+
+    ctx.restore();
+
+    // Interior echo — same grid continuing inside the pad discs, but faint
+    // and wide-spaced so the Mk rings (drawn after, in _drawBlueprintPadRings)
+    // stay the clear, dominant read.
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(zoom, zoom * yScale);
+    ctx.beginPath();
+    ctx.ellipse(0, 0, padOuter, padOuter, 0, 0, Math.PI * 2);
+    ctx.clip();
+
+    const minorIn = minor * 2;
+    const nIn = Math.ceil(padOuter / minorIn);
+
+    ctx.strokeStyle = 'rgba(70, 115, 155, 0.07)';
+    ctx.lineWidth = 1 / zoom;
+    ctx.beginPath();
+    for (let i = -nIn; i <= nIn; i++) {
+      const p = i * minorIn;
+      ctx.moveTo(p, -padOuter);
+      ctx.lineTo(p, padOuter);
+      ctx.moveTo(-padOuter, p);
+      ctx.lineTo(padOuter, p);
+    }
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(100, 160, 210, 0.12)';
+    ctx.lineWidth = 1.1 / zoom;
+    ctx.beginPath();
+    for (let i = -nIn; i <= nIn; i++) {
+      if (i % majorEvery !== 0) continue;
+      const p = i * minorIn;
+      ctx.moveTo(p, -padOuter);
+      ctx.lineTo(p, padOuter);
+      ctx.moveTo(-padOuter, p);
+      ctx.lineTo(padOuter, p);
+    }
+    ctx.stroke();
+
+    ctx.restore();
+  }
+
+  /**
+   * Concentric pad Mk rings under the sandbox ship.
+   * Mk2 radius matches hangar B2; active group’s pad is emphasized.
+   * Drawn after the drafting field (`_drawBlueprintField`) so the ring
+   * strokes stay crisp over the faint interior grid echo.
+   */
+  _drawBlueprintPadRings(ctx) {
+    const cx = this.renderer.centerX;
+    const cy = this.renderer.centerY;
+    const zoom = this.camera.effectiveZoom;
+    const yScale = this._blueprint?.viewMode === 'angled' ? 0.72 : 1;
+    const activeMk = padMkForClass(this._blueprint?.classId);
+    const mks = [1, 2, 3].filter((mk) => PAD_MK_RADIUS[mk]);
+
+    const drawRing = (mk, active) => {
+      const worldR = PAD_MK_RADIUS[mk];
+      const rx = worldR * zoom;
+      const ry = worldR * zoom * yScale;
+
+      ctx.beginPath();
+      ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+      if (active) {
+        ctx.fillStyle = 'rgba(70, 120, 170, 0.07)';
+        ctx.fill();
+      }
+      ctx.strokeStyle = active
+        ? 'rgba(140, 200, 240, 0.62)'
+        : 'rgba(80, 120, 160, 0.22)';
+      ctx.lineWidth = active ? 1.75 : 1;
+      ctx.setLineDash(active ? [] : [5, 4]);
+      ctx.stroke();
+
+      ctx.setLineDash([]);
+      ctx.font = active
+        ? '600 11px "Segoe UI", system-ui, sans-serif'
+        : '500 10px "Segoe UI", system-ui, sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = active
+        ? 'rgba(170, 215, 245, 0.75)'
+        : 'rgba(110, 150, 185, 0.38)';
+      ctx.fillText(`Mk${mk}`, cx + rx + 8, cy);
+    };
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    for (const mk of mks) {
+      if (mk !== activeMk) drawRing(mk, false);
+    }
+    if (mks.includes(activeMk)) drawRing(activeMk, true);
+    this._drawBlueprintMk4Tease(ctx, cx, cy, zoom, yScale);
+    ctx.restore();
+  }
+
+  /**
+   * Easter egg: faint Mk4 circumference that only peeks near the play-circle
+   * rim when zoomed out. Decorative only — not in PAD_MK_RADIUS gameplay.
+   */
+  _drawBlueprintMk4Tease(ctx, cx, cy, zoom, yScale) {
+    const worldR = PAD_MK4_TEASE_RADIUS;
+    if (!worldR) return;
+    const rx = worldR * zoom;
+    const ry = worldR * zoom * yScale;
+    const viewR = this.renderer.viewportRadius;
+    // Only bother when the arc can peek into the play circle
+    if (rx < viewR * 0.55 || rx > viewR * 1.45) return;
+
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(70, 105, 140, 0.13)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([8, 7]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Label just inside the east rim so it stays in the circular clip
+    const labelInset = 12;
+    const lx = cx + rx - labelInset;
+    const ly = cy;
+    if (Math.hypot(lx - cx, ly - cy) < viewR - 6) {
+      ctx.font = '500 9px "Segoe UI", system-ui, sans-serif';
+      ctx.textAlign = 'right';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = 'rgba(100, 140, 175, 0.26)';
+      ctx.fillText('Mk4', lx, ly);
+    }
   }
 
   _renderHangar() {

@@ -6,8 +6,21 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Incomplete — session wrap 2026-07-15
+User-requested work that did **not** finish this session (agents aborted mid-pass). Pick up next:
+
+- **UltraLight engines too big** — `ItemDraw.drawGenericEngine` still uses fixed ellipse size and ignores `classScale`, so tiny UltraLight hulls get Standard-sized engines (“condom” silhouette). Scale generic engines with class/swap group (UltraLight first; don’t regress Light/Standard/Heavy if they already look right).
+- **Thrusters still too small** — cups are at `SHIP.THRUSTER_CUP_SCALE = 1.5` (+ plumes 1.15); user asked for another substantial bump and can barely see them.
+- **Hardpoint positions vs scaled hull** — after class `scale` ups (e.g. Generalist ~1.55), mounts may still sit on pre-scale geometry. Audit `SectionGeometry` / `SectionCatalog` / `ShipHardpoints` / plume mounts so cups sit flush on the current hull.
+- **Hangar visitors still feel small** — `HANGAR.VISITOR_PEER_MK_CHANCE` (peer pad-Mk) landed so same-group neighbors often share the player’s Mk, but sizing may still need a further visual pass so peers read ~player size (UltraLights stay smaller).
+- **Ambient NPC mining** — miners show a mining-laser cue only; no asteroid HP drain yet.
+- Blueprint **per-hardpoint item category** swap (variant cycler exists; theme/Mk/category still locked to socket defaults) — see PROJECT Dev Blueprint follow-ups.
+
 ### Planned
 - Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
+- Ship Upgrade UI (grows out of Dev Blueprint mode)
+- Unique silhouette polish per catalog variant
+- Hand-art polish for hero variants (bell-quality)
 - Hangar room / set-dressing editor (designer places props, 8-dir rotate, linger/gossip; Done saves layout file) — see `PROJECT.md`
 - Asteroid fragmentation on destroy
 - Fuel system for afterburner
@@ -15,6 +28,389 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 - Audio
 - Resource drops (guns vs mining laser yield tradeoff)
 - Precision power-pip allocation for laser / scanner
+
+---
+
+## [0.1.154] — 2026-07-15
+
+### Fixed
+- **Ambient space traffic** near Jennings Station was effectively empty: spawns were slow/probabilistic with no initial seed and no guaranteed police, so Quick Launch / hangar exit often showed a barren station. Flight now seeds a police pack + a few off-screen near-station ships, and `_maintainPolice` keeps at least `AMBIENT.MIN_POLICE` (3) on station patrol
+- Ambient ships no longer **pop in or out** of view: spawn and despawn are gated to outside the circular play viewport (+ `VISIBLE_MARGIN`). Age expiry while on-screen extends life and steers the ship off-camera before cull; flybys enter from the view rim and only despawn after exiting
+
+### Changed
+- `AmbientTrafficSystem.update` takes camera `{ x, y, viewRadius }` from `GameEngine` (world-space viewport radius = `viewportRadius / effectiveZoom`)
+- Police removed from random near-spawn weights (they come from maintain/seed only); near spawn accept rate and intervals tuned slightly for visible sparse traffic
+
+---
+
+## [0.1.153] — 2026-07-15
+
+### Fixed
+- Thruster plumes on the player ship (flight, Blueprint sandbox, hangar-docked view) drew *after* the hull/thruster-cup housing, so flames floated visibly on top of the deck instead of appearing to emerge from the nozzle bore. `Renderer._drawShipBody` now draws plumes first, then the hull + thruster cups/engine bell on top — the housing occludes the flame's base, matching the already-correct order used by `HangarVisitorShips.drawVisitorShip` for hangar neighbor/ambient traffic ships. Thruster physics linkage (`ship.thrusters`) unaffected
+
+---
+
+## [0.1.152] — 2026-07-15
+
+### Fixed
+- Elevator shaft + descent now read as the same tilted 2.5D shaft instead of a flat vertical drop: the well's depth rings, wall guide lines, and the descending pad/ship all sample one shared depth curve (`HangarBay._shaftDepthAt`) — south drift capped within the pad radius (was overshooting the hole edge), matching Y-squash as it sinks, and a darkening wash that merges the cab into the well's own shadow gradient as it descends
+
+---
+
+## [0.1.151] — 2026-07-15
+
+### Added
+- Hangar Dev panel **REROLL B1** / **REROLL B3** buttons — full reset of that neighbor pad (purges staging freight, floor drops, mechanic/forklift claims, and the old checklist) and instantly docks a fresh modular visitor (new seed/class/theme, locked at create) already seated — no slow arrival animation or empty pad wait. Uses `HangarBay.rerollSidePadVisitor(bayIndex)`
+
+---
+
+## [0.1.150] — 2026-07-15
+
+### Added
+- **Ambient space traffic** around Jennings Station: sparse modular ships with distance density falloff (a few near the hangar; rare deep; police may pack). Full catalog role coverage — patrol, flyby, race, mine, police scan (incl. player), shuttle/freight/cruise, science survey, heavy deep cruise — with hard caps + lifetime/distance cull (`AmbientTrafficSystem.js`)
+- Hangar B1/B3 visitors use locked modular `ShipDefinition` + `ShipRenderer` (legacy silhouette draws retired)
+
+### Fixed
+- Hangar visitors no longer strobe through themes/colors: `shipDef` is locked at spawn/`equipPadVisitor`; propulsion and draw paths never re-roll `generateVisitor`; `paletteForSection` always resolves a valid colorway for the section theme
+
+---
+
+## [0.1.149] — 2026-07-15
+
+### Added
+- Blueprint **Mount roster** is now interactive: each hardpoint gets its own **Variant** (a/b/c) cycler, independent of that hardpoint's owning section variant — pick a different shape/morph per thruster, gun, turret, laser, or engine mount without changing the section's cosmetics. Item theme + Mk stay locked to the current mount (or the section default) so the livery still reads coherently; empty sockets show `— empty —` with disabled controls
+- `BlueprintSandbox.cycleHardpointVariant(def, key, dir)` + `mountRosterEntries(def)` — per-hardpoint item lookup/override, reusing the existing catalog + attach-rule checks (`canAttachItem`)
+
+### Changed
+- Hardpoint variant picks persist through section theme/Mk/color edits and **Apply to ship** (survive `cloneShipDef`); **Random** and **Reset to default** still hand out a fresh definition, so they clear per-hardpoint overrides back to catalog defaults as expected
+
+---
+
+## [0.1.148] — 2026-07-15
+
+### Changed
+- Blueprint **2.5D angled** mode: toned down the North-facing over-elongation reported against the flat 2D silhouette — `angledDepthScale` squash range narrowed from 0.68–0.88 to 0.85–0.95 (North/South now ~0.90, was ~0.78), and `extrudeAngled` deck-lift height roughly halved (`h * 0.85` → `h * 0.45`, floor `2.0` → `1.2`px). Side-wall peek is still visible, just subtler; **2D top-down** unchanged
+
+---
+
+## [0.1.147] — 2026-07-15
+
+### Changed
+- Maneuvering thruster cups **~50% larger** (`SHIP.THRUSTER_CUP_SCALE = 1.5`, applied uniformly so Mk1/Mk2/Mk3 stay proportionally consistent) — was reading too small since the flush-nozzle redesign
+- Maneuvering thruster plumes bumped **~15%** (`SHIP.THRUSTER_PLUME_SCALE = 1.15`) to match the larger cups without overpowering the main engine flame
+
+---
+
+## [0.1.146] — 2026-07-15
+
+### Changed
+- Blueprint **2.5D angled** mode: heading-aware hull **side peeks** (deck lifts toward screen-up; visible side-wall quads). **2D top-down** stays flat — no side geometry or extrusion
+
+---
+
+## [0.1.145] — 2026-07-15
+
+### Changed
+- Blueprint sandbox defaults to **2D top-down** view on open and on **Reset to default** (was 2.5D angled)
+
+---
+
+## [0.1.144] — 2026-07-15
+
+### Changed
+- Blueprint background: drafting grid now continues faintly **inside** the pad Mk discs (wider spacing, lower alpha) instead of stopping at the outermost ring, so the field reads as one continuous sheet; Mk rings redraw on top and stay the dominant read
+- Blueprint easter egg: zoomed-out view peeks a faint **Mk4** pad circumference + subtle label near the play-circle rim (decorative only; Mk1–3 gameplay radii unchanged)
+
+---
+
+## [0.1.143] — 2026-07-15
+
+### Changed
+- Blueprint **Reset to default** button restores Generalist Mid Mk2 starter plus default camera (2.5D, heading N, live/explode/spin off)
+
+---
+
+## [0.1.142] — 2026-07-15
+
+### Changed
+- Blueprint HUD layout is **viewport-aligned** to the play circle (docks hug circle left/right; title above; inspector matches circle width below) — resizes from measured gutters; compact/narrow modes when resolution is tight
+
+---
+
+## [0.1.141] — 2026-07-15
+
+### Changed
+- Pad sizing: **Mk1** radius 30→**22** (UltraLight/Light scales tuned to fit); **Mk3** 76→**80**
+- Standard / starter bell **fill Mk2** — Generalist scale **1.55** (bell draw now applies `class.scale`); other Mk2/Mk3 class scales raised to match; `SHIP_EXTENT` updated for hangar clearance
+
+---
+
+## [0.1.140] — 2026-07-15
+
+### Changed
+- Ship hull/hardware visuals: softer drop shadows, clearer side-wall face shading, thinner trim strokes (~0.45–0.7); depth from fills/bevels instead of chunky outlines; theme skins refined (weld beads, elite razor bloom); thrusters/guns/turrets match
+- Blueprint background: drafting grid + radial construction lines extend **outside** the pad Mk rings (pads stay clear in the center)
+
+---
+
+## [0.1.139] — 2026-07-15
+
+### Added
+- Blueprint **Live controls** toggle (hangar-style WASD/QE/Space/weapons + thruster FX; ship stays locked at origin; yaw allowed). Auto-spin disables while live is on.
+
+### Fixed
+- Blueprint heading readout tracks live yaw; rotate ⟲/⟳ steps from the current 16-way compass snap
+
+---
+
+## [0.1.138] — 2026-07-15
+
+### Changed
+- Blueprint background: concentric **pad Mk rings** (Mk1/Mk2/Mk3) under the ship instead of the angled deck grid; Mk2 matches hangar B2 pad radius; current group’s pad is highlighted
+
+---
+
+## [0.1.137] — 2026-07-15
+
+### Changed
+- Theme skins are richer: each theme carries a finish profile (seams, rivets, welds, grit/soot, sheen/gloss, stripe + mark style) plus secondary colorways (stripe/glow/dirt); `ThemeSkin` paints them onto every section. Industrial hazard tape, military stencil, police lightbar stripe, poor patches, mid badge, upper/elite chrome pin-stripe. Extra colorways: Scrap Green, Arctic Silver
+
+---
+
+## [0.1.136] — 2026-07-15
+
+### Changed
+- Blueprint HUD redesign: chrome lives in the black outside the sacred viewport circle (left/right docks); selection inspector glued under the circle with full debug dump (Copy); click a section card to inspect; mount roster on the right; circle raised/sized for a usable inspector band
+
+---
+
+## [0.1.135] — 2026-07-15
+
+### Changed
+- Maneuver thrusters redrawn as short flush nozzles (straight housing + rimmed bore) — no flared cup / claw silhouette
+
+---
+
+## [0.1.134] — 2026-07-15
+
+### Changed
+- Hardpoints sit on section hull edges (shared `SectionGeometry` + matching `class.scale` on draw and mounts); Heavy/Light/UltraLight footprints redesigned so mounts no longer float
+- Maneuver thruster cups much smaller overall; cup size scales with socket **Mk** (and light morph); shorter blue plumes to match
+
+---
+
+## [0.1.133] — 2026-07-14
+
+### Changed
+- Weapon mount faces: bridge guns are **chin/underside**; **dorsal turrets** body-centerline only; **wing** guns underside; **side** guns on the flanks (draw order matches)
+
+---
+
+## [0.1.132] — 2026-07-14
+
+### Changed
+- **Heavy** is a size tier mirroring Standard classes (Miner / Generalist / Science / Hauler / Fighter / Transport) — removed single Mega/Heavy class
+- Standard gains **Fighter** (tank) and **Transport** (people-mover); Light keeps Fighter + Personal Transport
+- Hardpoint budgets by group (UltraLight Mk1 lean; Light Mk2; Standard ≤Mk3 / 8 thrusters; Heavy Mk4–5 / 2 engines / 16 thrusters)
+- **Mk5** catalog tier; cargo vs **seats** capacity (Hauler = freight, Transport = seats; UltraLight seats = 0)
+- Parametric silhouettes for all classes via section/item draw registries; Heavy Transport Elite = yacht dress, civMid = cruise
+
+---
+
+## [0.1.131] — 2026-07-14
+
+### Changed
+- Blueprint UI: pick Group/Class, then a **card per section** with its own Theme / Color / Mk / Variant
+- Camera readout shows **Mode** (2D · top-down vs 2.5D · angled) and **Heading** compass (N, N-NE, NE, …)
+
+---
+
+## [0.1.130] — 2026-07-14
+
+### Added
+- Blueprint **Exploded view** — separates sections and hardpoint items; faded dotted lines link mating faces and sockets to pulled-out parts
+
+---
+
+## [0.1.129] — 2026-07-14
+
+### Changed
+- Blueprint **Theme**, **Mk**, **Variant**, and **Color** are all per **Section** (pick section, then cycle that section’s cosmetics / catalog cell)
+
+---
+
+## [0.1.128] — 2026-07-14
+
+### Changed
+- Blueprint **Color** is per **Section** (pick section, then cycle that section’s colorway); thruster cups + plumes tint from the owning section’s palette
+
+---
+
+## [0.1.127] — 2026-07-14
+
+### Changed
+- Ship swap groups: **UltraLight** (Drone / Scout / Racer / Light Fighter), Light, Standard, **Heavy** (was Mega)
+- Pad docking is exclusive by group — UltraLight+Light → Mk1 · Standard → Mk2 · Heavy → Mk3 (Jennings B1/B3 = Mk1, B2 = Mk2)
+- Blueprint UI: top-level **Group**, then **Class** (filtered), then theme / color / Mk / variant
+
+---
+
+## [0.1.126] — 2026-07-14
+
+### Fixed
+- Blueprint sandbox zoom uses a dedicated range (up to ~22×) so the ship can fill the play circle (was stuck at flight max 2×)
+
+---
+
+## [0.1.125] — 2026-07-14
+
+### Added
+- **Dev Blueprint mode** — instant modular ship sandbox (class / theme / colorway / Mk / variant; 2D or 2.5D + rotate / auto-spin). Entry: title **BLUEPRINT (DEV)** when Dev Mode is on, and hangar Dev panel **BLUEPRINT**. Apply copies the build onto the player ship (or next hangar/flight if opened from title)
+
+---
+
+## [0.1.124] — 2026-07-14
+
+### Fixed
+- Staging races: if the crane gets a pile→pile crate first, the helping mechanic abandons that ferry; if a mechanic already has it (or is mid-handoff), the crane abandons that move and re-picks
+
+---
+
+## [0.1.123] — 2026-07-14
+
+### Changed
+- Crane trolley XY travel is a bit faster so staging prefers the crane when he is free
+- Idle bay mechanics ferry their own bay’s staging piles (same rules as the crane) only while the crane is busy; they skip piles he is already working
+
+---
+
+## [0.1.122] — 2026-07-14
+
+### Changed
+- Mechanics walk to the **target hardpoint** for install/uninstall and weld there (sparks at the mount), instead of a random hull station
+
+---
+
+## [0.1.121] — 2026-07-14
+
+### Fixed
+- **REROLL SERVICES** fully resets B2: starter ship loadout, clears all pad staging piles + floor drops, dumps in-transit forklift/crane/mechanic freight for that bay, parks crew, and replaces the checklist (old tasks removed — not left pending)
+
+---
+
+## [0.1.120] — 2026-07-14
+
+### Added
+- Hangar Dev panel sim clock: **SLOW** (0.5×) · **PAUSE** · **PLAY** (1×) · **FAST** (2×) · **FAST2X** (4×) — scales real update delta so crew/logistics actually run faster or slower
+
+---
+
+## [0.1.119] — 2026-07-14
+
+### Changed
+- Service board shows a single **Install** row with pips again; each pip still maps to a specific hardpoint + catalog item in the sim (strip/install/forklift unchanged)
+
+---
+
+## [0.1.118] — 2026-07-14
+
+### Fixed
+- Docked hangar ship no longer yaws on the pad: Q/E thruster plumes still play, but heading stays locked to the turntable
+
+---
+
+## [0.1.117] — 2026-07-14
+
+### Fixed
+- Hangar **REROLL SERVICES** button shows again (Dev Mode on): UI sync ran before hangar mode was set, so the button stayed hidden
+
+---
+
+## [0.1.116] — 2026-07-14
+
+### Changed
+- Captain **Install** tasks each bind an exact hardpoint + catalog item (forklift brings that part; mechanic strips only that hardpoint if occupied). Board still shows one **Install** row with pips
+- Ambient forklift upgrade freight pulls only from the player-equipable ItemCatalog (no legacy random UPGRADE_KINDS)
+
+---
+
+## [0.1.115] — 2026-07-14
+
+### Fixed
+- Mining laser beam / hitscan now start at the **muzzle tip** (past the bridge), not the under-chin hardpoint pivot
+
+---
+
+## [0.1.114] — 2026-07-14
+
+### Fixed
+- Hangar mechanics no longer weld-loop without removing parts: `stripCategory` is kept across trip reassignment, strip-before-install is prioritized, and strip recovers the category from staged inbound freight when the hint was lost
+
+---
+
+## [0.1.113] — 2026-07-14
+
+### Changed
+- Starter mining laser hardpoint sits **under the bridge**; bridge draws on top so the canopy reads clearly and only the barrel tip pokes past the nose (empty chin socket when unequipped)
+
+---
+
+## [0.1.112] — 2026-07-14
+
+### Fixed
+- Stripped starter hull no longer shows a mounted engine: orange housing/bell is the **mainEngine item**; aft section is an empty bay socket until installed
+
+---
+
+## [0.1.111] — 2026-07-14
+
+### Fixed
+- Starter bell hull 2.5D no longer skews as if viewed from starboard; bevel is symmetric (centroid inset). Engine housing recentered on the aft centerline. Removed hangar Y-squash that exaggerated the tilt
+
+---
+
+## [0.1.110] — 2026-07-14
+
+### Added
+- Settings: **Dev Mode** toggle (default on); hangar **Reroll Services** button (bottom-left) when Dev Mode is on — restores starter loadout + new captain checklist
+
+### Fixed
+- Upgrade install no longer soft-fails forever on categories with no sockets / Mk too high (was snapping freight back to UP·IN)
+- Mechanics no longer strip every hardpoint — only one matching-category part when a staged install needs a free socket
+
+---
+
+## [0.1.109] — 2026-07-14
+
+### Changed
+- Hangar upgrade logistics use **ItemCatalog** parts: forklift freight carries catalog ids; mechanics **unequip** a hardpoint (part visibly gone) before **install** onto an empty matching socket; install blocked until strip frees a slot
+
+---
+
+## [0.1.108] — 2026-07-14
+
+### Changed
+- Starter ship now draws as **3 separate section meshes** (engine → body → bridge) plus **11 hardpoint items** (engine bell, 8 thruster cups, mining laser, dorsal turret)
+- Stronger 2.5D extrusion (real side-wall quads between footprint and deck); hangar uses screen-Y foreshortening so thickness reads clearly
+
+---
+
+## [0.1.107] — 2026-07-14
+
+### Changed
+- Starter Generalist Mid Mk2 `a` redrawn as industrial 2.5D (extruded plates, canopy depth, worn scuffs/rivets, layered engine bell + thruster cups + turret) — same bell silhouette, higher fidelity
+
+---
+
+## [0.1.106] — 2026-07-14
+
+### Added
+- Modular ship system (`src/ships/`): classes, swap groups, themes/color-ways/wear, full section + item catalog ID matrix (parametric), attach rules, generator, 16-angle view helpers, shared renderer
+- Player ship is Generalist · Civilian Middle · Mk2 · variant `a` bill of materials (bell silhouette from catalog parts — rebuildable later in Upgrade UI)
+- Docs: modular taxonomy in GDD / VISION / PROJECT; OPEN_QUESTIONS §12 resolved for Mk / swap groups / Mega no-dock
+
+### Changed
+- Flight / hangar player draw goes through `ShipRenderer` (starter retains bell parity); mounts resolve from `ship.shipDef`
 
 ---
 

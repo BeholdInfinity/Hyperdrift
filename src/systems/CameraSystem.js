@@ -1,5 +1,5 @@
 import { Vec2, lerp, clamp } from '../utils/MathUtils.js';
-import { CAMERA, HANGAR, PHYSICS } from '../core/Constants.js';
+import { CAMERA, HANGAR, BLUEPRINT, PHYSICS } from '../core/Constants.js';
 
 export class CameraSystem {
   constructor() {
@@ -60,6 +60,26 @@ export class CameraSystem {
         this.targetUserZoom + zoomWheelDelta * HANGAR.ZOOM_WHEEL_STEP,
         HANGAR.ZOOM_MIN,
         HANGAR.ZOOM_MAX
+      );
+    }
+
+    const zoomT = 1 - Math.exp(-CAMERA.ZOOM_SMOOTHING * deltaTime);
+    this.userZoom = lerp(this.userZoom, this.targetUserZoom, zoomT);
+    this.effectiveZoom = this.userZoom;
+  }
+
+  /** Blueprint sandbox: no lead offset; zoom in until the hull fills the circle. */
+  updateBlueprint(shipPosition, deltaTime, zoomWheelDelta = 0) {
+    this.position.copy(shipPosition);
+    this.offset.set(0, 0);
+    this.targetOffset.set(0, 0);
+    this.speedZoom = 1;
+
+    if (zoomWheelDelta !== 0) {
+      this.targetUserZoom = clamp(
+        this.targetUserZoom + zoomWheelDelta * BLUEPRINT.ZOOM_WHEEL_STEP,
+        BLUEPRINT.ZOOM_MIN,
+        BLUEPRINT.ZOOM_MAX
       );
     }
 

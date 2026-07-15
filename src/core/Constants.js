@@ -40,6 +40,10 @@ export const SHIP = {
   TURRET_BASE_OUTER: 7,
   TURRET_BASE_MID: 5,
   TURRET_BASE_INNER: 2.8,
+  /** Maneuvering thruster cup visual scale (housing/bore size, all Mk tiers) */
+  THRUSTER_CUP_SCALE: 1.5,
+  /** Maneuvering thruster plume length/width bump to match larger cups */
+  THRUSTER_PLUME_SCALE: 1.15,
   /** Combat turret traverse rate (rad/s) toward pointer */
   TURRET_SLEW_RATE: 5.5,
   /** Mining laser traverse rate (rad/s) within its arc */
@@ -48,6 +52,8 @@ export const SHIP = {
   MINING_LASER_ARC: (35 * Math.PI) / 180,
   MINING_LASER_RANGE: 280,
   MINING_LASER_DPS: 40,
+  /** Local +X from chin hardpoint to muzzle tip (matches StarterBellDraw) */
+  MINING_LASER_MUZZLE_OFFSET: 4.8,
   PROJECTILE_SPEED: 1200,
   PROJECTILE_DAMAGE: 25,
 };
@@ -71,8 +77,25 @@ export const CAMERA = {
   SPEED_ZOOM_MIN: 0.55,
 };
 
+/** Dev Blueprint sandbox — ship can fill the play circle */
+export const BLUEPRINT = {
+  ZOOM_MIN: 1.2,
+  /** Close enough for hull + mounts to fill the viewport */
+  ZOOM_MAX: 22,
+  ZOOM_DEFAULT: 9,
+  ZOOM_WHEEL_STEP: 0.45,
+  /**
+   * Viewport layout (circle stays sacred — UI lives in the black outside).
+   * Radius as fraction of min(w,h)/2; centerY as fraction of height (raised for inspector band).
+   */
+  VIEW_RADIUS_FRAC: 0.78,
+  VIEW_CENTER_Y: 0.40,
+};
+
 /** Home Base hangar (docked bay; new-game / between-mission hub seed) */
 export const HANGAR = {
+  /** Dock pad disc radius (B2 Mk2; HangarBay BAY.PAD_R) */
+  PAD_R: 38,
   /** Ceiling stop — three pads + bay door still readable */
   ZOOM_MIN: 1.85,
   /** Close enough that the hull fills most of the play circle */
@@ -105,6 +128,14 @@ export const HANGAR = {
   LAND_APPROACH_SPEED: 78,
   /** B1/B3 ambient visitor traffic */
   VISITOR_OCCUPY_CHANCE: 0.55,
+  /**
+   * Chance a fresh B1/B3 visitor rolls the player's own pad-Mk tier (peer-sized,
+   * e.g. Standard when the player flies Standard) instead of the smaller
+   * UltraLight/Light Mk1 tier. Physical pad discs are already Mk2-sized
+   * (`HANGAR.PAD_R`) on every bay, so this is a spawn-pool weight, not a
+   * docking-clamp limit.
+   */
+  VISITOR_PEER_MK_CHANCE: 0.7,
   /** Chance a leave uses the under-deck elevator instead of bay doors */
   VISITOR_ELEVATOR_CHANCE: 0.38,
   /** Empty bay: among elevator raises, chance of immediate leave vs raise-for-service */
@@ -142,6 +173,23 @@ export const HANGAR = {
   VISITOR_THRUST_ACCEL: 160,
 };
 
+/**
+ * Dock pad Mk disc radii (world units) — Blueprint background rings + future bay sizing.
+ * Mk2 matches hangar B2 (`HANGAR.PAD_R`). Mk1 sized for UltraLight/Light fill;
+ * Mk3 sized for Heavy (~2× Standard).
+ */
+export const PAD_MK_RADIUS = {
+  1: 22,
+  2: HANGAR.PAD_R,
+  3: 80,
+};
+
+/**
+ * Blueprint-only decorative Mk4 tease radius (world units).
+ * Not used for ship/class sizing — rim peeks near the play-circle edge at ZOOM_MIN.
+ */
+export const PAD_MK4_TEASE_RADIUS = 300;
+
 /** Jennings Station overworld exterior */
 export const STATION = {
   WORLD_X: 0,
@@ -154,6 +202,45 @@ export const STATION = {
   APPROACH_RADIUS: 420,
   DOCK_RADIUS: 160,
   DOCK_MAX_SPEED: 120,
+};
+
+/**
+ * Sparse ambient traffic (modular ships in open space).
+ * Near hangar: a few ships + always-on police pack. Deep: rare, not zero.
+ * Spawn/despawn only off-screen (never pop in/out of the player's view).
+ */
+export const AMBIENT = {
+  MAX_SHIPS: 16,
+  /** Soft cap for non-police near the station */
+  MAX_NEAR_NON_POLICE: 5,
+  /** Always maintain at least this many police around the station */
+  MIN_POLICE: 3,
+  MAX_POLICE: 6,
+  NEAR_RADIUS: 900,
+  MID_RADIUS: 2800,
+  DEEP_RADIUS: 9000,
+  FALLOFF_K: 2.4,
+  DEEP_FLOOR: 0.04,
+  DEEP_FALLOFF: 1.8,
+  NEAR_ACCEPT: 0.75,
+  DEEP_ACCEPT: 0.35,
+  DEEP_SPAWN_CHANCE: 0.12,
+  DEEP_SPAWN_MIN: 4200,
+  DEEP_SPAWN_MAX: 7800,
+  FLYBY_RADIUS: 1600,
+  SPAWN_INTERVAL_MIN: 2.2,
+  SPAWN_INTERVAL_MAX: 6.5,
+  /** Absolute far cull (still requires off-screen) */
+  CULL_DIST: 7500,
+  PLAYER_CLEARANCE: 220,
+  SCAN_RANGE: 520,
+  /**
+   * Extra world units beyond the circular play viewport for spawn/despawn.
+   * Ships only appear/disappear outside viewRadius + this margin.
+   */
+  VISIBLE_MARGIN: 140,
+  /** Seed this many non-police near the station on flight start (off-screen) */
+  SEED_NEAR_TRAFFIC: 3,
 };
 
 export const RENDER = {

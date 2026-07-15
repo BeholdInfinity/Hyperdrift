@@ -286,8 +286,18 @@ If yes → expand. If no → redesign before complexity.
 
 The browser prototype (`GDD.md`) validates **Layer 1 flight feel** in isolation: semi-Newtonian movement, procedural space, readable thrusters. It does not yet test logistics, stations, or multiplayer.
 
-The prototype hangar is the early seed of **Home Base** — where a run starts and where the crew returns between missions (outfit, stash, depart, extract). That maps to the extraction / between-run persistence questions in [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) (§2). Launch-from-hangar and return are not wired yet. Neighbor-pad busywork stays ambient sim; player-pad load/unload/repair/upgrade is intended to run only on explicit requests (queued, animation-gated) — see [`GDD.md`](GDD.md) Home Base.
+### Ship as character (modular hulls)
 
-Path forward: nail flight → grow Home Base into the real start/return surface → prototype one logistics chain on foot → add second player and station handoffs → PvE pressure → only then PvP and full interior.
+Long-term, crews bond with a **specific vessel** assembled from modular sections and hardpoint items. Prototype direction (see `GDD.md` / `src/ships/`):
+
+- **Swap groups** — Scout (prebuilt only); Light (Fighter / Transport); Standard (Miner / Generalist / Science / Hauler — player may mix within group); Mega (XL, space-only until larger hangars exist).
+- **Theme / Mk / color-way** may mix on one hull; class-group purity is the hard constraint.
+- **3 shape variants** per Class+Section+Theme+Mk (`a`/`b`/`c`).
+- Finish/wear follows theme (Elite stays clean; working ships can look lived-in). Hangar grit is hangar set dressing, not every ship shader.
+- Player progression: outfit within a group, or eventually buy into another group’s hull — not frankenstein across Scout↔Mega.
+
+The prototype hangar is the early seed of **Home Base** — where a run starts and where the crew returns between missions (outfit, stash, depart, extract). That maps to the extraction / between-run persistence questions in [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) (§2). Neighbor-pad busywork stays ambient sim; player-pad load/unload/repair/upgrade is intended to run only on explicit requests (queued, animation-gated) — see [`GDD.md`](GDD.md) Home Base.
+
+Path forward: nail flight → modular ship catalog + Upgrade UI → grow Home Base → prototype one logistics chain on foot → add second player and station handoffs → PvE pressure → only then PvP and full interior.
 
 See [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) for unresolved decisions. See [`CHANGELOG.md`](CHANGELOG.md) for what has actually shipped.

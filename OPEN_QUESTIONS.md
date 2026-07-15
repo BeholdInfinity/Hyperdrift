@@ -156,14 +156,12 @@ Deciding what you **won't** do is as valuable as what you will.
 
 ## 12. Ship component Mk variants (prototype stub)
 
-Hangar pad status boards show **Mk** labels for hull / fuel / bullets / shells (random 1–3) and a size-driven **cargo hold Mk** ladder. These are **display stubs only** — no capacity, damage, regen, or shop effects yet.
+Hangar pad status boards still show display Mk stubs; modular catalog now defines real Mk1–4 on sections/items.
 
 | # | Question | Why it matters |
 |---|----------|----------------|
-| 12.1 | **Which components get real Mk tiers?** Hull, fuel tank, cargo bay, turret, laser, shields, engines…? | Progression + hangar service UX |
-| 12.2 | **What does each Mk change?** HP, capacity, fire rate, mass, power draw, price? | Combat / logistics balance |
-| 12.3 | **Player cargo bay ceiling** — locked at 3×3 (Mk.5) for player-size ships; large visitors only go higher. Keep? | Board readability + ship fantasy |
-| 12.4 | **When do Mk upgrades happen?** Shop only, hangar install jobs, loot drops? | Home Base loop |
+| 12.2 detail | Exact combat/logistics numbers per Mk | Balance pass still open |
+| 12.4 detail | Shop vs hangar install timing UX | Upgrade UI not built |
 
 ---
 
@@ -174,6 +172,12 @@ Hangar pad status boards show **Mk** labels for hull / fuel / bullets / shells (
 | — | Roles are fixed classes at lobby | **No** — unseated = logistics for all; seated = station role; swap on the fly | 2026-07-10 |
 | — | Pilot scoops by flying over resources | **Yes** — gunner grapples what pilot missed | 2026-07-10 |
 | — | Fuel from gas clouds; avoid corrosive clouds | **Yes** (details TBD) | 2026-07-10 |
+| 12.1 | Which components get real Mk tiers? | **Sections + hardpoint items** (engines, thrusters, lasers, turrets, arrays, etc.). Hangar board hull/fuel/ammo labels remain stubs until wired to loadout. | 2026-07-14 |
+| 12.2 | What does each Mk change? | **Socket authority + stub stats** (thrust/DPS/mass scale with Mk). Full balance TBD. Item Mk must be ≤ socket Mk. | 2026-07-14 |
+| 12.3 | Player cargo bay ceiling | **Keep** 3×3 (Mk.5) for Standard player-size ships; Mega/large visitors higher; Scout often 0. | 2026-07-14 |
+| 12.4 | When do Mk upgrades happen? | Hangar **install jobs** + future Upgrade UI; not mid-flight. | 2026-07-14 |
+| — | Cross-class part mixing? | **Swap groups** — Scout prebuilt; Light / Standard / Mega each internal. No cross-group frankenstein. Theme/Mk/color-way may mix. | 2026-07-14 |
+| — | Mega at Home Base? | **No** on current pads; space spawn only until larger hangars. | 2026-07-14 |
 
 ---
 
@@ -186,4 +190,4 @@ Hangar pad status boards show **Mk** labels for hull / fuel / bullets / shells (
 
 ---
 
-*Last updated: 2026-07-12*
+*Last updated: 2026-07-14*
