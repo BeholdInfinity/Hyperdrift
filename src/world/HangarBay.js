@@ -1343,6 +1343,8 @@ export class HangarBay {
       lines.push({ text: 'SHIP DEPARTING', color: 'red' });
     } else if (lane === 'elevator' || (pad?.padDrop || 0) > 0.02) {
       const ascending =
+        seq?.phase === 'riseShip' ||
+        seq?.phase === 'riseEmpty' ||
         seq?.kind === 'raiseArrive' ||
         seq?.kind === 'raiseLaunch' ||
         (seq?.kind || '').includes('rise');
@@ -2164,6 +2166,44 @@ export class HangarBay {
     }
     equipPadVisitor(pad, visitorId);
     this._finishVisitorArrive(pad);
+    return true;
+  }
+
+  /**
+   * Dev: cancel bay work and run a snappy elevator descent → ascent on B1/B3
+   * so the transit motion is easy to preview. Keeps the current visitor when
+   * present; otherwise equips one. Ship rides down and back up.
+   * @param {number} bayIndex 0 (B1) or 2 (B3)
+   */
+  forceSidePadElevatorCycle(bayIndex) {
+    const pad = this._sidePadForBay(bayIndex);
+    if (!pad) return false;
+
+    this.clearOps(bayIndex);
+    this._purgeBayFreightAndCrew(bayIndex);
+    this.bayClearing[bayIndex] = false;
+    pad.seq = null;
+    pad.service = null;
+    pad.shipState = null;
+    this.setDoorOpen(bayIndex, 0);
+
+    if (!pad.visitorId) {
+      pad.padMk = this._rollVisitorPadMk();
+      equipPadVisitor(pad, pickVisitorId(pad.padMk));
+    }
+
+    pad.shipY = 0;
+    pad.shipScale = 1;
+    pad.shipHover = 0;
+    pad.padDrop = 0;
+    pad.shipVx = 0;
+    pad.shipVy = 0;
+    pad.padAngle = FACE_NORTH;
+    pad.shipAngle = FACE_NORTH;
+    clearVisitorThrusters(pad);
+    this.beginOps(pad.bayIndex, 'elevator');
+    // kind starts with "lower" so pad-rest / amber-elevator gates already apply
+    pad.seq = { kind: 'lowerCycle', phase: 'sink', t: 0 };
     return true;
   }
 
@@ -3018,6 +3058,7 @@ export class HangarBay {
     if (s.kind === 'depart') this._tickVisitorDepart(pad, s, dt);
     else if (s.kind === 'arrive') this._tickVisitorArrive(pad, s, dt);
     else if (s.kind === 'lower') this._tickVisitorLower(pad, s, dt);
+    else if (s.kind === 'lowerCycle') this._tickVisitorLowerCycle(pad, s, dt);
     else if (s.kind === 'raiseLaunch') this._tickVisitorRaiseLaunch(pad, s, dt);
     else if (s.kind === 'raiseArrive') this._tickVisitorRaiseArrive(pad, s, dt);
   }
@@ -3324,6 +3365,52 @@ export class HangarBay {
         if (s.t >= HANGAR.VISITOR_RISE_TIME) {
           pad.padDrop = 0;
           this._finishVisitorLeave(pad);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  /** Dev-only: ship sinks with the pad, dwells below, then rises back (same visitor). */
+  _tickVisitorLowerCycle(pad, s, dt) {
+    switch (s.phase) {
+      case 'sink': {
+        const u = smoothstep(s.t / HANGAR.VISITOR_SINK_TIME);
+        pad.padDrop = u;
+        pad.shipHover = 0;
+        pad.shipScale = 1;
+        pad.padAngle = FACE_NORTH;
+        pad.shipAngle = FACE_NORTH;
+        clearVisitorThrusters(pad);
+        if (s.t >= HANGAR.VISITOR_SINK_TIME) {
+          s.phase = 'below';
+          s.t = 0;
+          pad.padDrop = 1;
+        }
+        break;
+      }
+      case 'below':
+        pad.padDrop = 1;
+        pad.padAngle = FACE_NORTH;
+        pad.shipAngle = FACE_NORTH;
+        if (s.t >= HANGAR.VISITOR_BELOW_TIME) {
+          s.phase = 'riseShip';
+          s.t = 0;
+        }
+        break;
+      case 'riseShip': {
+        const u = smoothstep(s.t / HANGAR.VISITOR_RISE_TIME);
+        pad.padDrop = 1 - u;
+        pad.shipHover = 0;
+        pad.shipScale = 1;
+        pad.padAngle = FACE_NORTH;
+        pad.shipAngle = FACE_NORTH;
+        clearVisitorThrusters(pad);
+        if (s.t >= HANGAR.VISITOR_RISE_TIME) {
+          pad.padDrop = 0;
+          this._finishVisitorArrive(pad);
         }
         break;
       }
@@ -9185,20 +9272,21 @@ export class HangarBay {
   }
 
   /**
-   * Shared 2.5D depth curve for the elevator shaft. `t` is descent progress
-   * (0 = deck level, 1 = shaft floor). Both the static well drawing and the
-   * moving pad+ship sample this same curve, so the hole and the descent read
-   * as one tilted shaft (south = the hangar's screen-down "away/below"
-   * direction, matching the north-lift convention used for raised height)
-   * instead of a flat vertical drop into a circle.
+   * 2.5D depth curve for the static elevator-shaft well drawing.
+   * `t` is depth progress (0 = deck lip, 1 = virtual shaft floor).
+   * Floor center sits south of the pad opening (`south > PAD_R` at t=1) so
+   * the bottom never enters view — only descending circular walls are seen.
+   * Transit pad/ship motion uses its own south/scale/fade (not this curve).
    */
   _shaftDepthAt(t) {
     const tt = Math.min(1, Math.max(0, t));
-    const scaleX = 1 - tt * 0.58;
+    // VP / floor well below the southern lip (clip is ±PAD_R)
+    const south = tt * BAY.PAD_R * 1.85;
+    const scaleX = 1 - tt * 0.72;
     return {
-      south: tt * BAY.PAD_R * 0.62,
+      south,
       scaleX,
-      scaleY: scaleX * (1 - tt * 0.3),
+      scaleY: scaleX * (1 - tt * 0.35),
       alpha: Math.max(0, 1 - tt * 0.9),
     };
   }
@@ -9212,7 +9300,7 @@ export class HangarBay {
     this._drawElevationShaftRim(ctx, cx, cy);
   }
 
-  /** Dark well — clipped to pad circle; rings/lines follow `_shaftDepthAt`. */
+  /** Dark well — clipped to pad circle; rings/lines converge toward an off-screen south VP. */
   _drawElevationShaftWell(ctx, cx, cy) {
     const r = BAY.PAD_R;
     const deep = this._shaftDepthAt(1);
@@ -9222,65 +9310,63 @@ export class HangarBay {
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.clip();
 
-    // Depth gradient: steel-blue near the lip → near-black at the shaft floor
-    const grad = ctx.createLinearGradient(0, -r, 0, deep.south + r * deep.scaleY);
+    // Depth gradient: steel-blue at the north lip → void toward south (away/below)
+    const grad = ctx.createLinearGradient(0, -r, 0, r);
     grad.addColorStop(0, '#2a3848');
-    grad.addColorStop(0.35, '#1a2430');
-    grad.addColorStop(0.7, '#0a1018');
+    grad.addColorStop(0.4, '#1a2430');
+    grad.addColorStop(0.75, '#0a1018');
     grad.addColorStop(1, '#020408');
     ctx.fillStyle = grad;
     ctx.fillRect(-r, -r, r * 2, r * 2);
 
-    // Soft radial falloff toward the shaft floor (same point the descent ends at)
+    // Soft falloff toward the off-screen floor VP (only the southern wash is visible)
     const radial = ctx.createRadialGradient(
-      0, deep.south * 0.6, r * 0.1,
-      0, deep.south, r
+      0, deep.south, r * 0.05,
+      0, r * 0.25, r * 1.35
     );
-    radial.addColorStop(0, 'rgba(0, 0, 0, 0.75)');
-    radial.addColorStop(0.55, 'rgba(0, 0, 0, 0.25)');
+    radial.addColorStop(0, 'rgba(0, 0, 0, 0.92)');
+    radial.addColorStop(0.45, 'rgba(0, 0, 0, 0.45)');
     radial.addColorStop(1, 'rgba(0, 0, 0, 0)');
     ctx.fillStyle = radial;
     ctx.fillRect(-r, -r, r * 2, r * 2);
 
-    // Wall guide lines converge on the same vanishing point the pad/ship sink
-    // toward — reads as a shaft tilted south, not a straight vertical bore
+    // Wall guide lines converge on the off-screen south VP
     ctx.strokeStyle = 'rgba(0, 0, 0, 0.55)';
     ctx.lineWidth = 1.1;
     for (const lx of [-r * 0.55, 0, r * 0.55]) {
       ctx.beginPath();
       ctx.moveTo(lx, -r * 0.95);
-      ctx.lineTo(lx * 0.12, deep.south);
+      ctx.lineTo(lx * 0.08, deep.south);
       ctx.stroke();
     }
 
-    // Curved depth rings sampled from the shared depth curve — deeper rings
-    // smaller, flatter, and shifted south, matching the descending pad/ship
+    // Depth rings as circular walls — deeper = smaller, flatter, more southern.
+    // Centers past the lip clip to arcs; the t=1 floor itself is never drawn.
     for (const [t, alpha] of [
-      [0.28, 0.45],
-      [0.52, 0.55],
-      [0.78, 0.7],
+      [0.16, 0.32],
+      [0.32, 0.4],
+      [0.48, 0.48],
+      [0.62, 0.56],
+      [0.76, 0.64],
+      [0.88, 0.72],
     ]) {
       const d = this._shaftDepthAt(t);
       const rr = r * d.scaleX;
       const ry = r * d.scaleY;
+      // Skip rings wholly south of the opening (no visible arc)
+      if (d.south - ry > r * 0.98) continue;
       ctx.strokeStyle = `rgba(0, 0, 0, ${alpha})`;
       ctx.lineWidth = 1.15;
       ctx.beginPath();
       ctx.ellipse(0, d.south, rr, ry, 0, 0, Math.PI * 2);
       ctx.stroke();
       // Subtle face highlight on the north lip of each ring
-      ctx.strokeStyle = `rgba(90, 120, 145, ${0.12 * (1 - t)})`;
+      ctx.strokeStyle = `rgba(90, 120, 145, ${0.14 * (1 - t)})`;
       ctx.lineWidth = 0.8;
       ctx.beginPath();
       ctx.ellipse(0, d.south, rr, ry, 0, Math.PI * 1.15, Math.PI * 1.85);
       ctx.stroke();
     }
-
-    // Deep void at the shaft floor — where the descending pad/ship fade out
-    ctx.fillStyle = '#000';
-    ctx.beginPath();
-    ctx.ellipse(0, deep.south, r * deep.scaleX * 0.5, r * deep.scaleY * 0.5, 0, 0, Math.PI * 2);
-    ctx.fill();
 
     ctx.restore();
   }
@@ -9346,20 +9432,23 @@ export class HangarBay {
   /**
    * Descending/ascending pad + ship, clipped to the shaft opening so the rest
    * of the hangar occludes anything outside the circle.
+   * Motion: south drift + uniform shrink + fade (pre-_shaftDepthAt sync).
    */
   _drawElevatorTransit(ctx, pad) {
     const drop = pad.padDrop || 0;
     const r = BAY.PAD_R;
-    const d = this._shaftDepthAt(drop);
+    const south = drop * 48;
+    const sc = 1 - drop * 0.55;
+    const alpha = Math.max(0, 1 - drop * 0.92);
 
     ctx.save();
     ctx.beginPath();
     ctx.arc(pad.x, 0, r, 0, Math.PI * 2);
     ctx.clip();
 
-    ctx.globalAlpha = d.alpha;
-    ctx.translate(pad.x, d.south);
-    ctx.scale(d.scaleX, d.scaleY);
+    ctx.globalAlpha = alpha;
+    ctx.translate(pad.x, south);
+    ctx.scale(sc, sc);
 
     this._drawDockPad(ctx, 0, 0, pad.bayId, {
       active: false,
@@ -9400,15 +9489,6 @@ export class HangarBay {
       ctx.restore();
     }
 
-    // Merge into the shaft's own darkness as it sinks, matching the well gradient
-    if (drop > 0.05) {
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = `rgba(2, 4, 8, ${Math.min(0.75, drop * 0.8)})`;
-      ctx.beginPath();
-      ctx.arc(0, 0, r * 1.05, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
     ctx.restore();
   }
 
@@ -9416,16 +9496,18 @@ export class HangarBay {
   _drawPlayerElevatorTransit(ctx, drawPlayerShip) {
     const drop = this.playerPadDrop || 0;
     const r = BAY.PAD_R;
-    const d = this._shaftDepthAt(drop);
+    const south = drop * 48;
+    const sc = 1 - drop * 0.55;
+    const alpha = Math.max(0, 1 - drop * 0.92);
 
     ctx.save();
     ctx.beginPath();
     ctx.arc(0, 0, r, 0, Math.PI * 2);
     ctx.clip();
 
-    ctx.globalAlpha = d.alpha;
-    ctx.translate(0, d.south);
-    ctx.scale(d.scaleX, d.scaleY);
+    ctx.globalAlpha = alpha;
+    ctx.translate(0, south);
+    ctx.scale(sc, sc);
 
     this._drawDockPad(ctx, 0, 0, 'B2', {
       active: true,
@@ -9437,15 +9519,6 @@ export class HangarBay {
 
     if (drop < 0.92 && drawPlayerShip) {
       drawPlayerShip(ctx);
-    }
-
-    // Merge into the shaft's own darkness as it sinks, matching the well gradient
-    if (drop > 0.05) {
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = `rgba(2, 4, 8, ${Math.min(0.75, drop * 0.8)})`;
-      ctx.beginPath();
-      ctx.arc(0, 0, r * 1.05, 0, Math.PI * 2);
-      ctx.fill();
     }
 
     ctx.restore();

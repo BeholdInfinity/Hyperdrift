@@ -70,6 +70,15 @@ Each bay owns **two columns** flanking its pad: **left = inbound (load)**, **rig
 
 Vertical flow (example upgrade install): forklift → south-left → crane → top-left → mechanic installs; old mount → top-right → crane → south-right → forklift off-screen (sim vanish today; later crew stash/sell).
 
+**Wanted — turret / hardpoint swap choreography (not shipped):** today’s install is strip-then-weld at the mount with freight already at north-in. Preferred beat so the swap reads physically:
+
+1. Mechanic sparks a **detach weld** on the old turret / mount (part becomes freestanding on the hull).
+2. Crane comes over, **picks up the detached part**, and moves it to outbound staging (north-out → south-out pipeline as today).
+3. Crane picks up the **new turret** from inbound staging and **places it onto the empty hardpoint**.
+4. Mechanic **welds the new turret** into place (second spark pass).
+
+Until this ships, keep the current checklist / strip / install jobs; do not invent parallel mount paths in sim.
+
 Each hardpoint holds up to **4** items in a 2×2 slot grid. Freight is drawn as worn industrial **2.5D** with **8-direction** facing (follows forklift / mechanic carry; rests on piles). Service crates match the request: open-top **fuel cells**, brown **7.62 belt-ammo cans** (linked tip-up rows), olive **40mm shell cans** (3×2 fat rounds); load/unload uses **six** generic container color schemes; install/uninstall are distinct sci-fi ship parts (laser, turret, armor, thruster, engine, sensor dish). Actors skip full destinations, linger on blocked jobs until space opens, and prioritize clearing blockages they can help with.
 
 ### Station crew (fixed roster)

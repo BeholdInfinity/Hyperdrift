@@ -7,8 +7,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 ## [Unreleased]
 
 ### Incomplete — session wrap 2026-07-15
-User-requested work that did **not** finish this session (agents aborted mid-pass). Pick up next:
+User-requested work deferred or not finished. Pick up next:
 
+- **Hangar turret/hardpoint install choreography** — design noted in `GDD.md` / Planned; not coded this session (still interim strip→weld). Preferred beat: mech weld-detach → crane removes old → crane places new from staging → mech weld-seat
 - **UltraLight engines too big** — `ItemDraw.drawGenericEngine` still uses fixed ellipse size and ignores `classScale`, so tiny UltraLight hulls get Standard-sized engines (“condom” silhouette). Scale generic engines with class/swap group (UltraLight first; don’t regress Light/Standard/Heavy if they already look right).
 - **Thrusters still too small** — cups are at `SHIP.THRUSTER_CUP_SCALE = 1.5` (+ plumes 1.15); user asked for another substantial bump and can barely see them.
 - **Hardpoint positions vs scaled hull** — after class `scale` ups (e.g. Generalist ~1.55), mounts may still sit on pre-scale geometry. Audit `SectionGeometry` / `SectionCatalog` / `ShipHardpoints` / plume mounts so cups sit flush on the current hull.
@@ -18,6 +19,7 @@ User-requested work that did **not** finish this session (agents aborted mid-pas
 
 ### Planned
 - Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
+- Hangar turret/hardpoint install beat: mech weld-detach → crane removes old → crane installs new from staging → mech weld-seat (`GDD.md`)
 - Ship Upgrade UI (grows out of Dev Blueprint mode)
 - Unique silhouette polish per catalog variant
 - Hand-art polish for hero variants (bell-quality)
@@ -28,6 +30,27 @@ User-requested work that did **not** finish this session (agents aborted mid-pas
 - Audio
 - Resource drops (guns vs mining laser yield tradeoff)
 - Precision power-pip allocation for laser / scanner
+
+---
+
+## [0.1.158] — 2026-07-15
+
+### Changed
+- Elevator shaft well vanishing point pushed south of the pad opening (`_shaftDepthAt` floor at ~1.85× pad radius) so only descending circular wall rings are visible — the shaft floor disc is no longer drawn in-frame
+
+---
+
+## [0.1.157] — 2026-07-15
+
+### Added
+- Hangar Dev **ELEV B1** / **ELEV B3** — force a snappy elevator descent→ascent cycle on that bay (keeps the current visitor, or equips one if empty) for previewing shaft transit motion next to REROLL B1/B3
+
+---
+
+## [0.1.156] — 2026-07-15
+
+### Changed
+- Elevator pad/ship transit motion restored to the pre-sync curve (`south = drop×48`, uniform shrink, fade) — shaft well still uses the tilted `_shaftDepthAt` drawing; 2.5D `hangarShipView` ships unchanged
 
 ---
 

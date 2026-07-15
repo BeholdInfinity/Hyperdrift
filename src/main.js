@@ -11,7 +11,9 @@ const hangarBackBtn = document.getElementById('hangar-back-btn');
 const hangarLaunchBtn = document.getElementById('hangar-launch-btn');
 const hangarRerollSvcBtn = document.getElementById('hangar-reroll-svc-btn');
 const hangarRerollB1Btn = document.getElementById('hangar-reroll-b1-btn');
+const hangarElevB1Btn = document.getElementById('hangar-elev-b1-btn');
 const hangarRerollB3Btn = document.getElementById('hangar-reroll-b3-btn');
+const hangarElevB3Btn = document.getElementById('hangar-elev-b3-btn');
 const hangarBlueprintBtn = document.getElementById('hangar-blueprint-btn');
 const hangarDevPanel = document.getElementById('hangar-dev-panel');
 const hangarSimSpeedReadout = document.getElementById('hangar-sim-speed-readout');
@@ -448,10 +450,22 @@ if (hangarRerollB1Btn) {
     engine.hangarBay?.rerollSidePadVisitor?.(0);
   });
 }
+if (hangarElevB1Btn) {
+  hangarElevB1Btn.addEventListener('click', () => {
+    if (!Settings.isDevMode()) return;
+    engine.hangarBay?.forceSidePadElevatorCycle?.(0);
+  });
+}
 if (hangarRerollB3Btn) {
   hangarRerollB3Btn.addEventListener('click', () => {
     if (!Settings.isDevMode()) return;
     engine.hangarBay?.rerollSidePadVisitor?.(2);
+  });
+}
+if (hangarElevB3Btn) {
+  hangarElevB3Btn.addEventListener('click', () => {
+    if (!Settings.isDevMode()) return;
+    engine.hangarBay?.forceSidePadElevatorCycle?.(2);
   });
 }
 if (hangarBlueprintBtn) {

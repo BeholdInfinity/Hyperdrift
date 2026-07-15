@@ -93,7 +93,7 @@ src/
 | Dorsal 360° combat turret (LMB, 3/s) + nose mining laser (RMB) | Done |
 | Circular viewport + corner UI placeholders | Done |
 | Title screen (ENTER HANGAR / QUICK LAUNCH / SETTINGS; version stamp) | Done |
-| Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Bay + launch/land; modular B1/B3 visitors; Dev REROLL B1/B3; 2.5D elevator shaft; title B2 elevator raise; **ships draw in angled 2.5D** (16 headings track yaw) |
+| Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Bay + launch/land; modular B1/B3 visitors; Dev REROLL + ELEV B1/B3; 2.5D elevator shaft; title B2 elevator raise; **ships draw in angled 2.5D** (16 headings track yaw) |
 | Jennings Station overworld exterior + dock prompt | Done |
 | Ambient space traffic (modular; cops always near station; off-screen spawn/despawn) | Done (v0.1.150–154); further tuning OK |
 | Settings controls sandbox (ship-only viewport) | Done |
@@ -154,7 +154,7 @@ src/
 
 ### Shipped recently (context)
 - Modular catalog + Dev Blueprint (2D default, 2.5D side peeks, pads, reset, hardpoint **variant** picker)
-- Hangar modular visitors (no theme strobe); Dev **REROLL B1/B3**; elevator shaft shares 2.5D depth curve
+- Hangar modular visitors (no theme strobe); Dev **REROLL B1/B3** + **ELEV B1/B3** (forced descent/ascent); elevator shaft 2.5D well + classic transit motion
 - Hangar player + visitor ships use **angled 2.5D** (`hangarShipView`) — side peeks update with pad/ship yaw; flight/ambient stay top-down
 - Ambient traffic near Jennings: seeded cops always on station, sparse peers, off-screen spawn/despawn
 - Plumes draw under hull (player path)
@@ -163,6 +163,7 @@ src/
 - Unique art polish per Class×Section×Theme×Mk×variant (matrix is parametric templates today)
 - Ship Upgrade UI (grows out of Dev Blueprint mode — see [Dev blueprint mode](#dev-blueprint-mode))
 - Home Base: B2 player-request job queue still future; interim B2 uses the same captain checklist as B1/B3 — see `GDD.md`
+- **Hangar mount install choreography** — weld-detach → crane removes old turret → crane places new from staging → weld-seat (see `GDD.md` cargo hardpoints); today’s strip/install is interim
 - **Hangar room / set-dressing editor** — see [Hangar room editor (planned)](#hangar-room-editor-planned)
 - Mega-capable hangar bays → **Heavy** group needs **Mk3** pads (none at Jennings yet; Heavy twins are space-only)
 - Hand-art polish for select hero variants (parametric silhouettes cover all classes now)
