@@ -15,6 +15,7 @@ import { generateShip, generateVisitor } from '../ships/ShipGenerator.js';
 import { SHIP_CLASSES } from '../ships/ShipClasses.js';
 import { drawVisitorShip, makeVisitorThrusters } from './HangarVisitorShips.js';
 import { getShipThrusterKeys } from '../ships/ShipRenderer.js';
+import { emitMountExhaust, hasActivePropulsion } from '../ships/PlumeDraw.js';
 
 let _nextId = 1;
 let _nextGroup = 1;
@@ -240,9 +241,23 @@ export class AmbientTrafficSystem {
         }
       }
       this._tickShip(ship, dt, { sx, sy, px, py, player, asteroids, peers: this.ships, view });
+      // Keep velocity bag in sync for mount plume flow + exhaust
+      if (ship.velocity) {
+        ship.velocity.x = ship.vx;
+        ship.velocity.y = ship.vy;
+      }
     }
 
     this.ships = this.ships.filter((s) => !this._shouldCull(s, px, py, sx, sy, view));
+
+    // Mount-driven exhaust particles (world-space — same fidelity as player)
+    const particles = ctx.particles;
+    if (particles) {
+      for (const ship of this.ships) {
+        if (!hasActivePropulsion(ship)) continue;
+        emitMountExhaust(ship, particles, { worldSpace: true });
+      }
+    }
   }
 
   /** Guarantee MIN_POLICE around the station; spawns only off-screen. */

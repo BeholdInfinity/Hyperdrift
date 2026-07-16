@@ -117,6 +117,13 @@ export {
 } from './ShipRenderer.js';
 
 export {
+  drawMountPlumes,
+  emitMountExhaust,
+  listPropulsionMounts,
+  hasActivePropulsion,
+} from './PlumeDraw.js';
+
+export {
   BlueprintSandbox,
   cloneShipDef,
   listBlueprintClassIds,

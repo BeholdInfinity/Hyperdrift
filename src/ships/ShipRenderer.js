@@ -21,6 +21,7 @@ import {
   drawExplodeGuides,
   offsetSocket,
 } from './ExplodeLayout.js';
+import { drawMountPlumes } from './PlumeDraw.js';
 
 function ensureDef(ship) {
   if (!ship.shipDef) {
@@ -102,6 +103,8 @@ function drawMiningBeam(ctx, ship, def, itemOffset = null) {
 
 /**
  * Draw modular ship in ship-local space (caller applies world transform).
+ * Propulsion plumes are mount-driven (equipped mainEngine / maneuverThruster
+ * items only) and draw under hull/cups so flames emerge from the nozzle.
  */
 export function drawModularShip(ctx, ship, view = topDownView()) {
   const def = ensureDef(ship);
@@ -118,6 +121,9 @@ export function drawModularShip(ctx, ship, view = topDownView()) {
     }
 
     if (layout) drawExplodeGuides(ctx, layout);
+
+    // Plumes first — tied to equipped propulsion mounts, not ship identity
+    if (ship.thrusters) drawMountPlumes(ctx, ship, itemOffset);
 
     const roles = def.sectionRoles();
     const aftRoles = roles.filter((r) => r === 'engine' || r === 'aft');

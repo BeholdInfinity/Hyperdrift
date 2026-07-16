@@ -3,6 +3,7 @@
  * Thin strokes + extrude depth; thrusters stay flush nozzles.
  */
 
+import { SHIP } from '../core/Constants.js';
 import {
   drawStarterMainEngine,
   drawStarterThrusterCup,
@@ -108,8 +109,9 @@ function drawCannonTurret(ctx, ship, socket, pal = null) {
   ctx.restore();
 }
 
-function drawGenericEngine(ctx, socket, morph = 0, pal = null) {
-  const s = 1 + morph * 0.25;
+function drawGenericEngine(ctx, socket, morph = 0, pal = null, classScale = 1) {
+  const scaleMul = Math.max(0.15, (classScale || 1) * (SHIP.GENERIC_ENGINE_CLASS_SCALE ?? 1));
+  const s = (1 + morph * 0.25) * scaleMul;
   const x = socket.x;
   const y = socket.y ?? 0;
   const accent = pal?.colors?.accent || '#e09050';
@@ -172,7 +174,7 @@ export function drawCatalogHardware(ctx, ship, def, itemOffset = null, opts = {}
       if (gk.startsWith('bell.')) {
         drawStarterMainEngine(ctx, sock, morph, pal);
       } else {
-        drawGenericEngine(ctx, sock, morph, pal);
+        drawGenericEngine(ctx, sock, morph, pal, def.scale ?? 1);
       }
       continue;
     }

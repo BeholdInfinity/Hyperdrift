@@ -15,6 +15,18 @@ export class InputSystem {
     this.zoomDelta = 0;
     this.pauseToggle = false;
     this.capsLockDesired = false;
+    /** Hangar: LMB drag pans the camera (fire still uses LMB when a ship is selected). */
+    this.hangarPanEnabled = false;
+    this._pan = {
+      tracking: false,
+      dragged: false,
+      lastX: 0,
+      lastY: 0,
+      dx: 0,
+      dy: 0,
+    };
+    /** Hangar: true after LMB up without a pan drag (consumed via consumeClick). */
+    this._clickPending = false;
 
     this._burst = Object.fromEntries(
       BURST_KEYS.map((k) => [k, { lastPress: -Infinity, armed: false }])
@@ -43,6 +55,7 @@ export class InputSystem {
       this.keys.clear();
       this.mouseDown = false;
       this.mouseRightDown = false;
+      this._resetPan();
       this._clearBurstArms();
     });
   }
@@ -60,7 +73,17 @@ export class InputSystem {
     this.mouseRightDown = false;
     this.zoomDelta = 0;
     this.pauseToggle = false;
+    this.hangarPanEnabled = false;
+    this._resetPan();
     this._clearBurstArms();
+  }
+
+  _resetPan() {
+    this._pan.tracking = false;
+    this._pan.dragged = false;
+    this._pan.dx = 0;
+    this._pan.dy = 0;
+    this._clickPending = false;
   }
 
   _syncCapsLock(e) {
@@ -165,18 +188,45 @@ export class InputSystem {
 
   _onMouseDown(e) {
     if (!this.enabled || this.paused) return;
-    if (e.button === 0) this.mouseDown = true;
+    if (e.button === 0) {
+      this.mouseDown = true;
+      if (this.hangarPanEnabled) {
+        this._pan.tracking = true;
+        this._pan.dragged = false;
+        this._pan.lastX = e.clientX;
+        this._pan.lastY = e.clientY;
+      }
+    }
     if (e.button === 2) this.mouseRightDown = true;
   }
 
   _onMouseUp(e) {
-    if (e.button === 0) this.mouseDown = false;
+    if (e.button === 0) {
+      if (this.hangarPanEnabled && !this._pan.dragged) {
+        this._clickPending = true;
+      }
+      this.mouseDown = false;
+      this._pan.tracking = false;
+    }
     if (e.button === 2) this.mouseRightDown = false;
   }
 
   _onMouseMove(e) {
     this.mouseScreen.x = e.clientX;
     this.mouseScreen.y = e.clientY;
+    if (this._pan.tracking && this.hangarPanEnabled) {
+      const dx = e.clientX - this._pan.lastX;
+      const dy = e.clientY - this._pan.lastY;
+      this._pan.lastX = e.clientX;
+      this._pan.lastY = e.clientY;
+      if (Math.abs(dx) + Math.abs(dy) > 0) {
+        this._pan.dx += dx;
+        this._pan.dy += dy;
+        if (Math.abs(this._pan.dx) + Math.abs(this._pan.dy) > 6) {
+          this._pan.dragged = true;
+        }
+      }
+    }
   }
 
   _onWheel(e) {
@@ -213,6 +263,31 @@ export class InputSystem {
     return v;
   }
 
+  /** Screen-space pan delta since last consume (hangar camera). */
+  consumePanDelta() {
+    const d = { x: this._pan.dx, y: this._pan.dy };
+    this._pan.dx = 0;
+    this._pan.dy = 0;
+    return d;
+  }
+
+  /** True while an LMB hangar pan drag is past the click threshold. */
+  isPanDragging() {
+    return !!(this.hangarPanEnabled && this._pan.dragged && this.mouseDown);
+  }
+
+  /** Hangar: consume a completed click (mouseup without pan). */
+  consumeClick() {
+    const v = this._clickPending;
+    this._clickPending = false;
+    return v;
+  }
+
+  /** True if the current/last LMB gesture was a pan drag. */
+  wasPanDrag() {
+    return !!this._pan.dragged;
+  }
+
   isKeyDown(key) {
     return this.keys.has(key.toLowerCase());
   }
@@ -239,6 +314,8 @@ export class InputSystem {
       afterburner: this.isKeyDown('shift'),
       brake: this.isKeyDown('alt'),
       capsDesired: this.capsLockDesired,
+      // Hangar: LMB fires while a ship is selected and also pans on drag.
+      // Deselect the ship to stop shooting; GameEngine suppresses fire on ship-click.
       firePrimary: this.mouseDown,
       fireLaser: this.mouseRightDown,
     };

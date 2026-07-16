@@ -1,3 +1,5 @@
+import { VISUAL_TUNING } from '../ships/data/visualTuning.js';
+
 export const PHYSICS = {
   MAX_SPEED: 900,
   /** Cruise yaw rate (rad/s) — kept deliberately slower than old mouse-aim tracking */
@@ -41,9 +43,11 @@ export const SHIP = {
   TURRET_BASE_MID: 5,
   TURRET_BASE_INNER: 2.8,
   /** Maneuvering thruster cup visual scale (housing/bore size, all Mk tiers) */
-  THRUSTER_CUP_SCALE: 1.5,
+  THRUSTER_CUP_SCALE: VISUAL_TUNING.thrusterCupScale ?? 1.5,
   /** Maneuvering thruster plume length/width bump to match larger cups */
-  THRUSTER_PLUME_SCALE: 1.15,
+  THRUSTER_PLUME_SCALE: VISUAL_TUNING.thrusterPlumeScale ?? 1.15,
+  /** Generic engine size × class.scale (UltraLight fix); from visualTuning */
+  GENERIC_ENGINE_CLASS_SCALE: VISUAL_TUNING.genericEngineClassScale ?? 1,
   /** Combat turret traverse rate (rad/s) toward pointer */
   TURRET_SLEW_RATE: 5.5,
   /** Mining laser traverse rate (rad/s) within its arc */
@@ -107,7 +111,10 @@ export const HANGAR = {
   ZOOM_WHEEL_STEP: 0.35,
   /** Neighbor pad offset from center (B1 left / B3 right) */
   SIDE_PAD_X: 155,
-  /** Player docks on bay B2 (center) */
+  /**
+   * Legacy alias for bay-center X (B2). Prefer hangarPadX(bayIndex) —
+   * player bay is chosen at random on hangar enter.
+   */
   PLAYER_PAD_X: 0,
   /** Bay half-height (must match HangarBay BAY.HALF_H) */
   BAY_HALF_H: 200,

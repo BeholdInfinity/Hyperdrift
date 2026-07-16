@@ -6,30 +6,152 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
-### Incomplete — session wrap 2026-07-15
-User-requested work deferred or not finished. Pick up next:
-
-- **Hangar turret/hardpoint install choreography** — design noted in `GDD.md` / Planned; not coded this session (still interim strip→weld). Preferred beat: mech weld-detach → crane removes old → crane places new from staging → mech weld-seat
-- **UltraLight engines too big** — `ItemDraw.drawGenericEngine` still uses fixed ellipse size and ignores `classScale`, so tiny UltraLight hulls get Standard-sized engines (“condom” silhouette). Scale generic engines with class/swap group (UltraLight first; don’t regress Light/Standard/Heavy if they already look right).
-- **Thrusters still too small** — cups are at `SHIP.THRUSTER_CUP_SCALE = 1.5` (+ plumes 1.15); user asked for another substantial bump and can barely see them.
-- **Hardpoint positions vs scaled hull** — after class `scale` ups (e.g. Generalist ~1.55), mounts may still sit on pre-scale geometry. Audit `SectionGeometry` / `SectionCatalog` / `ShipHardpoints` / plume mounts so cups sit flush on the current hull.
-- **Hangar visitors still feel small** — `HANGAR.VISITOR_PEER_MK_CHANCE` (peer pad-Mk) landed so same-group neighbors often share the player’s Mk, but sizing may still need a further visual pass so peers read ~player size (UltraLights stay smaller).
-- **Ambient NPC mining** — miners show a mining-laser cue only; no asteroid HP drain yet.
-- Blueprint **per-hardpoint item category** swap (variant cycler exists; theme/Mk/category still locked to socket defaults) — see PROJECT Dev Blueprint follow-ups.
-
 ### Planned
 - Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
 - Hangar turret/hardpoint install beat: mech weld-detach → crane removes old → crane installs new from staging → mech weld-seat (`GDD.md`)
-- Ship Upgrade UI (grows out of Dev Blueprint mode)
 - Unique silhouette polish per catalog variant
 - Hand-art polish for hero variants (bell-quality)
-- Hangar room / set-dressing editor (designer places props, 8-dir rotate, linger/gossip; Done saves layout file) — see `PROJECT.md`
 - Asteroid fragmentation on destroy
 - Fuel system for afterburner
 - Radar minimap in corner panel
 - Audio
 - Resource drops (guns vs mining laser yield tradeoff)
 - Precision power-pip allocation for laser / scanner
+- Ambient NPC mining HP drain
+- Blueprint per-hardpoint item **category** swap
+
+---
+
+## [0.1.172] — 2026-07-15
+
+### Changed
+- Thruster/engine plumes + exhaust particles are **mount-driven** (`PlumeDraw.js`) — equipped `mainEngine` / `maneuverThruster` parts only, same fidelity for player, hangar visitors, and ambient traffic (afterburner, flow lean/spray, multi-engine particles)
+
+---
+
+## [0.1.171] — 2026-07-15
+
+### Changed
+- Elevator pads turn **180° while descending** (occupied north→south; empty south→north) and rise with no second turn — explains empty-south / occupied-north pad arrows
+
+---
+
+## [0.1.170] — 2026-07-15
+
+### Changed
+- Elevator fade-to-black uses a feathered radial (solid black on the pad disc, soft falloff past the rim) so the veil no longer shows a hard circle edge
+
+---
+
+## [0.1.169] — 2026-07-15
+
+### Changed
+- Elevator pad+ship depth read is **fade-to-black** (opaque veil) instead of fading to transparent
+
+---
+
+## [0.1.168] — 2026-07-15
+
+### Fixed
+- Elevator pad+ship fade together (`alpha = 1 − drop`) — ships no longer pop in/out mid-shaft while still visible
+
+---
+
+## [0.1.167] — 2026-07-15
+
+### Fixed
+- Hangar weapon deck-glow follows the firing ship’s muzzle tip (visitor fire no longer lights the player pad)
+
+### Changed
+- Weapon deck-glow is a small radial kiss under the turret tip instead of a pad-sized wash
+
+---
+
+## [0.1.166] — 2026-07-15
+
+### Fixed
+- Hangar turrets track the mouse again on the selected ship (pose sync no longer resets aim every frame)
+- Selected visitor ships fire turret + mining laser (aim, muzzle, cargo hits); weapons draw on the visitor hull
+- Visitor thruster particles no longer appear glued to the player ship (world-space exhaust + clear ship-local particles on retarget)
+
+---
+
+## [0.1.165] — 2026-07-15
+
+### Changed
+- Hangar pad **active** look (brighter ring / chevron / pulse) now marks the Dev-controlled ship’s pad instead of always highlighting the player bay
+- Removed pad **EMPTY** label and the cyan ship selection outline
+
+---
+
+## [0.1.164] — 2026-07-15
+
+### Changed
+- Hangar LMB again does **both** pan (drag) and fire (when a ship is selected) — deselect the ship to stop shooting; no middle-mouse pan split
+
+---
+
+## [0.1.163] — 2026-07-15
+
+### Fixed
+- Visitor control no longer mirrors thrusters onto the player ship (separate thruster bags; missing visitor mounts stay dark only on that ship)
+- Player turret/weapons work again when the player ship is selected
+- Thin cyan selection outline on the controlled hangar ship
+
+---
+
+## [0.1.162] — 2026-07-15
+
+### Added
+- Hangar Dev **ship selection** — click the player ship to deselect/reselect control; click a visitor to pilot its thrusters/engine for testing (inspect shows `ctrl`)
+
+### Fixed
+- Player-bay Dev **Door** now plays full ingress/egress (lift, thrust/approach, doors, pad 180° turn) instead of popping the hull
+- Player-bay Dev **Elev** up no longer snaps the pad to the bottom — empty pad sinks first, then rises with the ship
+- Thrusters/weapons mute when the player ship is deselected or the pad is empty
+
+---
+
+## [0.1.161] — 2026-07-15
+
+### Changed
+- Hangar camera is no longer locked to the player ship — defaults to the docked ship on enter; **click-drag** pans the view (scroll still zooms)
+- Player dock bay is **random B1/B2/B3** each hangar enter; the other two bays run visitor traffic
+- Player-bay ops (Door / Elev / launch / land / service) use `playerBayIndex` instead of hardcoded B2
+
+---
+
+## [0.1.160] — 2026-07-15
+
+### Changed
+- Hangar Dev **REROLL / ELEV** strip removed — tools live in Dev drawer **Bay Options** side menu
+- Bay Options: select **B1/B2/B3** (or All/None), then **Service / Door / Elev / Pad / Empty·Occupy / On·Off / Reset** apply to every selected bay
+
+### Added
+- Per-bay **offline** sim flag (On/Off) — skips auto traffic/service while offline
+- Dev pad **360° spin** with danger lane (2.5D model check)
+- Instant Empty/Occupy + full Door/Elev scenes on B2 as well as visitor bays
+
+---
+
+## [0.1.159] — 2026-07-15
+
+### Added
+- **Dev Mode toolkit** — global DEV drawer (` key): sim speed, inspect readout, flight overlays (mounts / velocity / axes), hangar layout edit entry
+- **Blueprint is player Upgrade UI** — title/hangar BLUEPRINT always available (no Dev gate); Apply to ship for everyone
+- **Blueprint Author (Dev Mode)** — drag/rotate hardpoint mounts, cup/plume/engine scale sliders, Save/Export to repo via `POST /dev/save`
+- **Hangar Layout Editor (Dev Mode)** — palette add, delete, duplicate, 8-dir rotate props; linger stands with bay multi-select + faceDeg/faceSlackDeg; gossip waypoints; Save `hangar-layout.js`
+- Bake targets: `src/ships/data/visualTuning.js`, `src/ships/data/mountLayouts.js`, `src/world/hangar-layout.js`
+- `dev-server.py` allowlisted `POST /dev/save` (localhost)
+
+### Fixed
+- Gossip huddles use unique ring slots and face the group centroid (no uid% stack / overfill pile-up)
+- Idle linger respects bay ownership (`bays` subset) and authored facing cone
+- Generic engines scale with `class.scale` × `GENERIC_ENGINE_CLASS_SCALE` (UltraLight fix)
+
+### Changed
+- Hangar flavor props / gossip / yard dressing load from `hangar-layout.js` (structural sim stays code-owned)
+- Sim speed no longer resets on mode change while Dev Mode is on
 
 ---
 

@@ -55,6 +55,15 @@ def newest_edit_info() -> dict:
     }
 
 
+SAVE_ALLOWLIST = frozenset(
+    {
+        "src/ships/data/visualTuning.js",
+        "src/ships/data/mountLayouts.js",
+        "src/world/hangar-layout.js",
+    }
+)
+
+
 class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
     extensions_map = {
         **getattr(http.server.SimpleHTTPRequestHandler, "extensions_map", {}),
@@ -75,6 +84,53 @@ class NoCacheHandler(http.server.SimpleHTTPRequestHandler):
             self.wfile.write(payload)
             return
         super().do_GET()
+
+    def do_POST(self) -> None:
+        path = self.path.split("?", 1)[0]
+        if path != "/dev/save":
+            self.send_error(404, "Not found")
+            return
+        try:
+            length = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            length = 0
+        raw = self.rfile.read(max(0, length))
+        try:
+            body = json.loads(raw.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError):
+            self._json_response(400, {"ok": False, "error": "Invalid JSON"})
+            return
+        rel = str(body.get("path") or "").replace("\\", "/").lstrip("/")
+        contents = body.get("contents")
+        if not isinstance(contents, str):
+            self._json_response(400, {"ok": False, "error": "contents must be a string"})
+            return
+        if rel not in SAVE_ALLOWLIST or ".." in rel or rel.startswith("/"):
+            self._json_response(403, {"ok": False, "error": "Path not allowlisted"})
+            return
+        dest = (ROOT / rel).resolve()
+        try:
+            dest.relative_to(ROOT)
+        except ValueError:
+            self._json_response(403, {"ok": False, "error": "Path escapes root"})
+            return
+        try:
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(contents, encoding="utf-8", newline="\n")
+        except OSError as exc:
+            self._json_response(500, {"ok": False, "error": str(exc)})
+            return
+        self._json_response(
+            200, {"ok": True, "path": rel, "bytes": len(contents.encode("utf-8"))}
+        )
+
+    def _json_response(self, code: int, payload: dict) -> None:
+        data = json.dumps(payload).encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(data)))
+        self.end_headers()
+        self.wfile.write(data)
 
     def end_headers(self) -> None:
         self.send_header("Cache-Control", "no-store, no-cache, must-revalidate, max-age=0")

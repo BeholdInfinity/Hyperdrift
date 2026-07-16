@@ -1,5 +1,8 @@
 import { GameEngine } from './core/GameEngine.js';
 import { Settings } from './core/Settings.js';
+import { DevTools } from './dev/DevTools.js';
+import { HangarLayoutEditor } from './dev/HangarLayoutEditor.js';
+import { resolveLingerBays } from './world/hangar-layout.js';
 
 const canvas = document.getElementById('game-canvas');
 const startScreen = document.getElementById('start-screen');
@@ -9,14 +12,9 @@ const settingsTitleBtn = document.getElementById('settings-title-btn');
 const blueprintTitleBtn = document.getElementById('blueprint-title-btn');
 const hangarBackBtn = document.getElementById('hangar-back-btn');
 const hangarLaunchBtn = document.getElementById('hangar-launch-btn');
-const hangarRerollSvcBtn = document.getElementById('hangar-reroll-svc-btn');
-const hangarRerollB1Btn = document.getElementById('hangar-reroll-b1-btn');
-const hangarElevB1Btn = document.getElementById('hangar-elev-b1-btn');
-const hangarRerollB3Btn = document.getElementById('hangar-reroll-b3-btn');
-const hangarElevB3Btn = document.getElementById('hangar-elev-b3-btn');
 const hangarBlueprintBtn = document.getElementById('hangar-blueprint-btn');
-const hangarDevPanel = document.getElementById('hangar-dev-panel');
-const hangarSimSpeedReadout = document.getElementById('hangar-sim-speed-readout');
+const hangarSimSpeedReadout = document.getElementById('dev-sim-speed-readout');
+const devBayPanel = document.getElementById('dev-bay-panel');
 const hangarHud = document.getElementById('hangar-hud');
 const controlsHud = document.getElementById('controls-hud');
 const blueprintHud = document.getElementById('blueprint-hud');
@@ -33,6 +31,8 @@ const pauseFullscreenBtn = document.getElementById('pause-fullscreen-btn');
 const settingsBtn = document.getElementById('settings-btn');
 const mainMenuBtn = document.getElementById('main-menu-btn');
 const dockHud = document.getElementById('dock-hud');
+const devDrawer = document.getElementById('dev-drawer');
+const hangarEditPanel = document.getElementById('hangar-edit-panel');
 
 const engine = new GameEngine(canvas);
 engine.startTitle();
@@ -64,16 +64,131 @@ function syncSimSpeedUi() {
 function syncDevModeUi() {
   const on = Settings.isDevMode();
   if (devModeToggle) devModeToggle.checked = on;
-  const inHangar =
-    engine.mode === 'hangar' ||
-    (hangarHud && !hangarHud.classList.contains('hidden'));
-  if (hangarDevPanel) {
-    hangarDevPanel.classList.toggle('hidden', !(on && inHangar));
+  // Blueprint is always available to players
+  if (blueprintTitleBtn) blueprintTitleBtn.classList.remove('hidden');
+  if (devDrawer) {
+    devDrawer.classList.toggle('hidden', !on);
+    if (!on) {
+      DevTools.drawerOpen = false;
+      DevTools.bayPanelOpen = false;
+      devDrawer.classList.remove('open');
+      if (devBayPanel) devBayPanel.classList.add('hidden');
+    }
   }
-  if (blueprintTitleBtn) {
-    blueprintTitleBtn.classList.toggle('hidden', !on);
+  document.querySelectorAll('.bp-dev-only').forEach((el) => {
+    el.classList.toggle('hidden', !on);
+  });
+  const kicker = document.getElementById('bp-topbar-kicker');
+  if (kicker) kicker.textContent = on ? 'DEV' : 'SHIP';
+  if (!on && HangarLayoutEditor.isActive()) {
+    HangarLayoutEditor.exit();
+    if (hangarEditPanel) hangarEditPanel.classList.add('hidden');
   }
-  if (on && inHangar) syncSimSpeedUi();
+  if (on) {
+    syncSimSpeedUi();
+    syncBayOptionsUi();
+  }
+  syncBpAuthorSliders();
+}
+
+function syncBpAuthorSliders() {
+  const t = DevTools.getTuning();
+  const cup = document.getElementById('bp-tune-cup');
+  const plume = document.getElementById('bp-tune-plume');
+  const eng = document.getElementById('bp-tune-engine');
+  if (cup) cup.value = String(t.thrusterCupScale);
+  if (plume) plume.value = String(t.thrusterPlumeScale);
+  if (eng) eng.value = String(t.genericEngineClassScale);
+}
+
+function setDevStatus(msg) {
+  DevTools.status = msg || '';
+  const a = document.getElementById('bp-author-status');
+  const d = document.getElementById('dev-drawer-status');
+  if (a) a.textContent = DevTools.status;
+  if (d) d.textContent = DevTools.status;
+}
+
+function syncDevInspect() {
+  const el = document.getElementById('dev-inspect');
+  if (!el || !Settings.isDevMode()) return;
+  const ship = engine.ship || engine._sandboxShip;
+  const spd = ship?.velocity?.length?.() ?? 0;
+  const px = ship?.position?.x ?? ship?.x ?? 0;
+  const py = ship?.position?.y ?? ship?.y ?? 0;
+  const chunk = ship ? `${Math.floor(px / 2000)},${Math.floor(py / 2000)}` : '—';
+  const playerBay =
+    engine.mode === 'hangar'
+      ? `B${(engine.playerBayIndex ?? engine.hangarBay?.getPlayerBayIndex?.() ?? 1) + 1}`
+      : '—';
+  const ctrl = engine.hangarControlTarget;
+  const ctrlLabel =
+    engine.mode !== 'hangar'
+      ? '—'
+      : !ctrl
+        ? 'none'
+        : ctrl.kind === 'player'
+          ? 'player'
+          : `B${ctrl.bayIndex + 1}`;
+  el.textContent = [
+    `mode ${engine.mode}`,
+    `bay ${playerBay}`,
+    `ctrl ${ctrlLabel}`,
+    `sim ${formatSimSpeed(engine.getSimSpeed())}`,
+    `spd ${spd.toFixed(0)}`,
+    `yaw ${(((ship?.angle ?? 0) * 180) / Math.PI).toFixed(0)}°`,
+    `chunk ${chunk}`,
+    `ambient ${engine.ambientTraffic?.ships?.length ?? 0}`,
+    DevTools.dirty.tuning || DevTools.dirty.mounts || DevTools.dirty.hangar
+      ? `dirty ${[DevTools.dirty.tuning && 'tune', DevTools.dirty.mounts && 'mnt', DevTools.dirty.hangar && 'hgr'].filter(Boolean).join(',')}`
+      : 'dirty —',
+  ].join('\n');
+}
+
+function rebuildHangarPalette() {
+  const host = document.getElementById('hangar-edit-palette');
+  if (!host) return;
+  const pal = HangarLayoutEditor.paletteKinds();
+  const kinds = [...pal.deck, ...pal.yard, ...pal.special];
+  host.innerHTML = kinds
+    .map(
+      (k) =>
+        `<button type="button" data-place="${k}">${k}</button>`
+    )
+    .join('');
+}
+
+function syncHangarEditInspector() {
+  const el = document.getElementById('hangar-edit-inspector');
+  if (!el) return;
+  const sel = DevTools.hangarSel;
+  if (!sel) {
+    el.textContent = 'Select a prop / linger / gossip';
+    return;
+  }
+  if (sel.type === 'linger') {
+    const bays = resolveLingerBays(sel.ref, sel.prop);
+    el.innerHTML =
+      `<div>linger ${sel.ref.id || ''}<br/>xy ${sel.ref.x}, ${sel.ref.y}<br/>` +
+      `face ${sel.ref.faceDeg ?? 90}° ±${sel.ref.faceSlackDeg ?? 0}</div>` +
+      `<div class="hangar-edit-tools">` +
+      [0, 1, 2]
+        .map(
+          (b) =>
+            `<button type="button" class="hangar-dev-btn${bays.includes(b) ? ' active' : ''}" data-bay-toggle="${b}">B${b + 1}</button>`
+        )
+        .join('') +
+      `</div>` +
+      `<label>Slack <input type="number" id="hangar-face-slack" min="0" max="90" value="${sel.ref.faceSlackDeg ?? 25}" style="width:4em" /></label>`;
+    return;
+  }
+  if (sel.type === 'gossip') {
+    el.innerHTML =
+      `<div>gossip ${sel.ref.id}<br/>xy ${sel.ref.x}, ${sel.ref.y}</div>` +
+      `<label>Cap <input type="number" id="hangar-gossip-cap" min="1" max="8" value="${sel.ref.capacity}" style="width:4em" /></label>`;
+    return;
+  }
+  el.textContent = `${sel.type} ${sel.ref.id}\n${sel.ref.kind || ''} face ${sel.ref.facing | 0}\nxy ${sel.ref.x}, ${sel.ref.y}`;
 }
 
 function escapeBpAttr(s) {
@@ -299,7 +414,10 @@ function showTitleUi() {
   pauseMenu.classList.add('hidden');
   if (cornerUi) cornerUi.classList.add('hidden');
   if (dockHud) dockHud.classList.add('hidden');
-  if (hangarDevPanel) hangarDevPanel.classList.add('hidden');
+  if (hangarEditPanel) hangarEditPanel.classList.add('hidden');
+  DevTools.bayPanelOpen = false;
+  if (devBayPanel) devBayPanel.classList.add('hidden');
+  HangarLayoutEditor.exit();
   syncDevModeUi();
 }
 
@@ -354,7 +472,8 @@ function showBlueprintUi() {
   if (controlsHud) controlsHud.classList.add('hidden');
   if (blueprintHud) blueprintHud.classList.remove('hidden');
   if (dockHud) dockHud.classList.add('hidden');
-  if (hangarDevPanel) hangarDevPanel.classList.add('hidden');
+  DevTools.bayPanelOpen = false;
+  if (devBayPanel) devBayPanel.classList.add('hidden');
   syncBlueprintUi();
 }
 
@@ -379,10 +498,10 @@ function openSettings(from = 'title') {
 }
 
 function openBlueprint(from = 'title') {
-  if (!Settings.isDevMode()) return;
   showBlueprintUi();
   engine.beginBlueprint(from === 'hangar' ? 'hangar' : 'title');
   syncBlueprintUi();
+  syncDevModeUi();
 }
 
 function leaveControls(dest) {
@@ -437,36 +556,6 @@ if (blueprintTitleBtn) {
 if (hangarBackBtn) hangarBackBtn.addEventListener('click', leaveHangar);
 if (hangarLaunchBtn) {
   hangarLaunchBtn.addEventListener('click', () => engine.requestLaunch());
-}
-if (hangarRerollSvcBtn) {
-  hangarRerollSvcBtn.addEventListener('click', () => {
-    if (!Settings.isDevMode()) return;
-    engine.hangarBay?.rerollPlayerService?.();
-  });
-}
-if (hangarRerollB1Btn) {
-  hangarRerollB1Btn.addEventListener('click', () => {
-    if (!Settings.isDevMode()) return;
-    engine.hangarBay?.rerollSidePadVisitor?.(0);
-  });
-}
-if (hangarElevB1Btn) {
-  hangarElevB1Btn.addEventListener('click', () => {
-    if (!Settings.isDevMode()) return;
-    engine.hangarBay?.forceSidePadElevatorCycle?.(0);
-  });
-}
-if (hangarRerollB3Btn) {
-  hangarRerollB3Btn.addEventListener('click', () => {
-    if (!Settings.isDevMode()) return;
-    engine.hangarBay?.rerollSidePadVisitor?.(2);
-  });
-}
-if (hangarElevB3Btn) {
-  hangarElevB3Btn.addEventListener('click', () => {
-    if (!Settings.isDevMode()) return;
-    engine.hangarBay?.forceSidePadElevatorCycle?.(2);
-  });
 }
 if (hangarBlueprintBtn) {
   hangarBlueprintBtn.addEventListener('click', () => openBlueprint('hangar'));
@@ -706,7 +795,6 @@ if (bpRandomBtn) {
 const bpApplyBtn = document.getElementById('bp-apply-btn');
 if (bpApplyBtn) {
   bpApplyBtn.addEventListener('click', () => {
-    if (!Settings.isDevMode()) return;
     const ok = engine.applyBlueprintToPlayer();
     const status = document.getElementById('bp-status');
     if (status) {
@@ -718,6 +806,280 @@ if (bpApplyBtn) {
     if (bp) syncBlueprintInspector(bp);
   });
 }
+
+// —— Dev drawer + Blueprint Author + Hangar edit ——
+const devDrawerToggle = document.getElementById('dev-drawer-toggle');
+if (devDrawerToggle && devDrawer) {
+  devDrawerToggle.addEventListener('click', () => {
+    if (!Settings.isDevMode()) return;
+    DevTools.drawerOpen = !DevTools.drawerOpen;
+    devDrawer.classList.toggle('open', DevTools.drawerOpen);
+    if (!DevTools.drawerOpen) DevTools.bayPanelOpen = false;
+    syncBayOptionsUi();
+  });
+}
+
+document.getElementById('dev-ov-mounts')?.addEventListener('change', (e) => {
+  DevTools.overlay.mounts = !!e.target.checked;
+});
+document.getElementById('dev-ov-vel')?.addEventListener('change', (e) => {
+  DevTools.overlay.velocity = !!e.target.checked;
+});
+document.getElementById('dev-ov-axes')?.addEventListener('change', (e) => {
+  DevTools.overlay.axes = !!e.target.checked;
+});
+
+function wireTuneSlider(id, key) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.addEventListener('input', () => {
+    if (!Settings.isDevMode()) return;
+    DevTools.applyTuning({ [key]: Number(el.value) });
+    setDevStatus(`tuning ${key}=${el.value}`);
+  });
+}
+wireTuneSlider('bp-tune-cup', 'thrusterCupScale');
+wireTuneSlider('bp-tune-plume', 'thrusterPlumeScale');
+wireTuneSlider('bp-tune-engine', 'genericEngineClassScale');
+
+document.getElementById('bp-save-tuning')?.addEventListener('click', async () => {
+  const r = await DevTools.saveTuning();
+  setDevStatus(DevTools.status);
+  if (!r.ok) await DevTools.exportText('tuning');
+});
+document.getElementById('bp-save-mounts')?.addEventListener('click', async () => {
+  const r = await DevTools.saveMounts();
+  setDevStatus(DevTools.status);
+  if (!r.ok) await DevTools.exportText('mounts');
+});
+document.getElementById('bp-export-tuning')?.addEventListener('click', async () => {
+  await DevTools.exportText('tuning');
+  setDevStatus(DevTools.status);
+});
+document.getElementById('bp-export-mounts')?.addEventListener('click', async () => {
+  await DevTools.exportText('mounts');
+  setDevStatus(DevTools.status);
+});
+
+function enterHangarEdit() {
+  if (!Settings.isDevMode() || engine.mode !== 'hangar') return;
+  HangarLayoutEditor.enter();
+  engine.setSimSpeed(0);
+  syncSimSpeedUi();
+  rebuildHangarPalette();
+  if (hangarEditPanel) hangarEditPanel.classList.remove('hidden');
+  syncHangarEditInspector();
+  setDevStatus('Hangar edit — crew frozen');
+}
+
+function exitHangarEdit() {
+  HangarLayoutEditor.exit();
+  if (hangarEditPanel) hangarEditPanel.classList.add('hidden');
+  if (engine.getSimSpeed() === 0) {
+    engine.setSimSpeed(1);
+    syncSimSpeedUi();
+  }
+  setDevStatus('');
+}
+
+function selectedBayIndices() {
+  return [0, 1, 2].filter((i) => DevTools.baySel[i]);
+}
+
+function bayIsOccupied(bayIndex) {
+  return !!engine.hangarBay?.isBayOccupied?.(bayIndex);
+}
+
+function bayIsOffline(bayIndex) {
+  return !!engine.hangarBay?.isBayOffline?.(bayIndex);
+}
+
+function syncBayOptionsUi() {
+  if (!devBayPanel) return;
+  const open = !!(Settings.isDevMode() && DevTools.bayPanelOpen && DevTools.drawerOpen);
+  devBayPanel.classList.toggle('hidden', !open);
+  document.querySelectorAll('[data-bay-sel]').forEach((btn) => {
+    const i = Number(btn.dataset.baySel);
+    btn.classList.toggle('active', !!DevTools.baySel[i]);
+  });
+  const allBtn = document.getElementById('dev-bay-all-none');
+  if (allBtn) {
+    const allOn = DevTools.baySel.every(Boolean);
+    allBtn.textContent = allOn ? 'None' : 'All';
+  }
+  const sel = selectedBayIndices();
+  const occupyBtn = document.getElementById('dev-bay-occupy');
+  const offlineBtn = document.getElementById('dev-bay-offline');
+  if (occupyBtn) {
+    if (!sel.length) occupyBtn.textContent = 'Empty';
+    else {
+      const primary = bayIsOccupied(sel[0]);
+      occupyBtn.textContent = primary ? 'Empty' : 'Occupy';
+    }
+  }
+  if (offlineBtn) {
+    if (!sel.length) offlineBtn.textContent = 'Off';
+    else {
+      const primary = bayIsOffline(sel[0]);
+      offlineBtn.textContent = primary ? 'On' : 'Off';
+    }
+  }
+}
+
+function runBayAction(action) {
+  if (!Settings.isDevMode()) return;
+  if (engine.mode !== 'hangar') {
+    setDevStatus('Bay Options — hangar only');
+    return;
+  }
+  const hb = engine.hangarBay;
+  if (!hb) return;
+  const sel = selectedBayIndices();
+  if (!sel.length) {
+    setDevStatus('Bay Options — select a bay');
+    return;
+  }
+  const occupyBtn = document.getElementById('dev-bay-occupy');
+  const offlineBtn = document.getElementById('dev-bay-offline');
+  const wantEmpty = occupyBtn?.textContent === 'Empty';
+  const wantOffline = offlineBtn?.textContent === 'Off';
+
+  for (const bay of sel) {
+    switch (action) {
+      case 'service':
+        hb.devRerollService?.(bay);
+        break;
+      case 'door':
+        hb.devForceDoor?.(bay);
+        break;
+      case 'elev':
+        hb.devForceElev?.(bay);
+        break;
+      case 'pad':
+        hb.devForcePadSpin?.(bay);
+        break;
+      case 'occupy':
+        if (wantEmpty) hb.devForceEmpty?.(bay);
+        else hb.devForceOccupy?.(bay);
+        break;
+      case 'offline':
+        hb.devSetBayOffline?.(bay, wantOffline);
+        break;
+      case 'reset':
+        hb.devResetBay?.(bay);
+        break;
+      default:
+        break;
+    }
+  }
+  setDevStatus(`Bay ${action} → ${sel.map((b) => `B${b + 1}`).join(',')}`);
+  syncBayOptionsUi();
+}
+
+document.getElementById('dev-hangar-edit-btn')?.addEventListener('click', enterHangarEdit);
+document.getElementById('dev-bay-options-btn')?.addEventListener('click', () => {
+  if (!Settings.isDevMode()) return;
+  if (!DevTools.drawerOpen) {
+    DevTools.drawerOpen = true;
+    if (devDrawer) devDrawer.classList.add('open');
+  }
+  DevTools.bayPanelOpen = !DevTools.bayPanelOpen;
+  syncBayOptionsUi();
+});
+document.getElementById('dev-bay-close')?.addEventListener('click', () => {
+  DevTools.bayPanelOpen = false;
+  syncBayOptionsUi();
+});
+document.querySelectorAll('[data-bay-sel]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    if (!Settings.isDevMode()) return;
+    const i = Number(btn.dataset.baySel);
+    DevTools.baySel[i] = !DevTools.baySel[i];
+    syncBayOptionsUi();
+  });
+});
+document.getElementById('dev-bay-all-none')?.addEventListener('click', () => {
+  if (!Settings.isDevMode()) return;
+  const allOn = DevTools.baySel.every(Boolean);
+  DevTools.baySel = allOn ? [false, false, false] : [true, true, true];
+  syncBayOptionsUi();
+});
+document.querySelectorAll('[data-bay-action]').forEach((btn) => {
+  btn.addEventListener('click', () => {
+    runBayAction(btn.dataset.bayAction);
+  });
+});
+document.getElementById('hangar-edit-done')?.addEventListener('click', exitHangarEdit);
+document.getElementById('hangar-edit-save')?.addEventListener('click', async () => {
+  const r = await DevTools.saveHangar();
+  setDevStatus(DevTools.status);
+  if (!r.ok) await DevTools.exportText('hangar');
+});
+document.getElementById('hangar-edit-export')?.addEventListener('click', async () => {
+  await DevTools.exportText('hangar');
+  setDevStatus(DevTools.status);
+});
+document.getElementById('hangar-edit-dup')?.addEventListener('click', () => {
+  HangarLayoutEditor.duplicateSelected();
+  syncHangarEditInspector();
+});
+document.getElementById('hangar-edit-rot')?.addEventListener('click', () => {
+  HangarLayoutEditor.rotateSelected(1);
+  syncHangarEditInspector();
+});
+document.getElementById('hangar-edit-del')?.addEventListener('click', () => {
+  HangarLayoutEditor.deleteSelected();
+  syncHangarEditInspector();
+});
+document.getElementById('hangar-edit-linger')?.addEventListener('click', () => {
+  HangarLayoutEditor.addLingerToSelected();
+  syncHangarEditInspector();
+});
+
+document.getElementById('hangar-edit-palette')?.addEventListener('click', (ev) => {
+  const btn = ev.target.closest?.('[data-place]');
+  if (!btn) return;
+  HangarLayoutEditor.placeKind = btn.dataset.place;
+  document.querySelectorAll('#hangar-edit-palette button').forEach((b) => {
+    b.classList.toggle('active', b === btn);
+  });
+});
+
+document.getElementById('hangar-edit-panel')?.addEventListener('change', (ev) => {
+  const t = ev.target;
+  if (t?.dataset?.hlayer) {
+    DevTools.hangarLayers[t.dataset.hlayer] = !!t.checked;
+  }
+});
+
+document.getElementById('hangar-edit-inspector')?.addEventListener('click', (ev) => {
+  const btn = ev.target.closest?.('[data-bay-toggle]');
+  if (!btn || DevTools.hangarSel?.type !== 'linger') return;
+  const b = Number(btn.dataset.bayToggle);
+  const cur = new Set(resolveLingerBays(DevTools.hangarSel.ref, DevTools.hangarSel.prop));
+  if (cur.has(b) && cur.size > 1) cur.delete(b);
+  else cur.add(b);
+  HangarLayoutEditor.setLingerBays([...cur]);
+  syncHangarEditInspector();
+});
+
+document.getElementById('hangar-edit-inspector')?.addEventListener('change', (ev) => {
+  if (ev.target?.id === 'hangar-face-slack') {
+    HangarLayoutEditor.setFaceSlack(Number(ev.target.value));
+  }
+  if (ev.target?.id === 'hangar-gossip-cap') {
+    HangarLayoutEditor.setGossipCapacity(Number(ev.target.value));
+  }
+});
+
+setInterval(() => {
+  if (!Settings.isDevMode()) return;
+  syncDevInspect();
+  if (DevTools.bayPanelOpen) syncBayOptionsUi();
+  if (HangarLayoutEditor.isActive()) syncHangarEditInspector();
+  const st = document.getElementById('dev-drawer-status');
+  if (st && DevTools.status) st.textContent = DevTools.status;
+}, 250);
 
 resumeBtn.addEventListener('click', () => {
   if (engine?.paused) engine.togglePause();
@@ -753,6 +1115,29 @@ if (dockHud) {
 document.addEventListener('keydown', (e) => {
   if (e.key === 'Enter' && engine.mode === 'playing' && !engine.paused) {
     engine.requestDock();
+  }
+  if (e.key === '`' && Settings.isDevMode()) {
+    e.preventDefault();
+    DevTools.drawerOpen = !DevTools.drawerOpen;
+    if (devDrawer) devDrawer.classList.toggle('open', DevTools.drawerOpen);
+    if (!DevTools.drawerOpen) DevTools.bayPanelOpen = false;
+    syncBayOptionsUi();
+  }
+  if (HangarLayoutEditor.isActive()) {
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      HangarLayoutEditor.deleteSelected();
+      syncHangarEditInspector();
+    }
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'd') {
+      e.preventDefault();
+      HangarLayoutEditor.duplicateSelected();
+      syncHangarEditInspector();
+    }
+    if (e.key === '[' || e.key === ']') {
+      HangarLayoutEditor.rotateSelected(e.key === ']' ? 1 : -1);
+      syncHangarEditInspector();
+    }
   }
 });
 

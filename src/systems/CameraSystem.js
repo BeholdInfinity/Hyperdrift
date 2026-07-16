@@ -48,9 +48,14 @@ export class CameraSystem {
     this.offset.y = lerp(this.offset.y, this.targetOffset.y, t);
   }
 
-  /** Docked hangar view: no lead offset / speed zoom; wider zoom range. */
-  updateHangar(shipPosition, deltaTime, zoomWheelDelta = 0) {
-    this.position.copy(shipPosition);
+  /**
+   * Docked hangar view: free look (not locked to ship).
+   * Pan is screen-space drag → world via zoom; wheel zooms. No lead / speed zoom.
+   * @param {number} deltaTime
+   * @param {number} [zoomWheelDelta]
+   * @param {{ x: number, y: number }|null} [panScreenDelta]
+   */
+  updateHangar(deltaTime, zoomWheelDelta = 0, panScreenDelta = null) {
     this.offset.set(0, 0);
     this.targetOffset.set(0, 0);
     this.speedZoom = 1;
@@ -66,6 +71,23 @@ export class CameraSystem {
     const zoomT = 1 - Math.exp(-CAMERA.ZOOM_SMOOTHING * deltaTime);
     this.userZoom = lerp(this.userZoom, this.targetUserZoom, zoomT);
     this.effectiveZoom = this.userZoom;
+
+    if (panScreenDelta && (panScreenDelta.x || panScreenDelta.y)) {
+      const z = Math.max(0.001, this.effectiveZoom);
+      this.position.x -= panScreenDelta.x / z;
+      this.position.y -= panScreenDelta.y / z;
+      const maxX = HANGAR.SIDE_PAD_X + HANGAR.PAD_R * 2.5;
+      const maxY = HANGAR.BAY_HALF_H + 40;
+      this.position.x = clamp(this.position.x, -maxX, maxX);
+      this.position.y = clamp(this.position.y, -maxY, maxY);
+    }
+  }
+
+  /** Snap hangar camera to a world anchor (ship / dock on enter). */
+  setHangarAnchor(x, y) {
+    this.position.set(x, y);
+    this.offset.set(0, 0);
+    this.targetOffset.set(0, 0);
   }
 
   /** Blueprint sandbox: no lead offset; zoom in until the hull fills the circle. */

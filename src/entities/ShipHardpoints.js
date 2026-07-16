@@ -2,7 +2,7 @@
  * Legacy hardpoint table — kept as fallback / documentation of starter mounts.
  * Runtime player mounts come from `ship.shipDef` (see `src/ships/`).
  * +X = nose, +Y = starboard. Angles are exhaust / fire direction.
- * Positions match SectionGeometry BELL_MOUNTS (on hull edges).
+ * Canonical unit poses: `src/ships/data/mountLayouts.js` (BELL_MOUNTS).
  */
 export const SHIP_EXTENT = {
   /** Matches scaled Standard Generalist (~class.scale 1.55 × unit bell) */

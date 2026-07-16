@@ -33,7 +33,7 @@
         <button id="start-btn">ENTER HANGAR</button>
         <button id="quick-launch-btn" class="secondary-btn">QUICK LAUNCH</button>
         <button id="settings-title-btn" class="secondary-btn">SETTINGS</button>
-        <button id="blueprint-title-btn" class="secondary-btn dev-only-btn hidden" type="button">BLUEPRINT (DEV)</button>
+        <button id="blueprint-title-btn" class="secondary-btn" type="button">BLUEPRINT</button>
       </div>
       <div id="build-meta" class="build-meta">
         <p id="build-stamp" class="build-stamp">v0.1.42 · Last edit: loading…</p>
@@ -59,23 +59,86 @@
         </span>
         <span class="hangar-zoom">ZOOM <span id="hangar-zoom-value">9.0</span>x</span>
       </div>
-      <p class="hangar-hint">Thrusters, engine &amp; weapons live · ship docked · scroll to zoom · <kbd>ESC</kbd> or Back</p>
+      <p class="hangar-hint">Click ship to select/control · LMB drag pans · LMB fires when selected · scroll zoom</p>
       <button id="hangar-back-btn" class="menu-btn">Back to Title</button>
-      <div id="hangar-dev-panel" class="hangar-dev-panel hidden">
-        <button id="hangar-reroll-svc-btn" class="hangar-dev-btn" type="button">REROLL SERVICES</button>
-        <button id="hangar-reroll-b1-btn" class="hangar-dev-btn" type="button" title="Reset bay B1 and dock a new visitor ship">REROLL B1</button>
-        <button id="hangar-elev-b1-btn" class="hangar-dev-btn" type="button" title="Force B1 elevator descent then ascent (keeps/rolls a visitor)">ELEV B1</button>
-        <button id="hangar-reroll-b3-btn" class="hangar-dev-btn" type="button" title="Reset bay B3 and dock a new visitor ship">REROLL B3</button>
-        <button id="hangar-elev-b3-btn" class="hangar-dev-btn" type="button" title="Force B3 elevator descent then ascent (keeps/rolls a visitor)">ELEV B3</button>
-        <button id="hangar-blueprint-btn" class="hangar-dev-btn" type="button">BLUEPRINT</button>
-        <div class="hangar-sim-speed" role="group" aria-label="Simulation speed">
-          <span class="hangar-sim-speed-label">SIM</span>
-          <button type="button" class="hangar-sim-btn" data-sim-speed="0.5" title="Slowdown (0.5×)">SLOW</button>
-          <button type="button" class="hangar-sim-btn" data-sim-speed="0" title="Pause sim">PAUSE</button>
-          <button type="button" class="hangar-sim-btn active" data-sim-speed="1" title="Play (1× default)">PLAY</button>
-          <button type="button" class="hangar-sim-btn" data-sim-speed="2" title="Speedup (2×)">FAST</button>
-          <button type="button" class="hangar-sim-btn" data-sim-speed="4" title="Speedup 2× (4×)">FAST2X</button>
-          <span id="hangar-sim-speed-readout" class="hangar-sim-speed-readout">1×</span>
+      <button id="hangar-blueprint-btn" class="hangar-blueprint-btn" type="button">BLUEPRINT</button>
+      <div id="hangar-edit-panel" class="hangar-edit-panel hidden">
+        <div class="hangar-edit-head">HANGAR EDIT</div>
+        <div class="hangar-edit-layers">
+          <label><input type="checkbox" data-hlayer="props" checked /> Props</label>
+          <label><input type="checkbox" data-hlayer="yard" checked /> Yard</label>
+          <label><input type="checkbox" data-hlayer="linger" checked /> Linger</label>
+          <label><input type="checkbox" data-hlayer="gossip" checked /> Gossip</label>
+          <label><input type="checkbox" data-hlayer="warn" checked /> Warn</label>
+        </div>
+        <div class="hangar-edit-palette" id="hangar-edit-palette"></div>
+        <div class="hangar-edit-tools">
+          <button type="button" class="hangar-dev-btn" id="hangar-edit-dup">Copy</button>
+          <button type="button" class="hangar-dev-btn" id="hangar-edit-rot">Rotate</button>
+          <button type="button" class="hangar-dev-btn" id="hangar-edit-del">Remove</button>
+          <button type="button" class="hangar-dev-btn" id="hangar-edit-linger">+ Linger</button>
+        </div>
+        <div class="hangar-edit-inspector" id="hangar-edit-inspector">Select a prop / linger / gossip</div>
+        <div class="hangar-edit-bake">
+          <button type="button" class="hangar-dev-btn" id="hangar-edit-save">Save layout</button>
+          <button type="button" class="hangar-dev-btn" id="hangar-edit-export">Export</button>
+          <button type="button" class="hangar-dev-btn" id="hangar-edit-done">Done</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="dev-drawer" class="dev-drawer hidden">
+      <div class="dev-drawer-stack">
+        <button type="button" id="dev-drawer-toggle" class="dev-drawer-toggle" title="Toggle Dev drawer (` )">DEV</button>
+        <div class="dev-drawer-body" id="dev-drawer-body">
+          <div class="dev-drawer-section">
+            <span class="dev-drawer-label">SIM</span>
+            <div class="hangar-sim-speed" role="group" aria-label="Simulation speed">
+              <button type="button" class="hangar-sim-btn" data-sim-speed="0.5">SLOW</button>
+              <button type="button" class="hangar-sim-btn" data-sim-speed="0">PAUSE</button>
+              <button type="button" class="hangar-sim-btn active" data-sim-speed="1">PLAY</button>
+              <button type="button" class="hangar-sim-btn" data-sim-speed="2">FAST</button>
+              <button type="button" class="hangar-sim-btn" data-sim-speed="4">FAST2X</button>
+              <span id="dev-sim-speed-readout" class="hangar-sim-speed-readout">1×</span>
+            </div>
+          </div>
+          <div class="dev-drawer-section">
+            <span class="dev-drawer-label">INSPECT</span>
+            <pre id="dev-inspect" class="dev-inspect">—</pre>
+          </div>
+          <div class="dev-drawer-section">
+            <span class="dev-drawer-label">OVERLAYS</span>
+            <label class="dev-check"><input type="checkbox" id="dev-ov-mounts" /> Mounts</label>
+            <label class="dev-check"><input type="checkbox" id="dev-ov-vel" /> Velocity</label>
+            <label class="dev-check"><input type="checkbox" id="dev-ov-axes" /> Axes</label>
+          </div>
+          <div class="dev-drawer-section">
+            <span class="dev-drawer-label">HANGAR</span>
+            <button type="button" class="hangar-dev-btn" id="dev-hangar-edit-btn">Edit layout</button>
+            <button type="button" class="hangar-dev-btn" id="dev-bay-options-btn">Bay Options</button>
+          </div>
+          <p id="dev-drawer-status" class="dev-drawer-status"></p>
+        </div>
+      </div>
+      <div id="dev-bay-panel" class="dev-bay-panel hidden">
+        <div class="dev-bay-panel-head">
+          <span>BAY OPTIONS</span>
+          <button type="button" class="dev-bay-close" id="dev-bay-close" title="Close">×</button>
+        </div>
+        <div class="dev-bay-select" role="group" aria-label="Target bays">
+          <button type="button" class="hangar-dev-btn active" data-bay-sel="0">B1</button>
+          <button type="button" class="hangar-dev-btn active" data-bay-sel="1">B2</button>
+          <button type="button" class="hangar-dev-btn active" data-bay-sel="2">B3</button>
+          <button type="button" class="hangar-dev-btn" id="dev-bay-all-none">None</button>
+        </div>
+        <div class="dev-bay-actions">
+          <button type="button" class="hangar-dev-btn" data-bay-action="service" title="Reroll captain service">Service</button>
+          <button type="button" class="hangar-dev-btn" data-bay-action="door" title="Full door ingress/egress">Door</button>
+          <button type="button" class="hangar-dev-btn" data-bay-action="elev" title="Full elevator scene">Elev</button>
+          <button type="button" class="hangar-dev-btn" data-bay-action="pad" title="Spin pad 360° + danger">Pad</button>
+          <button type="button" class="hangar-dev-btn" data-bay-action="occupy" id="dev-bay-occupy">Empty</button>
+          <button type="button" class="hangar-dev-btn" data-bay-action="offline" id="dev-bay-offline">Off</button>
+          <button type="button" class="hangar-dev-btn" data-bay-action="reset" title="Reset bay to default">Reset</button>
         </div>
       </div>
     </div>
@@ -85,10 +148,10 @@
     <div id="blueprint-hud" class="hidden">
       <header class="bp-topbar">
         <div class="bp-topbar-brand">
-          <span class="bp-topbar-kicker">DEV</span>
+          <span class="bp-topbar-kicker" id="bp-topbar-kicker">SHIP</span>
           <span class="bp-topbar-title">BLUEPRINT</span>
         </div>
-        <p class="bp-topbar-sub" id="bp-status">Modular ship sandbox</p>
+        <p class="bp-topbar-sub" id="bp-status">Ship upgrade sandbox</p>
       </header>
 
       <aside class="bp-dock bp-dock-left" id="blueprint-panel">
@@ -159,6 +222,23 @@
           <h3 class="bp-card-title">Mount roster <span class="bp-card-hint">variant per hardpoint</span></h3>
           <div id="bp-mount-roster" class="bp-mounts"></div>
         </section>
+
+        <section class="bp-card bp-dev-only hidden" id="bp-author-card">
+          <h3 class="bp-card-title">Author <span class="bp-card-hint">Dev Mode</span></h3>
+          <p class="bp-hint">Drag mounts on ship · scroll to rotate selected</p>
+          <label class="bp-author-slider">Cup <input type="range" id="bp-tune-cup" min="0.5" max="3" step="0.05" /></label>
+          <label class="bp-author-slider">Plume <input type="range" id="bp-tune-plume" min="0.5" max="3" step="0.05" /></label>
+          <label class="bp-author-slider">Engine×class <input type="range" id="bp-tune-engine" min="0.2" max="2" step="0.05" /></label>
+          <div class="bp-btn-row">
+            <button type="button" class="bp-action" id="bp-save-tuning">Save tuning</button>
+            <button type="button" class="bp-action" id="bp-save-mounts">Save mounts</button>
+          </div>
+          <div class="bp-btn-row">
+            <button type="button" class="bp-action" id="bp-export-tuning">Export tuning</button>
+            <button type="button" class="bp-action" id="bp-export-mounts">Export mounts</button>
+          </div>
+          <p class="bp-meta" id="bp-author-status"></p>
+        </section>
       </aside>
 
       <section class="bp-inspector" id="bp-inspector" aria-label="Selection inspector">
@@ -188,7 +268,7 @@
           <input type="checkbox" id="dev-mode-toggle" />
           <span>Dev Mode</span>
         </label>
-        <p class="settings-toggle-hint">Hangar: Reroll, sim speed, Blueprint · Title: Blueprint button</p>
+        <p class="settings-toggle-hint">Dev drawer (`), hangar edit, Blueprint Author (mounts / Save)</p>
       </div>
       <button id="controls-back-btn" class="menu-btn">Back</button>
     </div>

@@ -14,7 +14,6 @@ import {
   getShipHardpointsTable,
   getShipThrusterKeys,
 } from '../ships/ShipRenderer.js';
-import { hexToRgba } from '../ships/Themes.js';
 import { topDownView } from '../ships/ShipViews.js';
 /** @typedef {import('../ships/ShipViews.js').ShipView} ShipView */
 
@@ -143,209 +142,13 @@ export function clearPadVisitor(pad) {
   pad.thrusters = null;
 }
 
-function _smoothstep(edge0, edge1, t) {
-  const x = Math.max(0, Math.min(1, (t - edge0) / (edge1 - edge0)));
-  return x * x * (3 - 2 * x);
-}
-
-function _computePlumeFlow(
-  exhaustDirX,
-  exhaustDirY,
-  velocity,
-  angle,
-  angularVelocity,
-  localOx,
-  localOy
-) {
-  const speed = Math.hypot(velocity.x, velocity.y);
-  let cue = 0;
-  let wash = 0;
-  let lean = 0;
-  let lengthMul = 1;
-
-  if (speed > 8) {
-    const inv = 1 / speed;
-    const align = (exhaustDirX * velocity.x + exhaustDirY * velocity.y) * inv;
-    const speedT = _smoothstep(15, 380, speed);
-    const lead = Math.max(0, align);
-    cue = lead * speedT * 0.32;
-    wash = _smoothstep(0.4, 0.98, align) * speedT;
-
-    const wx = -velocity.x;
-    const wy = -velocity.y;
-    const parallel = (wx * exhaustDirX + wy * exhaustDirY) * inv;
-    const perpX = wx * inv - parallel * exhaustDirX;
-    const perpY = wy * inv - parallel * exhaustDirY;
-    const side = perpX * (-exhaustDirY) + perpY * exhaustDirX;
-    lean = Math.max(-1, Math.min(1, side)) * speedT * 0.85;
-
-    const trail = Math.max(0, parallel);
-    lengthMul = 1 + 0.22 * trail * speedT;
-  }
-
-  const omega = angularVelocity || 0;
-  if (Math.abs(omega) > 0.45) {
-    const cos = Math.cos(angle);
-    const sin = Math.sin(angle);
-    const rx = localOx * cos - localOy * sin;
-    const ry = localOx * sin + localOy * cos;
-    const tx = -omega * ry;
-    const ty = omega * rx;
-    const tLen = Math.hypot(tx, ty);
-    if (tLen > 8) {
-      const tAlign = (exhaustDirX * tx + exhaustDirY * ty) / tLen;
-      const spinT = _smoothstep(0.45, 3.2, Math.abs(omega));
-      const spin = _smoothstep(0.15, 0.9, tAlign) * spinT * 0.55;
-      cue += spin * 0.35;
-      wash += spin;
-      const tInv = 1 / tLen;
-      const twx = -tx;
-      const twy = -ty;
-      const tPar = (twx * exhaustDirX + twy * exhaustDirY) * tInv;
-      const tPerpX = twx * tInv - tPar * exhaustDirX;
-      const tPerpY = twy * tInv - tPar * exhaustDirY;
-      const tSide = tPerpX * (-exhaustDirY) + tPerpY * exhaustDirX;
-      lean += Math.max(-1, Math.min(1, tSide)) * spinT * 0.25;
-    }
-  }
-
-  lean = Math.max(-1.15, Math.min(1.15, lean));
-  const cone = Math.max(0, Math.min(1, cue * 0.55 + wash * 0.5));
-  return { cone, lean, lengthMul };
-}
-
-function _drawPlume(ctx, x, y, exhaustAngle, intensity, len, color, width, fadeRgba, lean = 0) {
-  if (!intensity || intensity <= 0) return;
-  ctx.save();
-  ctx.translate(x, y);
-  ctx.rotate(exhaustAngle);
-  ctx.globalAlpha = 0.5 + Math.min(intensity, 1.5) * 0.35;
-
-  const plumeLen = len * Math.min(intensity, 1.5);
-  const tipY = Math.max(-1.1, Math.min(1.1, lean)) * plumeLen * 0.52;
-  const midX = plumeLen * 0.42;
-  const midY = tipY * 0.28;
-
-  const grad = ctx.createLinearGradient(0, 0, plumeLen, tipY * 0.35);
-  grad.addColorStop(0, color);
-  grad.addColorStop(0.5, color.replace(/[\d.]+\)$/, '0.3)'));
-  grad.addColorStop(1, fadeRgba);
-
-  ctx.fillStyle = grad;
-  ctx.beginPath();
-  ctx.moveTo(0, -width);
-  ctx.quadraticCurveTo(midX, midY - width * 0.25, plumeLen, tipY);
-  ctx.quadraticCurveTo(midX, midY + width * 0.25, 0, width);
-  ctx.closePath();
-  ctx.fill();
-  ctx.restore();
-}
-
-/**
- * Draw modular thruster / engine plumes from shipDef mounts.
- * @param {CanvasRenderingContext2D} ctx
- * @param {object} ship — { shipDef, thrusters, velocity, angle, angularVelocity }
- */
-export function drawVisitorPlumes(ctx, ship) {
-  const def = ship.shipDef;
-  if (!def || !ship.thrusters) return;
-  const t = ship.thrusters;
-  const angle = ship.angle ?? SHIP.SPAWN_ANGLE;
-  const velocity = ship.velocity || { x: 0, y: 0 };
-  const angularVelocity = ship.angularVelocity || 0;
-  const table = getShipHardpointsTable(ship);
-  const mounts = def.resolveMounts?.() || {};
-
-  const defaultBlue = 'rgba(100, 180, 255, 0.7)';
-  const defaultBlueFade = 'rgba(40, 90, 160, 0)';
-  const defaultOrange = 'rgba(255, 160, 70, 0.9)';
-  const defaultOrangeFade = 'rgba(180, 80, 30, 0)';
-
-  const engKeys =
-    typeof def.mainEngineKeys === 'function'
-      ? def.mainEngineKeys()
-      : mounts.mainEngine?.item
-        ? ['mainEngine']
-        : [];
-  for (const engKey of engKeys) {
-    const engHp = table[engKey];
-    if (!engHp) continue;
-    if (mounts[engKey] && !mounts[engKey].item) continue;
-    const engPower = t.mainEngine || (t.retroBurn ? 0.5 : 0);
-    if (engPower <= 0.02) continue;
-    const exhaustDirX = Math.cos(angle + engHp.angle);
-    const exhaustDirY = Math.sin(angle + engHp.angle);
-    const flow = _computePlumeFlow(
-      exhaustDirX,
-      exhaustDirY,
-      velocity,
-      angle,
-      angularVelocity,
-      engHp.x,
-      engHp.y
-    );
-    let len = 30;
-    let width = 6.75;
-    len *= flow.lengthMul * (1 - 0.48 * flow.cone);
-    width *= 1 + 0.65 * flow.cone;
-    const pal = def.paletteForMount?.(engKey);
-    const accent = pal?.colors?.accent || pal?.colors?.trim;
-    _drawPlume(
-      ctx,
-      engHp.x,
-      engHp.y,
-      engHp.angle,
-      engPower,
-      len,
-      accent ? hexToRgba(accent, 0.9) : defaultOrange,
-      width,
-      accent ? hexToRgba(accent, 0) : defaultOrangeFade,
-      flow.lean
-    );
-  }
-
-  for (const key of getShipThrusterKeys(ship)) {
-    const intensity = t[key] || 0;
-    if (intensity <= 0.02) continue;
-    const m = table[key];
-    if (!m) continue;
-    const dirX = Math.cos(angle + m.angle);
-    const dirY = Math.sin(angle + m.angle);
-    const flow = _computePlumeFlow(
-      dirX,
-      dirY,
-      velocity,
-      angle,
-      angularVelocity,
-      m.x,
-      m.y
-    );
-    let len = (8 + intensity * 3.5) * SHIP.THRUSTER_PLUME_SCALE;
-    let width = (1.15 + intensity * 0.9) * SHIP.THRUSTER_PLUME_SCALE;
-    len *= flow.lengthMul * (1 - 0.48 * flow.cone);
-    width *= 1 + 0.7 * flow.cone;
-    const pal = def.paletteForMount?.(key);
-    const trim = pal?.colors?.trim || pal?.colors?.accent;
-    _drawPlume(
-      ctx,
-      m.x,
-      m.y,
-      m.angle,
-      intensity,
-      len,
-      trim ? hexToRgba(trim, 0.7) : defaultBlue,
-      width,
-      trim ? hexToRgba(trim, 0) : defaultBlueFade,
-      flow.lean
-    );
-  }
-}
-
 /**
  * Draw a visitor (or ambient) modular ship in local space (+X = nose).
  * Requires a locked shipDef — never rolls cosmetics in the draw path.
  * Hangar passes an angled view so side peeks track pad yaw; ambient/flight
  * omit it and stay top-down.
+ * Propulsion plumes use the same mount-driven path as the player ship
+ * (`drawModularShip` → `drawMountPlumes`).
  * @param {CanvasRenderingContext2D} ctx
  * @param {object} ship — { shipDef, thrusters?, velocity?, angle?, … }
  * @param {{ thrusters?: object, velocity?: {x:number,y:number}, angle?: number, angularVelocity?: number }} [propulsion]
@@ -364,8 +167,5 @@ export function drawVisitorShip(ctx, ship, propulsion = null, view = null) {
       }
     : ship;
 
-  if (shipLike.thrusters) {
-    drawVisitorPlumes(ctx, shipLike);
-  }
   drawModularShip(ctx, shipLike, view || topDownView());
 }

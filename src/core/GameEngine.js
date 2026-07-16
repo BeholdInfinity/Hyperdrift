@@ -11,7 +11,8 @@ import { PhysicsSystem } from '../systems/PhysicsSystem.js';
 import { Starfield } from '../world/Starfield.js';
 import { NebulaField } from '../world/NebulaField.js';
 import { SpeedStreaks } from '../world/SpeedStreaks.js';
-import { HangarBay, hangarDefaultZoom } from '../world/HangarBay.js';
+import { HangarBay, hangarDefaultZoom, hangarPadX } from '../world/HangarBay.js';
+import { makeVisitorThrusters } from '../world/HangarVisitorShips.js';
 import { Station } from '../world/Station.js';
 import { AmbientTrafficSystem } from '../world/AmbientTrafficSystem.js';
 import {
@@ -30,13 +31,16 @@ import {
 } from '../ships/BlueprintSandbox.js';
 import { padMkForClass } from '../ships/ShipClasses.js';
 import { hangarShipView } from '../ships/ShipViews.js';
+import { Settings } from './Settings.js';
+import { DevTools } from '../dev/DevTools.js';
+import { drawDevOverlays } from '../dev/DevOverlay.js';
+import { HangarLayoutEditor } from '../dev/HangarLayoutEditor.js';
+import { blueprintAuthoring } from '../dev/BlueprintAuthoring.js';
 
 /** Slow title-screen drift (world units / sec) */
 const TITLE_DRIFT_SPEED = 52;
 /** How quickly the drift heading turns (rad / sec) */
 const TITLE_TURN_RATE = 0.12;
-
-const PLAYER_BAY = 1; // B2
 
 const MANEUVER_THRUSTER_KEYS = [
   'aftPort',
@@ -94,6 +98,20 @@ export class GameEngine {
     this._titleFade = 0;
     this._titleHasDrawn = false;
     this._dockPos = { x: 0, y: 0 };
+    /** Bay index 0/1/2 where the player ship docks this hangar visit */
+    this.playerBayIndex = 1;
+    /**
+     * Dev hangar control target — who receives thruster/weapon input.
+     * @type {null|{ kind:'player' }|{ kind:'visitor', bayIndex:number }}
+     */
+    this.hangarControlTarget = { kind: 'player' };
+    /**
+     * Hangar ship under LMB press (Dev select); suppresses fire until release.
+     * @type {null|{ kind:'player' }|{ kind:'visitor', bayIndex:number }}
+     */
+    this._hangarSelectPress = null;
+    /** Puppet Ship used to drive visitor thrusters in the hangar */
+    this._hangarPuppet = null;
     /** Continues title-screen space drift; shown through hangar bay doors */
     this._spaceCam = { x: 0, y: 0 };
     /** @type {null|{kind:'launch'|'land', phase:string, t:number}} */
@@ -144,6 +162,20 @@ export class GameEngine {
     return this.simSpeed;
   }
 
+  /** Reset sim clock unless Dev Mode is keeping a custom speed. */
+  _resetSimSpeedUnlessDev() {
+    if (!Settings.isDevMode()) this.simSpeed = 1;
+  }
+
+  _mouseWorld() {
+    return this.camera.screenToWorld(
+      this.input.mouseScreen.x,
+      this.input.mouseScreen.y,
+      this.renderer.centerX,
+      this.renderer.centerY
+    );
+  }
+
   _setTitleFade(opacity) {
     this._titleFade = opacity;
     this.canvas.style.opacity = String(opacity);
@@ -182,7 +214,7 @@ export class GameEngine {
     this.entityManager.add(this.ship, 'ship');
     this.mode = 'playing';
     this.paused = false;
-    this.simSpeed = 1;
+    this._resetSimSpeedUnlessDev();
     this._hangarSeq = null;
     this.ambientTraffic.reset();
     this._setTitleFade(1);
@@ -204,21 +236,24 @@ export class GameEngine {
     this._spaceCam.y = this.camera.position.y;
 
     this._clearPlaySession();
-    this._dockPos.x = HANGAR.PLAYER_PAD_X;
+    this.playerBayIndex = (Math.random() * 3) | 0;
+    this._dockPos.x = hangarPadX(this.playerBayIndex);
     this._dockPos.y = 0;
     this.ship = new Ship(this._dockPos.x, this._dockPos.y);
     this._applyPendingBlueprint(this.ship);
     this.precisionActive = false;
     this.entityManager.add(this.ship, 'ship');
-    this.hangarBay.reset(this.ship);
+    this.hangarBay.reset(this.ship, { playerBayIndex: this.playerBayIndex });
     this.hangarBay.warmStartHeadless();
     this._dockLocked = true;
     this._hangarSeq = null;
     this._hangarHover = 0;
+    this.hangarControlTarget = { kind: 'player' };
+    this._hangarSelectPress = null;
+    this.hangarBay.setDevControlBay(this.playerBayIndex);
     this.hangarBay.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
 
-    this.camera.position.set(this._dockPos.x, this._dockPos.y);
-    this.camera.offset.set(0, 0);
+    this.camera.setHangarAnchor(this._dockPos.x, this._dockPos.y);
     const hangarZoom = this._hangarDefaultZoom();
     this.camera.userZoom = hangarZoom;
     this.camera.targetUserZoom = hangarZoom;
@@ -227,10 +262,11 @@ export class GameEngine {
 
     this.mode = 'hangar';
     this.paused = false;
-    this.simSpeed = 1;
+    this._resetSimSpeedUnlessDev();
     this._setTitleFade(1);
     this.canvas.style.opacity = '1';
     this.input.enable();
+    this.input.hangarPanEnabled = true;
     this.input.paused = false;
 
     if (this._hangarHud) this._hangarHud.classList.remove('hidden');
@@ -251,10 +287,12 @@ export class GameEngine {
   exitHangar() {
     if (this.mode !== 'hangar') return;
     if (this._hangarSeq) return;
+    this.input.hangarPanEnabled = false;
     this.input.disable();
     this._clearPlaySession();
     this.hangarBay.clearOps();
-    this.simSpeed = 1;
+    this._resetSimSpeedUnlessDev();
+    HangarLayoutEditor.exit();
     this.mode = 'title';
     this.paused = false;
     this._titleHasDrawn = true;
@@ -547,7 +585,7 @@ export class GameEngine {
     this._dockLocked = true;
     this._hangarHover = 0;
     this._setLaunchBtnVisible(false);
-    this.hangarBay.beginOps(PLAYER_BAY, 'departing');
+    this.hangarBay.beginOps(this.playerBayIndex, 'departing');
     this.hangarBay.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
     this.camera.targetUserZoom = HANGAR.ZOOM_LAUNCH;
   }
@@ -559,15 +597,15 @@ export class GameEngine {
     this._dockLocked = false;
     this._hangarHover = 1;
     this._setLaunchBtnVisible(false);
-    this.ship.position.set(HANGAR.PLAYER_PAD_X, HANGAR.LAND_START_Y);
+    this.ship.position.set(this._dockPos.x, HANGAR.LAND_START_Y);
     this.ship.velocity.set(0, HANGAR.LAND_APPROACH_SPEED);
     this.ship.angle = startAngle;
     this.ship.turretAngle = startTurret;
     this.ship.angularVelocity = 0;
     this.ship.visualScale = HANGAR.HOVER_SCALE;
-    this.hangarBay.beginOps(PLAYER_BAY, 'incoming');
-    this.hangarBay.setDoorOpen(PLAYER_BAY, 1);
-    this.hangarBay.setBeacon(PLAYER_BAY, 'open');
+    this.hangarBay.beginOps(this.playerBayIndex, 'incoming');
+    this.hangarBay.setDoorOpen(this.playerBayIndex, 1);
+    this.hangarBay.setBeacon(this.playerBayIndex, 'open');
     // Pad waits facing south for the settle; ship yaws onto it
     this.hangarBay.setPlayerPadAngle(FACE_SOUTH);
     this.camera.targetUserZoom = HANGAR.ZOOM_LAUNCH;
@@ -576,7 +614,7 @@ export class GameEngine {
     this.camera.position.set(this.ship.position.x, this.ship.position.y * 0.5);
   }
 
-  /** Title Home Base: ship was stored below B2 — rise on pad before service begins. */
+  /** Title Home Base: ship was stored below the player bay — rise on pad before service begins. */
   _startElevatorArrivalSequence() {
     this._hangarSeq = { kind: 'elevate', phase: 'below', t: 0 };
     this._dockLocked = true;
@@ -584,7 +622,7 @@ export class GameEngine {
     this._setLaunchBtnVisible(false);
     this.hangarBay.playerArrivalPending = true;
     this.hangarBay.playerPadDrop = 1;
-    this.hangarBay.beginOps(PLAYER_BAY, 'elevator');
+    this.hangarBay.beginOps(this.playerBayIndex, 'elevator');
     this.hangarBay.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
     this.ship.position.set(this._dockPos.x, this._dockPos.y);
     this.ship.velocity.set(0, 0);
@@ -608,7 +646,8 @@ export class GameEngine {
     this.ship.visualScale = 1;
     this._clearShipThrusters(this.ship);
     this.hangarBay.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
-    this.hangarBay.clearOps(PLAYER_BAY);
+    this.hangarBay.clearOps(this.playerBayIndex);
+    this.camera.setHangarAnchor(this._dockPos.x, this._dockPos.y);
     this._setHangarZoomImmediate(this._hangarDefaultZoom());
     this._setLaunchBtnVisible(true);
   }
@@ -620,7 +659,7 @@ export class GameEngine {
     let vy = this.ship?.velocity.y ?? -160;
     if (vy > -80) vy = -80;
     if (vy < -220) vy = -220;
-    this.hangarBay.clearOps(PLAYER_BAY);
+    this.hangarBay.clearOps(this.playerBayIndex);
     this._hangarSeq = null;
     this._hangarHover = 0;
     this._dockLocked = true;
@@ -633,8 +672,9 @@ export class GameEngine {
     this.ship.velocity.set(vx, vy);
     this.entityManager.add(this.ship, 'ship');
 
+    this.input.hangarPanEnabled = false;
     this.mode = 'playing';
-    this.simSpeed = 1;
+    this._resetSimSpeedUnlessDev();
     this.ambientTraffic.reset();
     this.camera.position.set(spawn.x, spawn.y);
     this.camera.userZoom = 1;
@@ -659,7 +699,8 @@ export class GameEngine {
     this.ship.visualScale = 1;
     this._clearShipThrusters(this.ship);
     this.hangarBay.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
-    this.hangarBay.clearOps(PLAYER_BAY);
+    this.hangarBay.clearOps(this.playerBayIndex);
+    this.camera.setHangarAnchor(this._dockPos.x, this._dockPos.y);
     this._setHangarZoomImmediate(this._hangarDefaultZoom());
     this._setLaunchBtnVisible(true);
   }
@@ -677,7 +718,7 @@ export class GameEngine {
   _positionLaunchBtn() {
     if (!this._hangarLaunchBtn || this.mode !== 'hangar') return;
     if (this._hangarLaunchBtn.classList.contains('hidden')) return;
-    const anchor = this.hangarBay.getBayDoorAnchor(PLAYER_BAY);
+    const anchor = this.hangarBay.getBayDoorAnchor(this.playerBayIndex);
     const scr = this.camera.worldToScreen(
       anchor.x,
       anchor.y,
@@ -773,59 +814,359 @@ export class GameEngine {
     this._spaceCam.y += Math.sin(this._titleHeading) * TITLE_DRIFT_SPEED * deltaTime;
     this.asteroidSystem.update(this._spaceCam.x, this._spaceCam.y);
 
-    const zoomWheel = this._hangarSeq ? 0 : this.input.consumeZoomDelta();
+    const editing = HangarLayoutEditor.isActive();
+    // LMB drag pans; LMB also fires when the player ship is selected (deselect to stop).
+    this.input.hangarPanEnabled = !editing;
+    const zoomWheel = this._hangarSeq || editing ? 0 : this.input.consumeZoomDelta();
+    const panDelta = editing ? { x: 0, y: 0 } : this.input.consumePanDelta();
     this.precisionActive = false;
 
-    if (this._hangarSeq) {
-      this._updateHangarSequence(deltaTime);
-    } else {
-      const aimWorld = this.camera.screenToWorld(
-        this.input.mouseScreen.x,
-        this.input.mouseScreen.y,
-        this.renderer.centerX,
-        this.renderer.centerY
-      );
-
-      this.shipController.update(this.ship, this.input, false, deltaTime);
-      // Pad clamps: thruster FX still live from controller, hull stays locked to turntable
+    if (editing) {
+      this._tickHangarLayoutEditor();
       this.ship.position.x = this._dockPos.x;
       this.ship.position.y = this._dockPos.y;
       this.ship.velocity.set(0, 0);
       this.ship.angularVelocity = 0;
       this.ship.angle = this.hangarBay.playerPadAngle ?? SHIP.SPAWN_ANGLE;
-
-      this.weaponSystem.update(
-        this.ship,
-        this.input,
-        aimWorld,
-        true,
-        [],
-        deltaTime
-      );
+      this._clearShipThrusters(this.ship);
+    } else if (this._hangarSeq) {
+      this._updateHangarSequence(deltaTime);
+    } else {
+      this._updateHangarIdleControl(deltaTime);
     }
 
     this.entityManager.update(deltaTime);
     this.particleSystem.update(deltaTime);
 
-    this.hangarBay.update(deltaTime, this.ship, {
-      firedTurret: this.ship.muzzleFlash > 0.02,
-      laserOn: !!this.ship.miningLaserFiring,
-    });
+    if (!editing) {
+      const ctrl = this.hangarControlTarget;
+      const playerLive =
+        ctrl?.kind === 'player' && this.hangarBay.isPlayerPadOccupied();
+      const visitorLive = ctrl?.kind === 'visitor' && !!this._hangarPuppet;
+      const weaponShip = playerLive
+        ? this.ship
+        : visitorLive
+          ? this._hangarPuppet
+          : null;
+      const firedTurret = !!(weaponShip && weaponShip.muzzleFlash > 0.02);
+      const laserOn = !!(weaponShip && weaponShip.miningLaserFiring);
+      let muzzleX;
+      let muzzleY;
+      if (weaponShip && (firedTurret || laserOn)) {
+        const tip = firedTurret
+          ? weaponShip.getTurretMuzzle()
+          : weaponShip.getMiningLaserOrigin();
+        muzzleX = tip.x;
+        muzzleY = tip.y;
+      }
+      this.hangarBay.update(deltaTime, this.ship, {
+        firedTurret,
+        laserOn,
+        muzzleX,
+        muzzleY,
+      });
 
-    if (!this._hangarSeq) {
-      this.hangarBay.applyWeaponHits(
-        this.ship,
-        [...this.entityManager.getByType('projectile')],
-        deltaTime
-      );
+      // Sync player hull to Dev door/elev flight offsets after bay tick
+      this._syncPlayerHangarPose();
+
+      // Keep player plumes cold unless this ship is the control target
+      if (!playerLive && !this.hangarBay.isPlayerDevSceneActive()) {
+        this._clearShipThrusters(this.ship);
+        this.ship.miningLaserFiring = false;
+        this.ship.muzzleFlash = 0;
+      }
+
+      if (!this._hangarSeq && weaponShip) {
+        this.hangarBay.applyWeaponHits(
+          weaponShip,
+          [...this.entityManager.getByType('projectile')],
+          deltaTime
+        );
+        // Visitor draw reads pad state — sync laser beam length after hits
+        if (visitorLive && ctrl?.kind === 'visitor') {
+          const pad = this.hangarBay._sidePadForBay?.(ctrl.bayIndex);
+          if (pad) {
+            pad.miningLaserBeamLength = weaponShip.miningLaserBeamLength;
+            pad.muzzleFlash = weaponShip.muzzleFlash;
+            pad.turretRecoil = weaponShip.turretRecoil;
+          }
+        }
+      }
     }
 
-    this.camera.updateHangar(this.ship.position, deltaTime, zoomWheel);
-    this.renderer.emitThrusterParticles(this.ship, this.particleSystem);
+    this.camera.updateHangar(deltaTime, zoomWheel, panDelta);
+    if (!editing) this._emitHangarThrusterParticles();
+    this._syncHangarDevControlPad();
 
     if (this._hudHangarZoom) {
       this._hudHangarZoom.textContent = this.camera.effectiveZoom.toFixed(1);
     }
+  }
+
+  /** Idle hangar: Dev ship select + control player or visitor thrusters. */
+  _updateHangarIdleControl(deltaTime) {
+    const aimWorld = this._mouseWorld();
+    const dev = Settings.isDevMode();
+    const sceneBusy = this.hangarBay.isPlayerDevSceneActive();
+
+    if (dev && !sceneBusy) {
+      const over = this.hangarBay.pickShipAt(aimWorld.x, aimWorld.y);
+      if (this.input.mouseDown && over && !this.input.isPanDragging() && !this._hangarSelectPress) {
+        this._hangarSelectPress = { ...over };
+      }
+      if (this.input.consumeClick()) {
+        if (this._hangarSelectPress && !this.input.wasPanDrag()) {
+          this._toggleHangarControl(this._hangarSelectPress);
+        }
+        this._hangarSelectPress = null;
+      }
+      if (!this.input.mouseDown) this._hangarSelectPress = null;
+    } else {
+      this.input.consumeClick();
+      this._hangarSelectPress = null;
+      if (!dev) this.hangarControlTarget = { kind: 'player' };
+    }
+
+    // While a Dev door/elev scene runs, HangarBay owns thruster cues
+    if (sceneBusy) {
+      this._syncPlayerHangarPose();
+      return;
+    }
+
+    const ctrl = this.hangarControlTarget;
+    const blockFire = !!this._hangarSelectPress;
+
+    if (ctrl?.kind === 'player' && this.hangarBay.isPlayerPadOccupied()) {
+      // Lock pose before controller so residual velocity cannot light brakes
+      this.ship.position.x = this._dockPos.x;
+      this.ship.position.y = this._dockPos.y;
+      this.ship.velocity.set(0, 0);
+      this.ship.angularVelocity = 0;
+      this.ship.angle = this.hangarBay.playerPadAngle ?? SHIP.SPAWN_ANGLE;
+      this.shipController.update(this.ship, this.input, false, deltaTime);
+      this.ship.position.x = this._dockPos.x;
+      this.ship.position.y = this._dockPos.y;
+      this.ship.velocity.set(0, 0);
+      this.ship.angularVelocity = 0;
+      this.ship.angle = this.hangarBay.playerPadAngle ?? SHIP.SPAWN_ANGLE;
+      const savedDown = this.input.mouseDown;
+      if (blockFire) this.input.mouseDown = false;
+      this.weaponSystem.update(this.ship, this.input, aimWorld, true, [], deltaTime);
+      this.input.mouseDown = savedDown;
+      this._applyHangarHoverVisual(0);
+    } else if (ctrl?.kind === 'visitor') {
+      this._clearShipThrusters(this.ship);
+      this.ship.miningLaserFiring = false;
+      this.ship.muzzleFlash = 0;
+      this._controlHangarVisitor(ctrl.bayIndex, deltaTime, aimWorld, blockFire);
+      this.ship.position.x = this._dockPos.x;
+      this.ship.position.y = this._dockPos.y;
+      this.ship.velocity.set(0, 0);
+      this.ship.angularVelocity = 0;
+      this.ship.angle = this.hangarBay.playerPadAngle ?? SHIP.SPAWN_ANGLE;
+      this._applyHangarHoverVisual(0);
+    } else {
+      // Unselected — no control; mute player FX
+      this._clearShipThrusters(this.ship);
+      this.ship.miningLaserFiring = false;
+      this.ship.muzzleFlash = 0;
+      this.ship.position.x = this._dockPos.x;
+      this.ship.position.y = this._dockPos.y;
+      this.ship.velocity.set(0, 0);
+      this.ship.angularVelocity = 0;
+      this.ship.angle = this.hangarBay.playerPadAngle ?? SHIP.SPAWN_ANGLE;
+      this._applyHangarHoverVisual(0);
+    }
+  }
+
+  _toggleHangarControl(hit) {
+    if (!hit) return;
+    const cur = this.hangarControlTarget;
+    const same =
+      cur &&
+      cur.kind === hit.kind &&
+      (hit.kind === 'player' || cur.bayIndex === hit.bayIndex);
+    // Ship-local exhaust always attaches to the player hull — clear on retarget
+    this.particleSystem.clearShipSpace();
+    if (cur?.kind === 'visitor') this._muteHangarVisitorWeapons(cur.bayIndex);
+    if (same) {
+      this.hangarControlTarget = null;
+      this._clearShipThrusters(this.ship);
+      this.ship.miningLaserFiring = false;
+      this.ship.muzzleFlash = 0;
+    } else {
+      this.hangarControlTarget = { ...hit };
+      if (hit.kind !== 'player') {
+        this._clearShipThrusters(this.ship);
+        this.ship.miningLaserFiring = false;
+        this.ship.muzzleFlash = 0;
+      }
+    }
+  }
+
+  _muteHangarVisitorWeapons(bayIndex) {
+    const pad = this.hangarBay._sidePadForBay?.(bayIndex);
+    if (!pad) return;
+    pad.miningLaserFiring = false;
+    pad.muzzleFlash = 0;
+    if (pad.thrusters) {
+      for (const key of Object.keys(pad.thrusters)) {
+        if (typeof pad.thrusters[key] === 'number') pad.thrusters[key] = 0;
+      }
+      pad.thrusters.retroBurn = false;
+    }
+  }
+
+  _controlHangarVisitor(bayIndex, deltaTime, aimWorld, blockFire) {
+    const pad = this.hangarBay._sidePadForBay?.(bayIndex);
+    if (!pad?.visitorId || pad.seq) {
+      this._muteHangarVisitorWeapons(bayIndex);
+      this.hangarControlTarget = null;
+      return;
+    }
+    const def = pad.shipDef || this.hangarBay._ensurePadShipDef?.(pad);
+    if (!def) return;
+    // Pad thrusters stay visitor-scoped (only mounted keys). Never alias player.
+    if (!pad.thrusters) pad.thrusters = makeVisitorThrusters(def);
+
+    if (!this._hangarPuppet) this._hangarPuppet = new Ship(pad.x, pad.shipY || 0);
+    const puppet = this._hangarPuppet;
+    // Puppet keeps its own full thruster bag for ShipController; we copy
+    // results onto pad.thrusters afterward so the player ship cannot share state.
+    if (!puppet._visitorControlBag) {
+      puppet.thrusters = {
+        aftPort: 0,
+        aftStarboard: 0,
+        nosePort: 0,
+        noseStarboard: 0,
+        portFore: 0,
+        portAft: 0,
+        starboardFore: 0,
+        starboardAft: 0,
+        mainEngine: 0,
+        afterburner: 0,
+        retroBurn: false,
+      };
+      puppet._visitorControlBag = true;
+    }
+    puppet.shipDef = def;
+    const hullAngle = pad.shipAngle ?? SHIP.SPAWN_ANGLE;
+    puppet.angle = hullAngle;
+    if (typeof pad.turretAngle !== 'number') pad.turretAngle = hullAngle;
+    if (typeof pad.miningLaserRelAngle !== 'number') pad.miningLaserRelAngle = 0;
+    puppet.turretAngle = pad.turretAngle;
+    puppet.miningLaserRelAngle = pad.miningLaserRelAngle;
+    puppet.fireCooldown = pad.fireCooldown || 0;
+    puppet.muzzleFlash = pad.muzzleFlash || 0;
+    puppet.turretRecoil = pad.turretRecoil || 0;
+    puppet.miningLaserFiring = false;
+    puppet.position.set(pad.x, pad.shipY || 0);
+    puppet.velocity.set(0, 0);
+    puppet.angularVelocity = 0;
+
+    this.shipController.update(puppet, this.input, false, deltaTime);
+    puppet.position.set(pad.x, pad.shipY || 0);
+    puppet.velocity.set(0, 0);
+    puppet.angularVelocity = 0;
+
+    const savedDown = this.input.mouseDown;
+    if (blockFire) this.input.mouseDown = false;
+    this.weaponSystem.update(puppet, this.input, aimWorld, true, [], deltaTime);
+    this.input.mouseDown = savedDown;
+    puppet.update(deltaTime);
+
+    // Copy only keys the visitor actually mounts (+ engine)
+    for (const key of Object.keys(pad.thrusters)) {
+      if (typeof pad.thrusters[key] === 'number') pad.thrusters[key] = 0;
+    }
+    pad.thrusters.retroBurn = false;
+    for (const key of Object.keys(pad.thrusters)) {
+      if (typeof puppet.thrusters[key] === 'number') {
+        pad.thrusters[key] = puppet.thrusters[key];
+      }
+    }
+    if (puppet.thrusters.retroBurn) pad.thrusters.retroBurn = true;
+
+    pad.shipAngle = puppet.angle;
+    pad.turretAngle = puppet.turretAngle;
+    pad.miningLaserRelAngle = puppet.miningLaserRelAngle;
+    pad.miningLaserFiring = !!puppet.miningLaserFiring;
+    pad.miningLaserBeamLength = puppet.miningLaserBeamLength;
+    pad.muzzleFlash = puppet.muzzleFlash;
+    pad.turretRecoil = puppet.turretRecoil;
+    pad.fireCooldown = puppet.fireCooldown;
+
+    puppet.position.set(pad.x, pad.shipY || 0);
+    puppet.velocity.set(0, 0);
+    puppet.angularVelocity = 0;
+
+    // Player hull must stay cold while piloting a visitor
+    this._clearShipThrusters(this.ship);
+  }
+
+  /** Apply Dev door/elev flight offsets onto the live player ship pose. */
+  _syncPlayerHangarPose() {
+    const hb = this.hangarBay;
+    const f = hb.playerFlight || {};
+    const angle = f.shipAngle ?? hb.playerPadAngle ?? SHIP.SPAWN_ANGLE;
+    this.ship.position.x = this._dockPos.x;
+    this.ship.position.y = this._dockPos.y + (f.shipY || 0);
+    this.ship.velocity.set(0, 0);
+    this.ship.angularVelocity = 0;
+    this.ship.angle = angle;
+    // WeaponSystem owns mouse aim while selected; lock to hull only for Dev scenes
+    if (hb.isPlayerDevSceneActive()) this.ship.turretAngle = angle;
+    if (f.shipScale != null && f.shipScale > 0) {
+      this.ship.visualScale = f.shipScale;
+      this._hangarHover = f.shipHover || 0;
+    } else {
+      this._applyHangarHoverVisual(f.shipHover || 0);
+    }
+  }
+
+  _emitHangarThrusterParticles() {
+    const sceneBusy = this.hangarBay.isPlayerDevSceneActive();
+    const playerLive =
+      this.hangarControlTarget?.kind === 'player' &&
+      this.hangarBay.isPlayerPadOccupied();
+
+    if (
+      (sceneBusy && this.hangarBay.isPlayerShipVisible()) ||
+      playerLive
+    ) {
+      this.renderer.emitThrusterParticles(this.ship, this.particleSystem);
+    }
+
+    // Every thrusting hangar visitor — mount-driven, world-space (ship-local
+    // particles would attach to the player hull in renderParticles).
+    for (const pad of this.hangarBay.sidePads || []) {
+      if (!pad?.visitorId || !pad.shipDef || !pad.thrusters) continue;
+      const shipLike = {
+        shipDef: pad.shipDef,
+        thrusters: pad.thrusters,
+        position: { x: pad.x, y: pad.shipY || 0 },
+        angle: pad.shipAngle ?? SHIP.SPAWN_ANGLE,
+        velocity: { x: pad.shipVx || 0, y: pad.shipVy || 0 },
+        angularVelocity: 0,
+      };
+      this.renderer.emitThrusterParticles(shipLike, this.particleSystem, {
+        worldSpace: true,
+      });
+    }
+  }
+
+  _tickHangarLayoutEditor() {
+    const w = this._mouseWorld();
+    if (!this._hangarEditPointer) this._hangarEditPointer = { down: false };
+    const down = this.input.mouseDown;
+    if (down && !this._hangarEditPointer.down) {
+      HangarLayoutEditor.onPointerDown(w.x, w.y);
+    } else if (down && this._hangarEditPointer.down) {
+      HangarLayoutEditor.onPointerMove(w.x, w.y);
+    } else if (!down && this._hangarEditPointer.down) {
+      HangarLayoutEditor.onPointerUp();
+    }
+    this._hangarEditPointer.down = down;
   }
 
   _clearShipThrusters(ship) {
@@ -891,22 +1232,22 @@ export class GameEngine {
     const ship = this.ship;
     switch (s.phase) {
       case 'warn':
-        this.hangarBay.tickEvac(PLAYER_BAY);
+        this.hangarBay.tickEvac(this.playerBayIndex);
         if (s.t > 1.4) {
           s.phase = 'clear';
           s.t = 0;
         }
         break;
       case 'clear':
-        this.hangarBay.tickEvac(PLAYER_BAY);
-        if (this.hangarBay.isBayDangerClear(PLAYER_BAY) || s.t > 3.5) {
+        this.hangarBay.tickEvac(this.playerBayIndex);
+        if (this.hangarBay.isBayDangerClear(this.playerBayIndex) || s.t > 3.5) {
           s.phase = 'doors';
           s.t = 0;
-          this.hangarBay.setBeacon(PLAYER_BAY, 'open');
+          this.hangarBay.setBeacon(this.playerBayIndex, 'open');
         }
         break;
       case 'doors':
-        this.hangarBay.setDoorOpen(PLAYER_BAY, Math.min(1, s.t / 1.6));
+        this.hangarBay.setDoorOpen(this.playerBayIndex, Math.min(1, s.t / 1.6));
         if (s.t > 1.75) {
           s.phase = 'lift';
           s.t = 0;
@@ -955,7 +1296,7 @@ export class GameEngine {
     const ship = this.ship;
     switch (s.phase) {
       case 'below':
-        hb.tickEvac(PLAYER_BAY);
+        hb.tickEvac(this.playerBayIndex);
         hb.playerPadDrop = 1;
         ship.position.set(this._dockPos.x, this._dockPos.y);
         ship.velocity.set(0, 0);
@@ -967,7 +1308,7 @@ export class GameEngine {
         }
         break;
       case 'rise': {
-        hb.tickEvac(PLAYER_BAY);
+        hb.tickEvac(this.playerBayIndex);
         const u = this._smoothstep(s.t / HANGAR.VISITOR_RISE_TIME);
         hb.playerPadDrop = 1 - u;
         hb.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
@@ -1007,7 +1348,7 @@ export class GameEngine {
     switch (s.phase) {
       case 'align': {
         // Keep inbound southbound path while yaw couples swing nose to south
-        ship.position.x += (HANGAR.PLAYER_PAD_X - ship.position.x) * Math.min(1, dt * 2.5);
+        ship.position.x += (this._dockPos.x - ship.position.x) * Math.min(1, dt * 2.5);
         if (ship.velocity.y < HANGAR.LAND_APPROACH_SPEED * 0.55) {
           ship.velocity.y = Math.min(
             HANGAR.LAND_APPROACH_SPEED,
@@ -1110,7 +1451,7 @@ export class GameEngine {
       }
       case 'turn': {
         // Pad turntable + ship: south → north (180°) — rim stays on for pad motion
-        this.hangarBay.setPadRim(PLAYER_BAY, 'on');
+        this.hangarBay.setPadRim(this.playerBayIndex, 'on');
         const u = this._smoothstep(s.t / HANGAR.PAD_TURN_TIME);
         const angle = FACE_SOUTH + (SHIP.SPAWN_ANGLE - FACE_SOUTH) * u;
         ship.angle = angle;
@@ -1139,8 +1480,8 @@ export class GameEngine {
         this._landSettleZoomProgress(
           HANGAR.HOVER_LIFT_TIME + HANGAR.PAD_TURN_TIME + s.t
         );
-        this.hangarBay.setDoorOpen(PLAYER_BAY, Math.max(0, 1 - s.t / 1.4));
-        if (s.t > 0.35) this.hangarBay.setBeacon(PLAYER_BAY, 'warning');
+        this.hangarBay.setDoorOpen(this.playerBayIndex, Math.max(0, 1 - s.t / 1.4));
+        if (s.t > 0.35) this.hangarBay.setBeacon(this.playerBayIndex, 'warning');
         if (s.t > 1.5) {
           this._finishLanding();
         }
@@ -1191,9 +1532,18 @@ export class GameEngine {
     const bp = this._blueprint;
     if (!ship || !bp) return;
 
-    const zoomWheel = this.input.consumeZoomDelta();
+    const authoring = Settings.isDevMode() && blueprintAuthoring.syncEnabled();
+    let zoomWheel = this.input.consumeZoomDelta();
+    if (authoring && DevTools.selectedMount && Math.abs(zoomWheel) > 0) {
+      blueprintAuthoring.rotateSelected(this, Math.sign(zoomWheel) * 0.08);
+      zoomWheel = 0;
+    }
 
-    if (bp.liveControls) {
+    if (authoring) {
+      this._tickBlueprintAuthoring();
+    }
+
+    if (bp.liveControls && !(authoring && blueprintAuthoring.dragging)) {
       // Hangar-style: thruster / engine / weapon FX from ShipController.
       // Position locked at origin (no flight). Yaw is allowed so BP can rotate.
       // Auto-spin is cleared when live controls turn on — do not re-apply here.
@@ -1241,6 +1591,20 @@ export class GameEngine {
     this.camera.position.set(0, 0);
     this.camera.offset.set(0, 0);
     this.camera.updateBlueprint(ship.position, deltaTime, zoomWheel);
+  }
+
+  _tickBlueprintAuthoring() {
+    const w = this._mouseWorld();
+    if (!this._bpAuthorPointer) this._bpAuthorPointer = { down: false };
+    const down = this.input.mouseDown;
+    if (down && !this._bpAuthorPointer.down) {
+      blueprintAuthoring.onPointerDown(this, w.x, w.y);
+    } else if (down && this._bpAuthorPointer.down) {
+      blueprintAuthoring.onPointerMove(this, w.x, w.y);
+    } else if (!down && this._bpAuthorPointer.down) {
+      blueprintAuthoring.onPointerUp();
+    }
+    this._bpAuthorPointer.down = down;
   }
 
   update(deltaTime) {
@@ -1312,6 +1676,7 @@ export class GameEngine {
       player: this.ship,
       station: { x: STATION.WORLD_X, y: STATION.WORLD_Y },
       asteroids: asteroids,
+      particles: this.particleSystem,
       camera: {
         x: this.camera.position.x,
         y: this.camera.position.y,
@@ -1441,6 +1806,16 @@ export class GameEngine {
       this.renderer.renderShip(this.ship, this.camera);
     }
 
+    if (Settings.isDevMode() && this.ship) {
+      this.renderer.renderWorldLayer((ctx) => {
+        drawDevOverlays(ctx, {
+          ship: this.ship,
+          zoom: this.camera.effectiveZoom || 1,
+          getHardpoints: () => this.ship.shipDef?.hardpointsTable?.() || {},
+        });
+      }, this.camera);
+    }
+
     this.renderer.endCircularClip();
   }
 
@@ -1541,6 +1916,22 @@ export class GameEngine {
         this.camera,
         this._blueprint?.shipView()
       );
+    }
+    if (
+      Settings.isDevMode() &&
+      this._sandboxShip &&
+      (DevTools.overlay.mounts || DevTools.selectedMount || blueprintAuthoring.dragging)
+    ) {
+      const prev = DevTools.overlay.mounts;
+      DevTools.overlay.mounts = true;
+      this.renderer.renderWorldLayer((ctx) => {
+        drawDevOverlays(ctx, {
+          ship: this._sandboxShip,
+          zoom: this.camera.effectiveZoom || 1,
+          getHardpoints: () => this._sandboxShip.shipDef?.hardpointsTable?.() || {},
+        });
+      }, this.camera);
+      DevTools.overlay.mounts = prev;
     }
     this.renderer.endCircularClip();
   }
@@ -1763,6 +2154,7 @@ export class GameEngine {
   }
 
   _renderHangar() {
+    this._syncHangarDevControlPad();
     const ctx = this.renderer.ctx;
     ctx.fillStyle = '#0a1018';
     ctx.fillRect(0, 0, this.renderer.width, this.renderer.height);
@@ -1779,6 +2171,7 @@ export class GameEngine {
     const doorLip = this.hangarBay.getDoorLipY();
     const shipOutside = !!(this.ship && this.ship.position.y < doorLip - 2);
     const playerInShaft = (this.hangarBay.playerPadDrop || 0) >= 0.02;
+    const playerVisible = this.hangarBay.isPlayerShipVisible?.() !== false;
 
     this.renderer.renderWorldLayer((worldCtx) => {
       this.hangarBay.renderDeck(worldCtx, space);
@@ -1788,20 +2181,20 @@ export class GameEngine {
         : null;
       this.hangarBay.renderElevatorTransits(worldCtx, {
         drawPlayerShip: (ctx) => {
-          if (this.ship) {
+          if (this.ship && playerVisible) {
             this.renderer.drawShipBodyAt(ctx, this.ship, 0, 0, playerView);
           }
         },
       });
       this.hangarBay.renderVisitors(worldCtx, {
         beforeOcclusion: (wctx) => {
-          if (this.ship && shipOutside) {
+          if (this.ship && playerVisible && shipOutside) {
             this._drawHangarHoverShadow(wctx);
             this.renderer.drawShipInWorld(wctx, this.ship, playerView);
           }
         },
         afterOcclusion: (wctx) => {
-          if (this.ship && !shipOutside && !playerInShaft) {
+          if (this.ship && playerVisible && !shipOutside && !playerInShaft) {
             this._drawHangarHoverShadow(wctx);
             this.renderer.drawShipInWorld(wctx, this.ship, playerView);
           }
@@ -1822,6 +2215,9 @@ export class GameEngine {
 
     this.renderer.renderWorldLayer((worldCtx) => {
       this.hangarBay.renderOverhead(worldCtx);
+      if (HangarLayoutEditor.isActive()) {
+        HangarLayoutEditor.draw(worldCtx);
+      }
     }, this.camera);
   }
 
@@ -1838,6 +2234,22 @@ export class GameEngine {
     ctx.ellipse(0, 0, 16 + h * 6, 9 + h * 3.5, 0, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
+  }
+
+  /** Sync pad “active” highlight to the Dev control target. */
+  _syncHangarDevControlPad() {
+    const ctrl = this.hangarControlTarget;
+    if (!Settings.isDevMode() || !ctrl) {
+      this.hangarBay.setDevControlBay(null);
+      return;
+    }
+    if (ctrl.kind === 'player') {
+      this.hangarBay.setDevControlBay(this.playerBayIndex);
+    } else if (ctrl.kind === 'visitor') {
+      this.hangarBay.setDevControlBay(ctrl.bayIndex);
+    } else {
+      this.hangarBay.setDevControlBay(null);
+    }
   }
 
   _updateHUD(capsDesired = this.input?.capsLockDesired) {

@@ -39,41 +39,34 @@ import { BELL_MOUNTS, ultraMounts, sectionScale } from './SectionGeometry.js';
  * }} SectionDef
  */
 
-/** Starter bell hardpoints — on bell hull edges (see SectionGeometry / StarterBellDraw). */
+/** Starter bell hardpoints — built from live BELL_MOUNTS (Dev Mode bake target). */
+function bellHardpointsForRole(role) {
+  const list = BELL_MOUNTS[role];
+  if (!list) return null;
+  return list.map((m) => ({
+    id: m.key,
+    key: m.key,
+    category: m.category,
+    x: m.x,
+    y: m.y,
+    angle: m.angle,
+    mk: 2,
+    articulation: m.articulation || 'static',
+    face: m.face,
+  }));
+}
+
+/** @deprecated use bellHardpointsForRole — kept for any external reads */
 export const BELL_HARDPOINTS = {
-  bridge: BELL_MOUNTS.bridge.map((m) => ({
-    id: m.key,
-    key: m.key,
-    category: m.category,
-    x: m.x,
-    y: m.y,
-    angle: m.angle,
-    mk: 2,
-    articulation: m.articulation || 'static',
-    face: m.face,
-  })),
-  body: BELL_MOUNTS.body.map((m) => ({
-    id: m.key,
-    key: m.key,
-    category: m.category,
-    x: m.x,
-    y: m.y,
-    angle: m.angle,
-    mk: 2,
-    articulation: m.articulation || 'static',
-    face: m.face,
-  })),
-  engine: BELL_MOUNTS.engine.map((m) => ({
-    id: m.key,
-    key: m.key,
-    category: m.category,
-    x: m.x,
-    y: m.y,
-    angle: m.angle,
-    mk: 2,
-    articulation: m.articulation || 'static',
-    face: m.face,
-  })),
+  get bridge() {
+    return bellHardpointsForRole('bridge');
+  },
+  get body() {
+    return bellHardpointsForRole('body');
+  },
+  get engine() {
+    return bellHardpointsForRole('engine');
+  },
 };
 
 function sectionId(classId, role, theme, mk, variant) {
@@ -130,10 +123,11 @@ function defaultHardpointsForRole(classId, role, mk, morph, scale, variant = 'b'
   const socketMk = Math.min(mk, socketMkCapForSwapGroup(group));
 
   // Starter Generalist keeps bell layout (1 eng, 8 thrusters, laser, turret)
-  if (classId === 'generalist' && BELL_HARDPOINTS[role]) {
+  const bellHps = classId === 'generalist' ? bellHardpointsForRole(role) : null;
+  if (bellHps) {
     // Bell mesh (variant a) ignores morph — keep mounts on the fixed hull.
     const m = variant === 'a' ? 0 : morph;
-    return scaleHardpoints(BELL_HARDPOINTS[role], socketMk, m, scale);
+    return scaleHardpoints(bellHps, socketMk, m, scale);
   }
 
   // —— UltraLight hull ——

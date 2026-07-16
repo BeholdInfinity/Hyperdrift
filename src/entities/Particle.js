@@ -83,6 +83,46 @@ export class ParticleSystem {
     }
   }
 
+  /**
+   * Exhaust baked into world space at emit time (hangar multi-ship — ship-local
+   * particles always attach to the player hull in renderParticles).
+   */
+  emitExhaustWorld(ship, localX, localY, exhaustAngle, intensity, color, spread = 0.4, options = {}) {
+    const speedScale = options.speedScale ?? 1;
+    const lifeScale = options.lifeScale ?? 1;
+    const leanAngle = options.leanAngle ?? 0;
+    const cos = Math.cos(ship.angle);
+    const sin = Math.sin(ship.angle);
+    const sx = ship.position.x;
+    const sy = ship.position.y;
+    const count = Math.ceil(intensity * 3);
+    for (let i = 0; i < count; i++) {
+      const localAngle = exhaustAngle + leanAngle + (Math.random() - 0.5) * spread;
+      const spd = (75 + Math.random() * 105 * intensity) * speedScale;
+      const lx = localX + (Math.random() - 0.5) * 3;
+      const ly = localY + (Math.random() - 0.5) * 3;
+      const worldAngle = ship.angle + localAngle;
+      this.emit(
+        sx + lx * cos - ly * sin,
+        sy + lx * sin + ly * cos,
+        Math.cos(worldAngle) * spd,
+        Math.sin(worldAngle) * spd,
+        (0.15 + Math.random() * 0.18) * lifeScale,
+        color,
+        2.25 + intensity * 3.3,
+        'exhaust',
+        'world'
+      );
+    }
+  }
+
+  /** Drop ship-local particles (hangar control retarget / mute). */
+  clearShipSpace() {
+    for (let i = this.particles.length - 1; i >= 0; i--) {
+      if (this.particles[i].space === 'ship') this.particles.splice(i, 1);
+    }
+  }
+
   update(deltaTime) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
       this.particles[i].update(deltaTime);

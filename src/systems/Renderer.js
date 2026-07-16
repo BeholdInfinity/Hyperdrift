@@ -1,11 +1,6 @@
-import { HARDPOINTS, THRUSTER_KEYS } from '../entities/ShipHardpoints.js';
-import { SHIP, BLUEPRINT } from '../core/Constants.js';
-import {
-  drawModularShip,
-  getShipHardpointsTable,
-  getShipThrusterKeys,
-} from '../ships/ShipRenderer.js';
-import { hexToRgba } from '../ships/Themes.js';
+import { BLUEPRINT } from '../core/Constants.js';
+import { drawModularShip } from '../ships/ShipRenderer.js';
+import { emitMountExhaust } from '../ships/PlumeDraw.js';
 import { topDownView } from '../ships/ShipViews.js';
 
 export class Renderer {
@@ -137,223 +132,11 @@ export class Renderer {
   }
 
   /**
-   * Modular catalog draw (sections + items). Hangar can pass angled view.
-   * Plumes draw first so the hull / thruster cup housing paints over their
-   * base — the flame reads as emerging from the nozzle bore, not floating
-   * on top of the deck (matches `HangarVisitorShips.drawVisitorShip` order).
+   * Modular catalog draw (sections + items + mount-driven plumes).
    * @param {{ mode?: string, headingIndex?: number }} [view]
    */
   _drawShipBody(ctx, ship, view) {
-    this._drawThrusterPlumes(ctx, ship);
     drawModularShip(ctx, ship, view || topDownView());
-  }
-
-
-  _drawPlume(ctx, x, y, exhaustAngle, intensity, len, color, width = 2, fadeRgba = 'rgba(50, 100, 150, 0)', lean = 0) {
-    if (!intensity || intensity <= 0) return;
-
-    ctx.save();
-    ctx.translate(x, y);
-    ctx.rotate(exhaustAngle);
-    ctx.globalAlpha = 0.5 + Math.min(intensity, 1.5) * 0.35;
-
-    const plumeLen = len * Math.min(intensity, 1.5);
-    // lean: -1..1-ish, tip offset in exhaust-local +Y (CCW from exhaust)
-    const tipY = Math.max(-1.1, Math.min(1.1, lean)) * plumeLen * 0.52;
-    const midX = plumeLen * 0.42;
-    const midY = tipY * 0.28;
-
-    const grad = ctx.createLinearGradient(0, 0, plumeLen, tipY * 0.35);
-    grad.addColorStop(0, color);
-    grad.addColorStop(0.5, color.replace(/[\d.]+\)$/, '0.3)'));
-    grad.addColorStop(1, fadeRgba);
-
-    ctx.fillStyle = grad;
-    ctx.beginPath();
-    ctx.moveTo(0, -width);
-    ctx.quadraticCurveTo(midX, midY - width * 0.25, plumeLen, tipY);
-    ctx.quadraticCurveTo(midX, midY + width * 0.25, 0, width);
-    ctx.closePath();
-    ctx.fill();
-    ctx.restore();
-  }
-
-  /** Hermite smoothstep, t mapped from [edge0, edge1] → [0, 1]. */
-  _smoothstep(edge0, edge1, t) {
-    const x = Math.max(0, Math.min(1, (t - edge0) / (edge1 - edge0)));
-    return x * x * (3 - 2 * x);
-  }
-
-  /**
-   * Plume flow vs ship motion — readability + motion cue, not vacuum physics.
-   *   cone / spray — leading flatten (cue + into-flow wash + mild spin)
-   *   lean         — signed crosswind from relative wind (−velocity); bends
-   *                  plume with the flow (sideways thrusters curve “aft”)
-   *   lengthMul    — trailing stretch when wind blows along the exhaust
-   */
-  _computePlumeFlow(exhaustDirX, exhaustDirY, ship, localOx, localOy) {
-    const speed = Math.hypot(ship.velocity.x, ship.velocity.y);
-    let cue = 0;
-    let wash = 0;
-    let lean = 0;
-    let lengthMul = 1;
-
-    if (speed > 8) {
-      const inv = 1 / speed;
-      const align = (exhaustDirX * ship.velocity.x + exhaustDirY * ship.velocity.y) * inv;
-      const speedT = this._smoothstep(15, 380, speed);
-      const lead = Math.max(0, align);
-      cue = lead * speedT * 0.32;
-      wash = this._smoothstep(0.4, 0.98, align) * speedT;
-
-      // Relative wind W = −velocity (blows the plume downwind)
-      const wx = -ship.velocity.x;
-      const wy = -ship.velocity.y;
-      const parallel = (wx * exhaustDirX + wy * exhaustDirY) * inv; // −1..1 along exhaust
-      const perpX = wx * inv - parallel * exhaustDirX;
-      const perpY = wy * inv - parallel * exhaustDirY;
-      // Exhaust-local +Y = rotate exhaust 90° CCW
-      const side = perpX * (-exhaustDirY) + perpY * exhaustDirX;
-      lean = Math.max(-1, Math.min(1, side)) * speedT * 0.85;
-
-      // Trailing: wind along exhaust → slightly longer proud plume
-      const trail = Math.max(0, parallel);
-      lengthMul = 1 + 0.22 * trail * speedT;
-    }
-
-    let spin = 0;
-    const omega = ship.angularVelocity;
-    if (Math.abs(omega) > 0.45) {
-      const cos = Math.cos(ship.angle);
-      const sin = Math.sin(ship.angle);
-      const rx = localOx * cos - localOy * sin;
-      const ry = localOx * sin + localOy * cos;
-      const tx = -omega * ry;
-      const ty = omega * rx;
-      const tLen = Math.hypot(tx, ty);
-      if (tLen > 8) {
-        const tAlign = (exhaustDirX * tx + exhaustDirY * ty) / tLen;
-        const spinT = this._smoothstep(0.45, 3.2, Math.abs(omega));
-        spin = this._smoothstep(0.15, 0.9, tAlign) * spinT * 0.55;
-
-        // Mild extra lean from spin “crosswind” at the nozzle
-        const tInv = 1 / tLen;
-        const twx = -tx;
-        const twy = -ty;
-        const tPar = (twx * exhaustDirX + twy * exhaustDirY) * tInv;
-        const tPerpX = twx * tInv - tPar * exhaustDirX;
-        const tPerpY = twy * tInv - tPar * exhaustDirY;
-        const tSide = tPerpX * (-exhaustDirY) + tPerpY * exhaustDirX;
-        lean += Math.max(-1, Math.min(1, tSide)) * spinT * 0.25;
-      }
-    }
-
-    lean = Math.max(-1.15, Math.min(1.15, lean));
-    const cone = Math.max(0, Math.min(1, cue * 0.55 + wash * 0.5 + spin * 0.35));
-    const spray = Math.max(0, Math.min(1, cue * 0.2 + wash * 0.9 + spin));
-    return { cone, spray, lean, lengthMul };
-  }
-
-  _thrusterMounts(ship) {
-    const table = getShipHardpointsTable(ship);
-    const keys = getShipThrusterKeys(ship);
-    const list = keys.length ? keys : THRUSTER_KEYS;
-    return list.map((key) => {
-      const hp = table[key] || HARDPOINTS[key];
-      return hp ? { key, ...hp } : null;
-    }).filter(Boolean);
-  }
-
-  _drawThrusterPlumes(ctx, ship) {
-    const t = ship.thrusters;
-    const forward = ship.getForward();
-    const table = getShipHardpointsTable(ship);
-    const eng = table.mainEngine || HARDPOINTS.mainEngine;
-    const def = ship.shipDef;
-
-    const defaultBlue = 'rgba(100, 180, 255, 0.7)';
-    const defaultBlueFade = 'rgba(40, 90, 160, 0)';
-    const defaultOrange = 'rgba(255, 160, 70, 0.9)';
-    const defaultOrangeAb = 'rgba(255, 200, 100, 0.95)';
-    const defaultOrangeFade = 'rgba(180, 80, 30, 0)';
-
-    if (t.mainEngine > 0 || t.retroBurn) {
-      const mounts = def?.resolveMounts?.();
-      const engKeys =
-        typeof def?.mainEngineKeys === 'function'
-          ? def.mainEngineKeys()
-          : mounts?.mainEngine?.item
-            ? ['mainEngine']
-            : [];
-      const keys =
-        engKeys.length > 0
-          ? engKeys
-          : table.mainEngine
-            ? ['mainEngine']
-            : [];
-      for (const engKey of keys) {
-        const engHp = table[engKey] || (engKey === 'mainEngine' ? eng : null);
-        if (!engHp) continue;
-        if (mounts && mounts[engKey] && !mounts[engKey].item) continue;
-        const intensity = t.mainEngine || 0.5;
-        const isAfterburner = t.afterburner > 0;
-        let len = isAfterburner ? 54 : 30;
-        let width = isAfterburner ? 3.75 : 6.75;
-        const engPal = def?.paletteForMount?.(engKey);
-        const accent = engPal?.colors?.accent || engPal?.colors?.trim;
-        const color = accent
-          ? hexToRgba(accent, isAfterburner ? 0.95 : 0.9)
-          : isAfterburner
-            ? defaultOrangeAb
-            : defaultOrange;
-        const fade = accent ? hexToRgba(accent, 0) : defaultOrangeFade;
-
-        const exhaustDir = forward.clone().scale(-1);
-        const flow = this._computePlumeFlow(
-          exhaustDir.x,
-          exhaustDir.y,
-          ship,
-          engHp.x,
-          engHp.y
-        );
-        len *= flow.lengthMul * (1 - 0.48 * flow.cone);
-        width *= 1 + 0.65 * flow.cone;
-
-        this._drawPlume(
-          ctx,
-          engHp.x,
-          engHp.y,
-          engHp.angle,
-          intensity,
-          len,
-          color,
-          width,
-          fade,
-          flow.lean
-        );
-      }
-    }
-
-    for (const m of this._thrusterMounts(ship)) {
-      const intensity = t[m.key];
-      if (!intensity) continue;
-
-      const dirX = Math.cos(ship.angle + m.angle);
-      const dirY = Math.sin(ship.angle + m.angle);
-      const flow = this._computePlumeFlow(dirX, dirY, ship, m.x, m.y);
-
-      let len = (8 + intensity * 3.5) * SHIP.THRUSTER_PLUME_SCALE;
-      let width = (1.15 + intensity * 0.9) * SHIP.THRUSTER_PLUME_SCALE;
-      len *= flow.lengthMul * (1 - 0.48 * flow.cone);
-      width *= 1 + 0.7 * flow.cone;
-
-      const pal = def?.paletteForMount?.(m.key);
-      const trim = pal?.colors?.trim || pal?.colors?.accent;
-      const color = trim ? hexToRgba(trim, 0.7) : defaultBlue;
-      const fade = trim ? hexToRgba(trim, 0) : defaultBlueFade;
-
-      this._drawPlume(ctx, m.x, m.y, m.angle, intensity, len, color, width, fade, flow.lean);
-    }
   }
 
   renderAsteroids(asteroids, camera) {
@@ -440,59 +223,14 @@ export class Renderer {
     }, camera);
   }
 
-  emitThrusterParticles(ship, particleSystem) {
-    const t = ship.thrusters;
-    const forward = ship.getForward();
-    const table = getShipHardpointsTable(ship);
-    const eng = table.mainEngine || HARDPOINTS.mainEngine;
-
-    if (t.mainEngine > 0 || t.retroBurn) {
-      const intensity = t.mainEngine || 0.5;
-      const isAfterburner = t.afterburner > 0;
-      const exhaustDir = forward.clone().scale(-1);
-      const engPal = ship.shipDef?.paletteForMount?.('mainEngine');
-      const accent = engPal?.colors?.accent || engPal?.colors?.trim;
-      const color = accent
-        ? hexToRgba(accent, isAfterburner ? 0.85 : 0.7)
-        : isAfterburner
-          ? 'rgba(255, 200, 100, 0.85)'
-          : 'rgba(255, 150, 70, 0.7)';
-      const flow = this._computePlumeFlow(exhaustDir.x, exhaustDir.y, ship, eng.x, eng.y);
-      particleSystem.emitExhaustLocal(
-        eng.x, eng.y, eng.angle,
-        intensity * (isAfterburner ? 1.4 : 1) * (1 - 0.22 * flow.spray),
-        color,
-        isAfterburner ? 0.28 : 0.4 + 0.42 * flow.spray,
-        {
-          speedScale: flow.lengthMul * (1 - 0.78 * flow.spray),
-          lifeScale: flow.lengthMul * (1 - 0.68 * flow.spray),
-          leanAngle: flow.lean * 0.55,
-        }
-      );
-    }
-
-    for (const m of this._thrusterMounts(ship)) {
-      const intensity = t[m.key];
-      if (!intensity) continue;
-
-      const dirX = Math.cos(ship.angle + m.angle);
-      const dirY = Math.sin(ship.angle + m.angle);
-      const flow = this._computePlumeFlow(dirX, dirY, ship, m.x, m.y);
-      const pal = ship.shipDef?.paletteForMount?.(m.key);
-      const trim = pal?.colors?.trim || pal?.colors?.accent;
-      const color = trim ? hexToRgba(trim, 0.55) : 'rgba(100, 180, 255, 0.55)';
-
-      particleSystem.emitExhaustLocal(
-        m.x, m.y, m.angle,
-        intensity * 0.55 * (1 - 0.18 * flow.spray),
-        color,
-        0.4 + 0.45 * flow.spray,
-        {
-          speedScale: flow.lengthMul * (1 - 0.8 * flow.spray),
-          lifeScale: flow.lengthMul * (1 - 0.7 * flow.spray),
-          leanAngle: flow.lean * 0.55,
-        }
-      );
-    }
+  /**
+   * Exhaust particles from equipped propulsion mounts (same path for all ships).
+   * @param {object} ship
+   * @param {import('../entities/Particle.js').ParticleSystem} particleSystem
+   * @param {{ worldSpace?: boolean }} [opts] — worldSpace when renderParticles
+   *   is bound to another hull (hangar visitors / ambient)
+   */
+  emitThrusterParticles(ship, particleSystem, opts = {}) {
+    emitMountExhaust(ship, particleSystem, opts);
   }
 }

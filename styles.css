@@ -226,19 +226,252 @@ html, body {
   display: none;
 }
 
-.hangar-dev-panel {
+.hangar-blueprint-btn {
   position: absolute;
   left: 18px;
   bottom: 18px;
   z-index: 8;
   pointer-events: auto;
+  padding: 8px 14px;
+  font-size: 0.65rem;
+  letter-spacing: 2px;
+  font-weight: 600;
+  background: rgba(16, 28, 40, 0.92);
+  border: 1px solid rgba(100, 180, 255, 0.55);
+  color: rgba(180, 220, 255, 0.95);
+  cursor: pointer;
+}
+
+.hangar-blueprint-btn:hover {
+  border-color: #64b4ff;
+  color: #e8f4ff;
+}
+
+.dev-bay-panel {
+  pointer-events: auto;
+  margin-top: 0;
+  width: min(220px, 40vw);
+  padding: 10px;
+  background: rgba(10, 14, 20, 0.94);
+  border: 1px solid rgba(255, 140, 80, 0.45);
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
   gap: 8px;
 }
 
-.hangar-dev-panel.hidden {
+.dev-bay-panel.hidden {
+  display: none;
+}
+
+.dev-bay-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.55rem;
+  letter-spacing: 2px;
+  color: rgba(255, 180, 120, 0.9);
+  font-weight: 700;
+}
+
+.dev-bay-close {
+  padding: 0 6px;
+  font-size: 1rem;
+  line-height: 1;
+  background: transparent;
+  border: none;
+  color: rgba(200, 180, 160, 0.85);
+  cursor: pointer;
+}
+
+.dev-bay-select,
+.dev-bay-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.dev-bay-select .hangar-dev-btn,
+.dev-bay-actions .hangar-dev-btn {
+  padding: 6px 10px;
+  font-size: 0.58rem;
+}
+
+.hangar-edit-panel {
+  position: absolute;
+  right: 18px;
+  bottom: 18px;
+  z-index: 9;
+  pointer-events: auto;
+  width: min(280px, 40vw);
+  max-height: min(70vh, 520px);
+  overflow: auto;
+  padding: 10px 12px;
+  background: rgba(12, 16, 22, 0.94);
+  border: 1px solid rgba(255, 160, 90, 0.45);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 0.65rem;
+  color: rgba(230, 210, 190, 0.95);
+}
+
+.hangar-edit-panel.hidden {
+  display: none;
+}
+
+.hangar-edit-head {
+  letter-spacing: 2px;
+  font-weight: 700;
+  color: rgba(255, 180, 120, 0.95);
+}
+
+.hangar-edit-layers,
+.hangar-edit-tools,
+.hangar-edit-bake {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.hangar-edit-layers label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.hangar-edit-palette {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: 120px;
+  overflow: auto;
+}
+
+.hangar-edit-palette button {
+  padding: 4px 6px;
+  font-size: 0.55rem;
+  letter-spacing: 0.5px;
+  background: rgba(30, 40, 50, 0.95);
+  border: 1px solid rgba(120, 140, 160, 0.45);
+  color: rgba(200, 220, 240, 0.9);
+  cursor: pointer;
+}
+
+.hangar-edit-palette button.active,
+.hangar-dev-btn.active {
+  border-color: #ff9a50;
+  color: #ffe0c8;
+}
+
+.hangar-edit-inspector {
+  min-height: 48px;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  white-space: pre-wrap;
+  font-family: ui-monospace, monospace;
+  font-size: 0.58rem;
+}
+
+.dev-drawer {
+  position: absolute;
+  left: 12px;
+  top: 12px;
+  z-index: 25;
+  pointer-events: none;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.dev-drawer-stack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.dev-drawer.hidden {
+  display: none;
+}
+
+.dev-drawer-toggle {
+  pointer-events: auto;
+  padding: 6px 10px;
+  font-size: 0.62rem;
+  letter-spacing: 2px;
+  font-weight: 700;
+  background: rgba(20, 28, 36, 0.92);
+  border: 1px solid rgba(100, 160, 220, 0.55);
+  color: rgba(160, 210, 255, 0.95);
+  cursor: pointer;
+}
+
+.dev-drawer-body {
+  pointer-events: auto;
+  width: min(260px, 42vw);
+  padding: 10px;
+  background: rgba(10, 14, 20, 0.94);
+  border: 1px solid rgba(90, 130, 180, 0.45);
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.dev-drawer.open .dev-drawer-body {
+  display: flex;
+}
+
+.dev-drawer-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.dev-drawer-label {
+  font-size: 0.55rem;
+  letter-spacing: 2px;
+  color: rgba(140, 180, 220, 0.75);
+}
+
+.dev-inspect {
+  margin: 0;
+  padding: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  font-size: 0.58rem;
+  color: rgba(200, 230, 255, 0.9);
+  white-space: pre-wrap;
+}
+
+.dev-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.62rem;
+  color: rgba(200, 220, 240, 0.9);
+}
+
+.dev-drawer-status {
+  margin: 0;
+  font-size: 0.55rem;
+  color: rgba(180, 200, 160, 0.85);
+  min-height: 1em;
+}
+
+.bp-author-slider {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.62rem;
+  margin: 4px 0;
+}
+
+.bp-author-slider input {
+  flex: 1;
+}
+
+.bp-dev-only.hidden {
   display: none;
 }
 
