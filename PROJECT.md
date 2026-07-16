@@ -2,7 +2,7 @@
 
 Browser-based 2D spaceflight prototype. Top-down semi-Newtonian physics, procedural infinite universe, HTML5 Canvas. **No build step** — ES modules served over HTTP.
 
-> **Not the game design doc.** See [`GDD.md`](GDD.md) for prototype mechanics. See [`VISION.md`](VISION.md) for long-term vision (*Hyperdrift Crewline*). See [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) for unresolved decisions. This file is for developers and AI agents resuming work.
+> **Not the game design doc.** See [`GDD.md`](GDD.md) for prototype mechanics. See [`VISION.md`](VISION.md) for long-term vision (*Stranger in the Galaxy*). See [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) for unresolved decisions. This file is for developers and AI agents resuming work.
 
 ## Run
 
@@ -79,8 +79,9 @@ src/
 - **Thruster visuals driven by modular mounts** — equipped `mainEngine` / `maneuverThruster` items only (`PlumeDraw.js`); same path for player, hangar visitors, and ambient traffic; intensity from physics thruster bag
 - **Plume flow** (`computePlumeFlow`) — leading cue/wash + crosswind lean from relative wind (`−velocity`); trailing stretch; ship-local particles on the player, world-space on visitors/ambient
 - **Modular ships** — `src/ships/`: swap groups, full section/item ID matrix (parametric), `createPlayerStarter()`, shared `ShipRenderer` (top-down + 16 angled views)
-- **Modes** — `title` (drifting backdrop), `playing` (flight), `hangar` (Jennings Station / Home Base), `controls` (ship-only settings sandbox)
-- **Future-ready** for multiple ships, AI, trading, mining, missions, Home Base launch/extract, networking, save/load
+- **Modes** — `title` (drifting backdrop), `playing` (flight), `hangar` (Jennings Station / Home Base), `controls` (ship-only settings sandbox), `blueprint`
+- **Future modes (vision)** — `shipInterior` / `derelict` (shared 2.5D walker), `dialogue` (portrait overlay); see [`VISION.md`](VISION.md) Presentation Layers
+- **Future-ready** for multiple ships, AI, trading, mining, missions, Home Base launch/extract, narrative runtime, networking, save/load
 
 ## Current implementation status
 
@@ -176,6 +177,7 @@ src/
 - Ambient traffic near Jennings; plumes under hull
 
 ### Longer-term
+- **Stranger subsystems** (not started) — narrative runtime (portraits + ambient barks), shared 2.5D interior explorer (`shipInterior` then `derelict`), station economy, bot companion — phased in [`VISION.md`](VISION.md)
 - Unique art polish per Class×Section×Theme×Mk×variant (matrix is parametric templates today)
 - Ship Upgrade UI economy / gated install (grows on player Blueprint — see [Dev blueprint mode](#dev-blueprint-mode))
 - Home Base: B2 player-request job queue still future; interim B2 uses the same captain checklist as B1/B3 — see `GDD.md`

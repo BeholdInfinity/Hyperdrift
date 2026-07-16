@@ -1,303 +1,251 @@
-# Hyperdrift Crewline — Long-Term Vision
+# Stranger in the Galaxy — Long-Term Vision
 
 **Working title.** The north-star document for where this project is heading over months or years.
 
 | | |
 |---|---|
-| **Current prototype** | Solo top-down flight — see [`GDD.md`](GDD.md) |
-| **This document** | Multiplayer crew-based spaceship game — long-term design |
+| **Current prototype** | *Hyperdrift* — solo top-down flight / hangar sandbox — see [`GDD.md`](GDD.md) |
+| **This document** | Story-driven space-life RPG, station builder, and economic sandbox |
 | **Dev handoff** | [`PROJECT.md`](PROJECT.md) |
 
-> *"Barotrauma meets Order Up meets Sea of Thieves meets extraction shooters — in a spaceship."*
+> *"Stardew Valley meets X4, Space Haven, and Star Citizen's living-world fantasy. A story-driven space RPG where a betrayed dock worker rebuilds a derelict station into the most powerful trade hub in the system."*
 
 ---
 
 ## Vision Statement
 
-Create a multiplayer crew-based spaceship game where winning is less about individual mechanical skill and more about **communication, coordination, prioritization, and crisis management**.
+**Stranger in the Galaxy** is a space-life RPG, station builder, and economic sandbox about starting with nothing and building a home among the stars.
 
-The fantasy is not being a lone space hero.
+You are not the chosen one. You are not a captain, a hero, or a soldier. You are a dock worker with a wrench, a debt problem, and one chance to build something that finally belongs to you.
 
-The fantasy is being one member of a barely functional spaceship crew desperately keeping a ship alive while navigating hostile space, gathering resources, completing missions, and escaping with the loot.
+**Core fantasy:** Start as the least important person in the galaxy. End as the person who built its most important destination.
 
-- Every victory should feel earned.
-- Every defeat should produce a story.
-- Every player should constantly make tradeoffs between their primary responsibilities and the current needs of the ship.
+**Progression fantasy:** Worker → Crewman → Victim → Survivor → Shipbuilder → Station Founder → Industrial Magnate and Head of an Armada
 
 ---
 
-## Two Layers, One Game
+## Why This Game Is Different
 
-| Layer | Mode | What happens |
-|-------|------|----------------|
-| **Outside the ship** | PvPvE | Exploration, combat, resource fields, extraction, hostile players and environment |
-| **Inside the ship** | Co-op | Logistics, repairs, station operation, crisis management — the crew keeps the factory running under fire |
+Most space games begin with command. *Stranger in the Galaxy* begins with **labor**.
 
-The ship is effectively a **multiplayer factory** that must keep functioning during combat and extraction. That combination — not "spaceship crew" alone — is the distinctive hook.
+The fantasy is not simply flying ships or owning stations; it is earning your way from disposable worker to trusted builder, from exploited employee to founder of a place where others can thrive.
 
----
-
-## Role Model: Stations, Not Classes
-
-**Critical design rule (author intent):**
-
-> There are no fixed class assignments at lobby. **Roles are defined by where you are.**
-
-| State | What you are | What you do |
-|-------|--------------|-------------|
-| **Unseated (on foot inside ship)** | Logistics crew | Move fuel cells, ore, ingots, ammo; repair hull/systems; fight fires; respond to crises — *every player in this state is doing "engineer work"* |
-| **Seated at Pilot station** | Pilot / Captain | Semi-Newtonian navigation, scooping, mission focus, crew comms |
-| **Seated at Gunner station** | Gunner | Turret aim/fire, manual reload, grapple salvage the pilot missed |
-| **Seated at Science station** | Science Officer | Sensors, pip management, data-device decoding, map/sensor upgrades |
-
-**Any player can sit at any empty station.** Gunners can leave turrets to haul ammo or patch a breach. The pilot's chair can go empty while someone else covers science. Roles change on the fly when the crew decides — or when panic demands it.
-
-Design implication: the challenge is not "balance four classes" but **balance four stations plus the always-available logistics layer**, and make leaving a station feel like a meaningful tradeoff (turret unmanned, sensors dark, no pilot scooping).
+The station is not just a menu or hub. It is the player's **home, factory, marketplace, shipyard, social space**, and proof that they turned abandonment into belonging. The endgame is not only revenge against the people who exploited the player; it is proving that a better station, a better crew structure, and a better economy can exist.
 
 ---
 
-## Core Pillars
+## Narrative Overview
 
-### 1. The Ship Is The Character
+You begin as an underpaid dock worker on a mediocre orbital station. Your job is simple: repair ships, load cargo, refuel miners, and keep your boss's business running. The work is hard, the pay is terrible, and your boss treats employees as disposable assets.
 
-Players are not the heroes individually. **The ship is.** The crew working together is.
+To earn extra credits, you take dangerous side jobs in aging mining vessels — harvesting ore and collecting fuel from deep space. As your reputation grows among visiting captains, an opportunity presents itself: a position aboard a starship crew.
 
-The ship should feel: alive · fragile · valuable · customizable · difficult to master.
+At first, it feels like freedom.
 
-Players become emotionally attached to their vessel. **Losing the ship should matter.**
+Life among the stars opens new possibilities. You maintain hull breaches during combat, manage fuel systems, reload ammunition magazines, and keep the ship operational while the crew pursues profit. But the dream doesn't last. The captain who recruited you proves no better than the boss you left behind.
 
-### 2. Every Action Has A Human In The Loop
+You discover the truth: the captain never saw you as a crewmate. He saw you as an easy mark. You were brought aboard to be exploited.
 
-No magic resource generation. No instant reloading. No invisible logistics.
+After stealing your savings, the captain and his crew abandon you on a derelict station at the edge of civilized space.
 
-Whenever possible: **someone has to do the work** — and usually someone has to **carry it there**.
+Alone, broke, and stranded, you survive using the skills you've spent your life learning. You get back to work.
 
-### 3. Controlled Chaos
+You salvage broken machinery, strip abandoned vessels, and restore power one subsystem at a time. What begins as desperate survival becomes something larger when you realize there are enough usable components to build a small spacecraft of your own.
 
-Chaos must create **decisions**, not helplessness. *"We can save this."* — not *"Nothing matters."*
+Piece by piece, you construct it. **Your ship.** The first thing in your life that truly belongs to you.
 
-**Good chaos:** fuel shortage, empty ammo belt, hull breach, sensor failure, incoming enemy.
+When the engines come online, you escape and return to civilization — only to realize there is nowhere for you to go. No home. No crew. No future. So you head back to the derelict station you now call home.
 
-**Bad chaos:** all five at once, every fight.
+Approaching in your own ship for the first time, you see an unexpected light in a window on the far side of the station. You are not alone. You land, search, and find a single surviving bot — barely hanging on, forgotten for decades when the station was abandoned. You use your skills as mechanic and scavenger to bring your new friend back to form.
 
-**Crisis budget (target):** one major disaster + one minor disaster at a time — not six simultaneous fires.
+With your ship, your station, and your companion, you mine nearby asteroids, recover fuel, and restore life support and critical systems. Piece by piece, you bring the station back online until a single hangar bay can accept visiting ships again.
 
-### 4. Crew Cooperation First
+Your first customers are the outcasts of the system: independent traders, struggling miners, and captains who cannot afford corporate station fees.
 
-Serious engagements should require multiple humans coordinating. Small crews or solo players can survive quieter periods — hauling, refining, repairing between fights — with the fear of being caught vulnerable away from the bridge.
+As business grows, so does your vision. Hire workers. Expand services. Construct refineries, warehouses, shipyards, markets, and defenses. Build faction relationships. Establish trade routes. Turn a forgotten ruin into the busiest port in the system.
 
-Automatons may assist later but are less efficient than humans.
+Profits upgrade your ship — stronger armor, bigger guns, faster thrusters, better systems. Eventually you build additional ships and assign them to crews you trust. They mine, transport, explore, and fight for you — this time for a fair split of the profits.
 
-Typical comms:
+Success attracts attention. The boss who exploited your labor and the pirate captain who betrayed you were never independent operators. They have been working together from the beginning, targeting vulnerable workers and small operators. Now they see your station as a threat.
 
-- *"Need ammo in port turret."*
-- *"Fuel line is empty."*
-- *"Science, what's on sensors?"*
-- *"I'm leaving gunner — breach in mid deck."*
-- *"Someone get to the bridge."*
-
-### 5. Stories Over Winning
-
-Victory matters. **Stories matter more.** See [Success Criteria](#success-criteria).
+**Endgame — two fronts:** an economic war against the corporate station owner seeking to crush your enterprise, and a military conflict against the pirate captain and his criminal network. The player must leverage industry, trade, diplomacy, engineering, station management, and combat to defend what they built and reshape the balance of power in the system.
 
 ---
 
-## Game Structure
+## Core Gameplay Loop
 
-### High-Level Loop
-
-1. Launch mission
-2. Explore space (PvPvE)
-3. Gather resources (pilot scoop + interior processing)
-4. Complete objectives
-5. Fight AI and/or players
-6. Upgrade ship
-7. Extract successfully
-8. Keep acquired loot
+Work jobs → earn money and reputation → acquire tools and parts → restore station systems → attract customers → expand services → build ships → assign crews → defend the station → reshape the local economy.
 
 ---
 
-## Gameplay Layers
+## Act-Based Onboarding
 
-### Layer 1: Space Flight (Pilot station)
+The tutorial is embedded in the player's story.
 
-- Semi-Newtonian navigation — asteroids, enemies, positioning
-- **Scooping:** fly directly over materials, fuel, upgrades to collect instantly (no grapple needed)
-- **Fuel:** only from correct gas clouds; avoid corrosive clouds
-- Mission progress and extraction calls
-- Primary communication hub for the crew
-- While seated: mostly navigates via the **dominant top-down tactical screen** on the bridge, plus ship status (pips, energy, ammo, science, upgrade levels)
+| Act | Role | What it teaches |
+|-----|------|-----------------|
+| **Act 1** | Dock worker | Station systems — repair ships, load cargo, refuel vessels, handle customers, earn reputation, understand how station labor turns into money |
+| **Act 2** | Ship crewmember | Ship systems — hull integrity, fuel, ammunition, emergencies, how a ship survives under pressure |
+| **Act 3** | Alone on the derelict | Rebuild with everything learned — cement that the player is truly a *stranger in the galaxy* |
 
-Good pilots create opportunities. Bad pilots create disasters.
-
-### Layer 2: Internal Logistics (Unseated — everyone)
-
-The heart of the game. A **chaos-management** loop (Order Up / Overcooked energy): physical hauling under time pressure, not abstract menus.
-
-| Loop | Pipeline |
-|------|----------|
-| **Fuel** | Scooped liquid → Fuel Processor → **Fuel Cell (carried)** → Engine input (or other sinks) |
-| **Ammunition** | Raw material → input belt/container → **carried to** Ingot Forge → **carried to** Ammo Fabricator → **carried to** correct ammo conveyor → Gunner turret feed |
-| **Repair** | Damage → diagnose → repair → restore function |
-
-The internal network should feel like a **miniature factory operating under fire**.
-
-**Prototype-this-first question (from design review):**
-
-> Is moving objects along these chains fun for 30–60 minutes — or merely realistic?
-
-If yes, build outward. If no, redesign before adding combat and PvP.
-
-### Layer 3: Combat (Gunner station)
-
-- Request ammo, **manually reload** turrets, aim and shoot
-- **Grappling hook** to reel in items the pilot did not scoop
-- Point defence, threat prioritization, ammo type selection (future)
-- View: WW2 bomber turret — outside glass, partial interior (see teammates, local breaches, station screen)
-
-Gunners can **leave the turret** to join logistics when the ship is on fire. That tradeoff is intentional.
-
-### Layer 4: Information (Science station)
-
-Whoever sits at Science:
-
-- Operates sensors and **manages pips**
-- Decodes recovered **data-devices** via minigame → science points → map and sensor upgrades
-- Produces intel the crew acts on (hidden fields, threats, routes, weaknesses)
-
-Science must not be an isolated corner minigame. Output should constantly answer: *"Science, what do you see?"*
-
-View: seated at a large board of panels and switches; also has access to the shared tactical screen.
+Only after the player understands **both halves** of the fantasy (station labor + ship operations) does the game take everything away. The betrayal and abandonment are not just plot twists; they force the player to rebuild a station and a life on their own terms.
 
 ---
 
-## Shared UI: Tactical Screen at Every Station
+## Bot Companion
 
-Each station includes a **top-down tactical display** showing the exterior, expanding outward as sensors improve. Seated players operate their primary interface but share the same strategic picture (with sensor-limited range).
+The bot enters after Acts 1–2 and the lonely Act 3 rebuild. He becomes a true partner: comic relief, station assistant, emotional anchor, automation manager, and combat support.
 
-Only **unseated** players see the ship interior in **2.5D** — corridors, machines, breaches, carry paths. That's the logistics play space.
+During ship operations, the bot can take practical roles: loading ammunition, managing fuel, performing repairs, or piloting temporarily while the player mans guns or handles emergencies. Roles can swap — bot holds the ship steady while the player runs to the turret, or keeps systems supplied while the player focuses on survival.
 
----
+Upgrades expand what he can do over time: automate repeated labor, manage basic station tasks while the player is away, support combat, and develop personality-driven behaviors. He should feel less like a tool and more like a crewmate who grows alongside the station.
 
-## Visual Philosophy
-
-### Outside (tactical)
-
-Top-down. Readable. Information-first. Whole crew can reason about positioning.
-
-### Inside (logistics)
-
-2.5D interior. Corridors and travel time matter. Station placement matters. Veterans know the carry routes instinctively.
-
-### Per-station views (seated)
-
-| Station | Primary view |
-|---------|----------------|
-| Pilot | Bridge — dominant 2D tactical screen + status outputs (pips, energy, ammo, science) |
-| Gunner | Turret glass (external aim) + peripheral interior + tactical screen + local breach visibility |
-| Science | Panel board + minigames + tactical screen |
+**Thematic mirror:** He was abandoned on the station long before the player — left behind by a system that no longer cared whether he worked, broke, or disappeared. Repairing him is not just a utility upgrade; it is the first act of building a place where discarded people and machines can matter again.
 
 ---
 
-## PvPvE Philosophy
+## Key Pillars
 
-Players are dangerous. The environment is dangerous. Greed is dangerous.
+### 1. Space Life Simulation
 
-Most matches should force decisions: fight, hide, salvage, extract, pursue, escape. Survival often means **avoiding** fights, not winning them.
+Work real jobs aboard stations and ships. Repair, maintain, mine, salvage, transport, and operate equipment.
 
----
+### 2. Crew Progression (earned, not granted)
 
-## Progression Philosophy
+Earn trust and opportunities through reputation. Experience life aboard working spacecraft **before** commanding your own future.
 
-Avoid vertical power creep (+100% DPS, god-tier hull).
+### 3. Station Restoration and Expansion
 
-Prefer **horizontal progression**: ammo types, sensors, mining vs combat vs stealth builds. Veterans gain **options**, not automatic wins.
+Rebuild a derelict station from a single functioning hangar into a thriving economic hub.
 
-Consider **ship complexity tiers**: beginner hulls more automated (lower ceiling); expert hulls more manual (higher ceiling) — so skill gap doesn't hard-lock new crews.
+### 4. Living Economy
 
----
+Supply and demand affect trade, resource extraction, manufacturing, and profits.
 
-## Design Risks & Mitigations
+### 5. Player-Created Community
 
-| Risk | Symptom | Mitigation |
-|------|---------|------------|
-| **Logistics dominance** | *"Whoever hauls carries the game"* | Logistics is everyone's default unseated job; seated roles add unique value; crisis creates leave-seat moments |
-| **Idle stations** | Gunner on TikTok for 5 minutes | Secondary duties, grapple salvage, manufacturing, point defence; pilot has harvesting/stealth/routing |
-| **Science silo** | Science plays alone in a corner | Decoding and sensors feed crew decisions in real time |
-| **Captain dictator** | One player decides everything | Distributed authority — pilot navigates, seated gunner owns loadout, science owns research path, crew votes extraction |
-| **Busywork** | Warehouse simulator | Hauling creates **prioritization** (*fuel vs ammo vs repair*), not infinite boxes |
-| **Snowballing** | Winners unstoppable | Horizontal upgrades, extraction uncertainty |
-| **Information overload** | Twelve urgent things | Crisis budget; MVP cuts scope to fuel + ammo + repair + basic fight |
-| **Skill gap** | Expert crews 3× faster | Optional automation on simpler ships |
+Recruit employees, attract customers, and create a place where others can prosper.
 
----
+### 6. Ship and Companion Upgrades
 
-## Recommended MVP (Crewline)
+- Upgrade ships: hull armor, weapons, thrusters, cargo, mining tools, scanners, repair systems, specialized modules.
+- Improve the bot: repaired systems, utility functions, station management, combat support, personality-driven upgrades.
 
-Build only:
+### 7. Personal Revenge Meets System-Wide Influence
 
-**Stations:** Pilot · Gunner · Science · Unseated logistics (all players)
-
-**Systems:** Fuel chain · Ammo chain · Repairs · Basic upgrades · Basic PvE combat
-
-**Player count:** 2–4 (assumed)
-
-**Exclude initially:** PvP · boarding · advanced crafting · massive progression · full interior art pass
-
-**Questions to answer:**
-
-1. *Is the internal logistics loop fun for 30–60 minutes?*
-2. *Is leaving your station to help feel like a meaningful tradeoff?*
-3. *Does science output change crew decisions in real time?*
-
-If yes → expand. If no → redesign before complexity.
+Defeat the people who exploited you while transforming the future of the entire star system.
 
 ---
 
-## Success Criteria
+## Presentation Layers
 
-- Players constantly communicating
-- Every **station** and the logistics layer matter
-- Ship barely survives
-- Crew argues about priorities
-- Extraction feels tense
-- Defeat creates stories; victory feels earned
+Locked camera / interaction model for the full game. The Hyperdrift prototype already owns Space and Hangar; interiors and narrative are not built yet.
 
-**Ideal reaction:**
+| Layer | Presentation | Role in fantasy |
+|-------|--------------|-----------------|
+| **Space** | Top-down 2D (current prototype) | Flight, mining, combat, travel |
+| **Hangar bay** | 2.5D overhead industrial (current prototype) | Dock labor, service chaos, station ops floor |
+| **Ship interior** | 2.5D angled (match hangar language) | Crew ops, repairs, ammo/fuel, bot handoffs |
+| **Derelict explore** | 2.5D angled (same language as hangar / ship) | Act 3 salvage / restore / bot discovery |
+| **Story beats** | Portrait dialogue (bust + text/choices) | Betrayal, major NPC arcs, endgame confrontations |
+| **Ambient talk** | In-world (proximity bark / short line near NPC) | Day-to-day labor, hangar chatter, bot quips |
 
-> *"Everything was on fire, we were out of ammo, one engine was dead, someone jumped off gunner to feed the forge, science found a shortcut through the rocks, and somehow we made it out."*
+**Hybrid narrative rule:** If interrupting play would break flow (a captain yelling for fuel), keep it in-world. If the beat must land emotionally or branch the plot (betrayal, bot first meeting, endgame), lift into portraits.
 
-**That is the game.**
+**Interior unity rule:** Hangar, ship decks, and derelict station corridors share one 2.5D exploration dialect (actors, props, pan/zoom feel). Tone and set dressing differ (busy port vs cramped ship vs dark ruin) — not a second camera genre. Act 3 loneliness comes from darkness, dead power, salvage piles, and scale — not from switching to a platformer.
+
+### Narrative runtime (how faces work)
+
+Thin stack — not a full visual-novel engine on day one:
+
+1. **Portrait overlay** — character id → bust / expression → nameplate → line → optional choices. Blocks play-mode input; resumes into the same mode.
+2. **Character roster** — id, display name, role, portrait set (neutral / talk / angry / hurt / …).
+3. **Dialogue scripts** — linear + branching nodes; emit story flags / quest hooks / item grants.
+4. **Ambient bark system** — short lines on NPC instances (cooldown, priority; no full-screen takeover).
+5. **Act / flag director** — Act 1–3 gates; decides when a bark upgrades to a portrait scene.
+
+**Art path:** stylized bust plates consistent with hangar crew silhouette language. Expressions via swapped plates or layered mouth/eyes — not lip-sync first.
+
+**First characters to prototype:** Player (minimal mirror), Boss (Act 1), Pirate Captain (Act 2), Bot (Act 3+).
+
+### Long-term engine modes
+
+| Mode | Camera / control | Status |
+|------|------------------|--------|
+| `playing` | Top-down ship | Prototype |
+| `hangar` | 2.5D pan/zoom | Prototype |
+| `shipInterior` | 2.5D walk / seat | Not begun |
+| `derelict` | 2.5D walk / explore | Not begun — shared interior core + ruin layout pack |
+| `dialogue` | Overlay on any mode | Not begun |
+| Later: station map / economy UI | Menus + live hangar | Not begun |
+
+Prefer one shared **interior exploration** core (movement, interactables, ambient hooks); swap layout packs (ship deck vs derelict wing) and lighting/mood.
+
+### Subsystem map & build order
+
+| Subsystem | Status | Notes |
+|-----------|--------|-------|
+| Space flight + world | Started | Physics, weapons, asteroids, nebulae, ambient traffic, Jennings exterior |
+| Hangar bay sim | Strong | Crew, crane, checklists, visitors — seed of Act 1 / player station |
+| Modular ships | Started | Catalog, Blueprint, hardpoints, plumes |
+| Ship interior | Not begun | Mode + layout + on-foot / seat |
+| Derelict explore | Not begun | Same 2.5D walker; salvage/restore; darker set |
+| Station builder / economy | Not begun | Beyond hangar theater |
+| Narrative runtime | Not begun | Flags, acts, dialogue, portraits, ambient lines |
+| Bot companion AI | Not begun | Depends on interior + narrative |
+| Fleet / endgame | Far | Needs economy + ships + combat |
+
+**Sandbox-first phases** (reusable systems before campaign content):
+
+1. Narrative stub — roster, portrait overlay, one hangar bark → portrait escalate, `storyFlags`
+2. Shared interior slice — `shipInterior` deck (corridor, machines, seat); extract walker for reuse
+3. Derelict 2.5D slice — ruin pack, power-restore props, bot discovery → portrait
+4. Bind loops — salvage → craft → hangar/ship; interior logistics; bot takes one job
+5. Economy, fleets, endgame, multiplayer modes
 
 ---
 
-## Open Questions (not decided)
+## Multiplayer and Companion Extensions
 
-- **Tone:** comedy chaos vs grim survival vs both?
-- **Ship death:** lose run only, lose ship permanently, insurance?
-- **Session length target:** 45 min? 90 min?
-- **When PvP enters:** after PvE MVP proves fun?
-- **Automatons:** how inefficient vs a human hauler?
-- **Primary genre spine:** Barotrauma-logistics vs Sea of Thieves-social vs extraction-tension?
+Multiplayer is **not** the campaign spine. It is a set of smaller-scoped standalone modes that reuse the same game core — concentrated, replayable slices of the fantasy: chaotic work, cooperative problem solving, ship operations, and station management under pressure.
+
+### Hangar Bay Chaos Management
+
+Co-op: keep one hangar running as long as possible. Ships arrive with repairs, refueling, cargo problems, impatient captains, and emergencies. Escalate pressure — spirit of *Order Up* / service chaos games.
+
+### Combat Ship Chaos Management *(Hyperdrift Crewline)*
+
+Co-op aboard a ship during battle. Players split roles: piloting, repairing hull, restocking ammo, managing fuel, manning turrets — while enemies try to do the same. Frantic cooperative systems-management (*Sea of Thieves* / *SAND* energy).
+
+This mode is the former **Hyperdrift Crewline** north star, now folded here as a multiplayer extension rather than the whole game. Design detail that still applies to this mode:
+
+| Idea | Intent |
+|------|--------|
+| **Roles by location, not lobby class** | Unseated = logistics; seated = Pilot / Gunner / Science (or equivalent). Any player can take any empty station. |
+| **Ship as multiplayer factory under fire** | Fuel / ammo / repair chains with human-in-the-loop carrying — chaos creates decisions, not helplessness |
+| **Crisis budget** | Prefer one major + one minor disaster at a time |
+| **Stories over winning** | Extraction tension, near-death saves, priority arguments |
+
+Full Crewline-era station/logistics/PvPvE notes and open questions live in [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) under **Multiplayer modes (Crewline)**.
+
+### Idle Station Oversight
+
+Once the player owns a station: browser / phone companion options — assign tasks, set priorities, direct workers, manage resource flow, then let the simulation run and generate progress over time.
 
 ---
 
-## Relationship to Current Prototype
+## Relationship to Current Prototype (*Hyperdrift*)
 
-The browser prototype (`GDD.md`) validates **Layer 1 flight feel** in isolation: semi-Newtonian movement, procedural space, readable thrusters. It does not yet test logistics, stations, or multiplayer.
+The browser prototype remains an **engine and feel sandbox** — not a narrative reshape yet.
 
-### Ship as character (modular hulls)
+| Prototype validates | Maps toward |
+|---------------------|-------------|
+| Semi-Newtonian flight, thrusters, weapons | Act 2 / ship ops / player-owned vessels |
+| Modular ship catalog + Blueprint | Shipbuilding, upgrades, later fleet hulls |
+| Home Base hangar (Jennings) | Act 1 dock labor feel; later player station hangar |
+| Ambient traffic, visitors, station exterior | Living ports and customer traffic |
+| Procedural space, asteroids, nebulae | Mining, salvage, system travel |
 
-Long-term, crews bond with a **specific vessel** assembled from modular sections and hardpoint items. Prototype direction (see `GDD.md` / `src/ships/`):
+**Near-term path (unchanged intent):** keep building out the sandbox — flight feel, modular ships, hangar sim, world systems — so the engine is ready when campaign / station-restoration content lands. Presentation and subsystem phasing are locked under [Presentation Layers](#presentation-layers).
 
-- **Swap groups** — Scout (prebuilt only); Light (Fighter / Transport); Standard (Miner / Generalist / Science / Hauler — player may mix within group); Mega (XL, space-only until larger hangars exist).
-- **Theme / Mk / color-way** may mix on one hull; class-group purity is the hard constraint.
-- **3 shape variants** per Class+Section+Theme+Mk (`a`/`b`/`c`).
-- Finish/wear follows theme (Elite stays clean; working ships can look lived-in). Hangar grit is hangar set dressing, not every ship shader.
-- Player progression: outfit within a group, or eventually buy into another group’s hull — not frankenstein across Scout↔Mega.
-
-The prototype hangar is the early seed of **Home Base** — where a run starts and where the crew returns between missions (outfit, stash, depart, extract). That maps to the extraction / between-run persistence questions in [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) (§2). Neighbor-pad busywork stays ambient sim; player-pad load/unload/repair/upgrade is intended to run only on explicit requests (queued, animation-gated) — see [`GDD.md`](GDD.md) Home Base.
-
-Path forward: nail flight → modular ship catalog + Upgrade UI → grow Home Base → prototype one logistics chain on foot → add second player and station handoffs → PvE pressure → only then PvP and full interior.
-
-See [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) for unresolved decisions. See [`CHANGELOG.md`](CHANGELOG.md) for what has actually shipped.
+See [`GDD.md`](GDD.md) for what the prototype *is* today. See [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) for unresolved decisions. See [`CHANGELOG.md`](CHANGELOG.md) for what has shipped.

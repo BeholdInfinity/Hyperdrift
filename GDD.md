@@ -5,24 +5,24 @@
 | Doc | Scope |
 |-----|-------|
 | **[`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md)** | Unresolved design decisions — for conversation sessions |
-| **[`VISION.md`](VISION.md)** | Long-term north star — *Hyperdrift Crewline* (multiplayer crew game) |
-| **This file (`GDD.md`)** | Prototype v0.1.150 — solo flight + modular ships, procedural space |
+| **[`VISION.md`](VISION.md)** | Long-term north star — *Stranger in the Galaxy* (space-life RPG / station builder) |
+| **This file (`GDD.md`)** | Prototype — solo flight + modular ships, hangar sandbox, procedural space |
 | **[`PROJECT.md`](PROJECT.md)** | Dev handoff — architecture, run, status |
 
 | Field | Value |
 |-------|-------|
-| Title | Hyperdrift *(prototype)* / Hyperdrift Crewline *(working title, see VISION.md)* |
+| Title | Hyperdrift *(prototype / engine sandbox)* — long-term: *Stranger in the Galaxy* (see [`VISION.md`](VISION.md)) |
 | Genre | Top-down 2D spaceflight / exploration |
 | Platform | Web browser |
-| Status | Prototype v0.1.150 |
+| Status | Prototype (sandbox / engine build-out) |
 
 ---
 
 ## Vision (prototype scope)
 
-Hyperdrift is a browser-based spaceflight game set in a vast procedural universe. The player pilots a single spacecraft through asteroid fields, nebula regions, and open void, mastering inertia-based flight while exploring an effectively infinite cosmos. The first prototype prioritizes a **polished flight model** and **convincing depth** in the environment over feature breadth.
+Hyperdrift is a browser-based spaceflight sandbox set in a vast procedural universe. The player pilots a single spacecraft through asteroid fields, nebula regions, and open void, mastering inertia-based flight while exploring an effectively infinite cosmos. Near-term work prioritizes a **polished flight model**, **modular ships**, **hangar feel**, and **convincing depth** — building the engine for the long-term game, not reshaping into campaign narrative yet.
 
-This prototype is **Layer 1** of the long-term *Hyperdrift Crewline* vision — see [`VISION.md`](VISION.md).
+This prototype de-risks systems that *Stranger in the Galaxy* will need (flight, ships, hangars, living ports). Long-term presentation is locked: Space stays top-down; hangar / ship interior / derelict share **unified 2.5D**; story uses **portrait dialogue** + **in-world ambient barks**. Multiplayer crew-chaos modes (former Crewline) are extensions — see [`VISION.md`](VISION.md) Presentation Layers.
 
 **Pillars (prototype):** responsive inertia flight · readable thruster feedback · layered parallax depth · expandable modular architecture.
 
@@ -318,10 +318,20 @@ Sparse NPC ships in open space (modular catalog defs). Density falls off with di
 
 ## Future systems
 
-Prototype backlog (near-term) and long-term crew-game systems are tracked separately:
+Prototype backlog (near-term) and long-term vision systems are tracked separately:
 
 - **Prototype next steps** — see checklist below and [`PROJECT.md`](PROJECT.md)
-- **Crewline vision** — roles, logistics, PvPvE, MVP criteria — see [`VISION.md`](VISION.md)
+- **Long-term vision** — *Stranger in the Galaxy* presentation layers, narrative runtime, interiors, multiplayer extensions — see [`VISION.md`](VISION.md)
+
+### Future engine modes (not built)
+
+| Mode | Intent |
+|------|--------|
+| `shipInterior` | 2.5D walk / seat on ship decks (shared interior core) |
+| `derelict` | Same 2.5D walker; ruin layout + salvage/restore |
+| `dialogue` | Portrait overlay on any play mode |
+
+Sandbox build order: narrative stub → ship interior slice → derelict slice → bind loops — details in [`VISION.md`](VISION.md).
 
 ### Prototype backlog (not built)
 

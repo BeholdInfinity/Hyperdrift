@@ -14,7 +14,7 @@ When the user says anything like **continue**, **let's continue**, **resume**, *
 1. `PROJECT.md` (architecture, run, status)
 2. `CHANGELOG.md` (what shipped recently — at least `[Unreleased]` + latest version)
 3. `GDD.md` if the next work may touch prototype gameplay, controls, UI, or scope
-4. `VISION.md` + `OPEN_QUESTIONS.md` if the topic is long-term Crewline design
+4. `VISION.md` + `OPEN_QUESTIONS.md` if the topic is long-term *Stranger in the Galaxy* design (or multiplayer extensions)
 
 Then give a short status summary and ask what to tackle next (unless they already specified).
 
@@ -22,7 +22,7 @@ Then give a short status summary and ask what to tackle next (unless they alread
 
 1. Read `PROJECT.md` if not already loaded this session
 2. Read `GDD.md` when changing **prototype** gameplay, controls, or scope
-3. Read `VISION.md` when discussing long-term design, roles, or Crewline direction
+3. Read `VISION.md` when discussing long-term design, campaign, station fantasy, or multiplayer extensions
 4. Read `OPEN_QUESTIONS.md` when helping resolve design decisions; move answers to `VISION.md` when decided
 5. Update `CHANGELOG.md` for user-visible changes
 6. Update `GDD.md` for prototype design changes; `VISION.md` for long-term vision; `OPEN_QUESTIONS.md` when resolving or adding questions; `PROJECT.md` for structure or handoff facts

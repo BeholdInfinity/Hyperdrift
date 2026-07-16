@@ -6,6 +6,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Changed
+- Docs: long-term north star is ***Stranger in the Galaxy*** (`VISION.md`); former Hyperdrift Crewline vision folded under multiplayer extensions; prototype stays engine/sandbox (`GDD.md`, `OPEN_QUESTIONS.md`, `PROJECT.md`)
+- Docs: locked **presentation layers** — Space top-down; hangar / ship interior / derelict unified 2.5D; hybrid narrative (portraits + ambient barks); subsystem build order in `VISION.md`
+
 ### Planned
 - Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
 - Hangar turret/hardpoint install beat: mech weld-detach → crane removes old → crane installs new from staging → mech weld-seat (`GDD.md`)
