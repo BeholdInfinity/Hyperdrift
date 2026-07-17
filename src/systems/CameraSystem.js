@@ -49,23 +49,38 @@ export class CameraSystem {
   }
 
   /**
-   * Docked hangar view: free look (not locked to ship).
+   * Docked hangar view: free look when idle (GameEngine locks to the ship
+   * during launch/land/elevator sequences via setHangarAnchor).
    * Pan is screen-space drag → world via zoom; wheel zooms. No lead / speed zoom.
    * @param {number} deltaTime
    * @param {number} [zoomWheelDelta]
    * @param {{ x: number, y: number }|null} [panScreenDelta]
+   * @param {number} [zoomMin]
+   * @param {number} [zoomMax]
    */
-  updateHangar(deltaTime, zoomWheelDelta = 0, panScreenDelta = null) {
+  updateHangar(
+    deltaTime,
+    zoomWheelDelta = 0,
+    panScreenDelta = null,
+    zoomMin = HANGAR.ZOOM_MIN,
+    zoomMax = HANGAR.ZOOM_MAX
+  ) {
     this.offset.set(0, 0);
     this.targetOffset.set(0, 0);
     this.speedZoom = 1;
 
+    const zMin = Number.isFinite(zoomMin) ? zoomMin : HANGAR.ZOOM_MIN;
+    const zMax = Number.isFinite(zoomMax) ? zoomMax : HANGAR.ZOOM_MAX;
+
     if (zoomWheelDelta !== 0) {
       this.targetUserZoom = clamp(
         this.targetUserZoom + zoomWheelDelta * HANGAR.ZOOM_WHEEL_STEP,
-        HANGAR.ZOOM_MIN,
-        HANGAR.ZOOM_MAX
+        zMin,
+        zMax
       );
+    } else {
+      // Keep current zoom inside limits when sidePadX / viewport changes.
+      this.targetUserZoom = clamp(this.targetUserZoom, zMin, zMax);
     }
 
     const zoomT = 1 - Math.exp(-CAMERA.ZOOM_SMOOTHING * deltaTime);

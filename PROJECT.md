@@ -76,6 +76,7 @@ src/
 
 - **Modular systems** wired by `GameEngine` — extend via new systems/entities, not monolith edits
 - **Chunk-based world** — deterministic seeds, load radius 3, unload radius 5 (`WORLD` in Constants)
+- **Hangar sim LOD (space)** — Quick Launch and hangar→space both keep the hangar live; ticks by distance to the **closest human pilot** (`STATION.HANGAR_LOD_FULL_DIST` → full, lerp to `HANGAR_LOD_PAUSE_DIST` → pause). NPCs do not wake it. Hangar mode always full-rate. In space, empty-bay door fills request ambient runway approaches so mouth land/leave cadence matches hangar-side traffic. Multiplayer: extend `_humanPilotPositions()`.
 - **Thruster visuals driven by modular mounts** — equipped `mainEngine` / `maneuverThruster` items only (`PlumeDraw.js`); same path for player, hangar visitors, and ambient traffic; intensity from physics thruster bag
 - **Plume flow** (`computePlumeFlow`) — leading cue/wash + crosswind lean from relative wind (`−velocity`); trailing stretch; ship-local particles on the player, world-space on visitors/ambient
 - **Modular ships** — `src/ships/`: swap groups, full section/item ID matrix (parametric), `createPlayerStarter()`, shared `ShipRenderer` (top-down + 16 angled views)
@@ -99,11 +100,11 @@ src/
 | Circular viewport + corner UI placeholders | Done |
 | Title screen (ENTER HANGAR / QUICK LAUNCH / SETTINGS; version stamp) | Done |
 | Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Random player bay; free-look pan camera; modular visitors on the other two; Dev Bay Options; 2.5D elevator shaft; title elevator raise; **ships draw in angled 2.5D** |
-| Jennings Station overworld exterior + dock prompt | Done |
+| Jennings Station overworld exterior + dock prompt (4× scale via `STATION.SCALE`) | Done |
 | Ambient space traffic (modular; cops always near station; off-screen spawn/despawn) | Done (v0.1.150–154); further tuning OK |
 | Settings controls sandbox (ship-only viewport) | Done |
 | Blueprint (player Upgrade UI + Dev Author) | Done — always available; Dev Mode adds mount drag / tuning Save |
-| Dev Mode drawer + hangar layout editor + bake-back | Done (v0.1.159); Bay Options panel (v0.1.160) |
+| Dev Mode drawer + hangar layout editor + bake-back | Done (v0.1.159); Bay Options panel (v0.1.160); bay unit spacing drag (v0.1.173); unified prop categories (v0.1.174) |
 | Procedural asteroids + nebulae | Done |
 | 7-layer starfield, 3-layer nebulae | Done |
 | Speed streaks (velocity-opposed, screen-space) | Done |
@@ -158,6 +159,65 @@ src/
 - Ambient miner asteroid damage (visual cue only today)
 
 ### Shipped recently (context)
+- **v0.1.231** South high-speed approach no longer occludes under hangar roof
+- **v0.1.230** Launch lift keeps 8-thruster hover burst through pad rise
+- **v0.1.229** Direct-load skips hold cargo when ship bay is full
+- **v0.1.228** Idle mechs direct-load fuel/ammo/cargo from south (skip mid-stage)
+- **v0.1.227** Each Hull pip heals 18–22% ship health
+- **v0.1.226** Hull % tracks multi-spot weld animations (pauses between spots)
+- **v0.1.225** All hangar job claims are per item / pile quadrant
+- **v0.1.224** Both bay mechs load/unload in parallel (per-crate claims)
+- **v0.1.223** Load cargo fetches tagged crates again (ambient CRATE no longer blocks staging)
+- **v0.1.222** Visitor exit waits for green service board (after final scan), then short dwell
+- **v0.1.221** Final departure scan laser speed matches intro scan
+- **v0.1.220** Service pip timing (claim→blue, walk-away→green); load/unload dust FX
+- **v0.1.219** Crew poster on north wall (post-occlusion); left of B1 on tile line
+- **v0.1.218** Load/unload mechs no longer play welding sparks
+- **v0.1.217** Crew poster relocated west of B1 door (was invisible on side wall)
+- **v0.1.216** Service board cargo cells match 2.5D crate colors/textures (top-down lids)
+- **v0.1.215** Hangar `decor` / `wallPoster` — engine-drawn crew poster on B1 west wall
+- **v0.1.214** Quick Launch live hangar + space door fills as runway approaches (mouth traffic cadence)
+- **v0.1.213** ~1s completion scan before service board goes green
+- **v0.1.212** Door ticker status lines all-caps
+- **v0.1.211** Door tickers: empty/disabled/ingress/egress/elevator + Scanning / Please select services
+- **v0.1.210** Smaller bay warning lights; spin glow follows lit sector
+- **v0.1.209** Fix invisible hull during space→hangar land cinematic
+- **v0.1.208** Abandon runway reservation restores pad; no board scan on launch/hijack exit
+- **v0.1.207** Fix instant hangar land settle after runway reservation prep
+- **v0.1.206** Hangar LAUNCH button tracks selected pad bay door
+- **v0.1.205** Hangar sim LOD in space (full→slow→pause by distance to nearest human)
+- **v0.1.204** Reserved lane lights pulse green; hangar approach animation runs during runway reservation
+- **v0.1.203** Safe-speed runway approach in a pad lane reserves that bay (red for others)
+- **v0.1.202** Bay lights: yellow spin on elevator; floating mid + outer runway beacon rows (ships pass under)
+- **v0.1.201** Station-full “Engage holding pattern” AI hold → auto-land; cancel on movement input
+- **v0.1.200** Pad status lights + choose-your-bay; hangar↔space hull carry-over; ambient mouth traffic; door apron pavement
+- **v0.1.199** Board corner scanners stay mounted on empty / elevator pads
+- **v0.1.198** Captain pip gaps by type (0.2–0.6s change / 0.1–0.2s same)
+- **v0.1.197** Cargo reveal ~1s; ship scan holds ~0.5s after cargo
+- **v0.1.196** Board corner scanners + green ship scan VFX before/during stats+cargo reveal
+- **v0.1.195** Service board staged reveal (stats→cargo→captain pips); 1×1 cargo slots; unload-before-load
+- **v0.1.194** Landing: hold player services until full settle
+- **v0.1.193** Occlusion stays on while under tape even if you rotate
+- **v0.1.192** Exit burn until outer approach lights
+- **v0.1.191** Occlusion: station-closest edge; exit stays under until tip clears
+- **v0.1.190** Hangar roof depth doubled (N→S)
+- **v0.1.189** Fix slow-approach entrance occlusion (apron zone + hull-edge overlap)
+- **v0.1.188** Entrance cheeks + hangar roof; tape/roof occlusion gated by safe speed
+- **v0.1.187** Caution paint on station rim; apron north-only; hull filled south; triggers retargeted
+- **v0.1.186** Exit handoff nests under bay-mouth occlusion; station over ship while emerging
+- **v0.1.185** Station space exterior 4× (`STATION.SCALE`) — dock/lights/triggers + ambient rings
+- **v0.1.184** Match NE/NW arms; reverse auto-ingress (aft-first)
+- **v0.1.183** Station NE/NW arms (no due-north over bay mouth)
+- **v0.1.182** Ingress uses leading hull edge; remove north station arm on caution tape
+- **v0.1.181** Safe ingress depth-flip (station over ship; black floor under) + edge past stripes before auto-dock
+- **v0.1.180** Station approach lights + nose-to-stripes auto-ingress
+- **v0.1.179** Seq zoom: player scroll cancels cinematic zoom for that enter/exit
+- **v0.1.178** Seq cam keeps scroll zoom; hangar→space exit emerges from bay mouth with burn
+- **v0.1.177** Hangar seq camera lock + northbound station-mouth space handoff with momentum
+- **v0.1.176** Launch/land sequences own ship pose (Dev flight sync no longer cancels door exit)
+- **v0.1.175** Plume depth: under 2D hull; mid-height on angled 2.5D (sides → plumes → deck)
+- **v0.1.174** Hangar props unified (`category` themes; yard folded into `props[]`); prop stencil labels removed
+- **v0.1.173** Hangar editor bay-unit spacing (symmetric B1/B3 drag; `sidePadX`)
 - **v0.1.172** Mount-driven thruster/engine FX parity (player = visitor = ambient)
 - **v0.1.171** Elevator pad 180° turn on descent only (rise keeps heading)
 - **v0.1.170** Elevator fade-to-black feathered (no hard veil circle)
@@ -174,7 +234,7 @@ src/
 - **v0.1.159** Dev Mode drawer, Blueprint player+Author, hangar layout editor, gossip circle, linger bay/facing, `/dev/save` bake-back
 - Modular catalog + Blueprint (2D default, 2.5D side peeks, pads, reset, hardpoint **variant** picker)
 - Hangar modular visitors; elevator shaft 2.5D; hangar ships angled 2.5D
-- Ambient traffic near Jennings; plumes under hull
+- Ambient traffic near Jennings; plumes under 2D hull / mid-height on 2.5D
 
 ### Longer-term
 - **Stranger subsystems** (not started) — narrative runtime (portraits + ambient barks), shared 2.5D interior explorer (`shipInterior` then `derelict`), station economy, bot companion — phased in [`VISION.md`](VISION.md)
@@ -197,7 +257,7 @@ src/
 **Data files (machine-editable):**
 - `src/ships/data/visualTuning.js` — cup / plume / generic engine class scale
 - `src/ships/data/mountLayouts.js` — unit-space bell + ultra mounts
-- `src/world/hangar-layout.js` — flavor props, linger (bays/face/slack), gossip, yard props
+- `src/world/hangar-layout.js` — flavor props (`category`: desk/shelf/storage/tool/yard/decor/anchor), linger, gossip, `sidePadX` bay spacing; `decor` = engine-drawn wall art (`wallPoster`)
 
 ## Dev blueprint mode
 
@@ -220,9 +280,9 @@ src/
 
 ## Hangar room editor
 
-**Status:** Flavor MVP shipped (v0.1.159). Structural sim (doors, pads, piles, crane, danger lanes) stays code-owned.
+**Status:** Flavor MVP shipped (v0.1.159); bay unit spacing (v0.1.173); unified categorized props (v0.1.174); `decor` wall art / crew poster (v0.1.215). Structural sim (doors, pads, piles, crane, danger lanes) is code-owned but follows `sidePadX`.
 
-**Entry:** Dev drawer → **Edit layout** (hangar only). Freezes crew; palette add / delete / copy / 8-dir rotate; linger bay multi-select + face arrow/slack; gossip capacity; **Save layout**.
+**Entry:** Dev drawer → **Edit layout** (hangar only). Freezes crew; palette add / delete / copy / 8-dir rotate; linger bay multi-select + face arrow/slack; gossip capacity; **Bays** layer — drag B1/B3 grips (or nudge) to move whole bay units left/right with B2-centered symmetry; **Save layout**.
 
 ### Follow-ups
 - Undo / redo, snap-to-grid, multi-select

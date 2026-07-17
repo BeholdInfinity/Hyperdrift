@@ -10,6 +10,7 @@ import {
   VIEW_ANGLED,
   activeShipView,
   angledLiftLocal,
+  extrudePhase,
   setLastDeckLift,
   withDeckLift,
 } from './ShipViews.js';
@@ -107,6 +108,7 @@ function extrudeFlat(ctx, footprint, cols) {
  * @param {number} h lift strength in px
  */
 function extrudeAngled(ctx, footprint, h, cols, headingIndex) {
+  const phase = extrudePhase();
   const liftH = Math.max(1.2, h * 0.45);
   const lift = angledLiftLocal(headingIndex, liftH);
   setLastDeckLift(lift.x, lift.y);
@@ -121,100 +123,111 @@ function extrudeAngled(ctx, footprint, h, cols, headingIndex) {
   const viewAwayX = -liftUx;
   const viewAwayY = -liftUy;
 
-  // Soft drop shadow under the base, biased opposite the lift
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
-  poly(
-    ctx,
-    outer.map(([x, y]) => [x - liftUx * 2.4 + viewAwayX * 0.6, y - liftUy * 2.4 + viewAwayY * 0.6])
-  );
-  ctx.fill();
-  ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
-  poly(
-    ctx,
-    outer.map(([x, y]) => [x - liftUx * 1.2, y - liftUy * 1.2])
-  );
-  ctx.fill();
-
-  // Underside / base plate
-  ctx.fillStyle = cols.far || shade(cols.side, -28);
-  poly(ctx, outer);
-  ctx.fill();
-
-  const n = outer.length;
-  const farBase = cols.far || shade(cols.side, -30);
-  const sideBase = cols.side || shade(cols.top, -16);
-  const nearBase = cols.near || shade(cols.side, -8);
-
-  /** @type {{ i: number, j: number, depth: number, facing: number }[]} */
-  const faces = [];
-  for (let i = 0; i < n; i++) {
-    const j = (i + 1) % n;
-    const mx = (outer[i][0] + outer[j][0]) / 2;
-    const my = (outer[i][1] + outer[j][1]) / 2;
-    let ox = mx - cx;
-    let oy = my - cy;
-    const olen = Math.hypot(ox, oy) || 1;
-    ox /= olen;
-    oy /= olen;
-    const facing = ox * viewAwayX + oy * viewAwayY;
-    // Skip walls that face the camera tilt (hidden under the deck)
-    if (facing < -0.08) continue;
-    const depth = mx * liftUx + my * liftUy;
-    faces.push({ i, j, depth, facing });
-  }
-  faces.sort((a, b) => a.depth - b.depth);
-
-  for (const face of faces) {
-    const { i, j, facing } = face;
-    // Facing the peek direction → lighter near wall; grazing → darker far
-    const amt = -4 - (1 - Math.max(0, facing)) * 22;
-    let fill = shade(sideBase, amt);
-    if (facing > 0.55) fill = shade(nearBase, amt * 0.4);
-    else if (facing < 0.18) fill = shade(farBase, amt * 0.25);
-    ctx.fillStyle = fill;
-    ctx.beginPath();
-    ctx.moveTo(outer[i][0], outer[i][1]);
-    ctx.lineTo(outer[j][0], outer[j][1]);
-    ctx.lineTo(top[j][0], top[j][1]);
-    ctx.lineTo(top[i][0], top[i][1]);
-    ctx.closePath();
+  if (phase !== 'deck') {
+    // Soft drop shadow under the base, biased opposite the lift
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
+    poly(
+      ctx,
+      outer.map(([x, y]) => [
+        x - liftUx * 2.4 + viewAwayX * 0.6,
+        y - liftUy * 2.4 + viewAwayY * 0.6,
+      ])
+    );
     ctx.fill();
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.28)';
+    poly(
+      ctx,
+      outer.map(([x, y]) => [x - liftUx * 1.2, y - liftUy * 1.2])
+    );
+    ctx.fill();
+
+    // Underside / base plate
+    ctx.fillStyle = cols.far || shade(cols.side, -28);
+    poly(ctx, outer);
+    ctx.fill();
+
+    const n = outer.length;
+    const farBase = cols.far || shade(cols.side, -30);
+    const sideBase = cols.side || shade(cols.top, -16);
+    const nearBase = cols.near || shade(cols.side, -8);
+
+    /** @type {{ i: number, j: number, depth: number, facing: number }[]} */
+    const faces = [];
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      const mx = (outer[i][0] + outer[j][0]) / 2;
+      const my = (outer[i][1] + outer[j][1]) / 2;
+      let ox = mx - cx;
+      let oy = my - cy;
+      const olen = Math.hypot(ox, oy) || 1;
+      ox /= olen;
+      oy /= olen;
+      const facing = ox * viewAwayX + oy * viewAwayY;
+      // Skip walls that face the camera tilt (hidden under the deck)
+      if (facing < -0.08) continue;
+      const depth = mx * liftUx + my * liftUy;
+      faces.push({ i, j, depth, facing });
+    }
+    faces.sort((a, b) => a.depth - b.depth);
+
+    for (const face of faces) {
+      const { i, j, facing } = face;
+      // Facing the peek direction → lighter near wall; grazing → darker far
+      const amt = -4 - (1 - Math.max(0, facing)) * 22;
+      let fill = shade(sideBase, amt);
+      if (facing > 0.55) fill = shade(nearBase, amt * 0.4);
+      else if (facing < 0.18) fill = shade(farBase, amt * 0.25);
+      ctx.fillStyle = fill;
+      ctx.beginPath();
+      ctx.moveTo(outer[i][0], outer[i][1]);
+      ctx.lineTo(outer[j][0], outer[j][1]);
+      ctx.lineTo(top[j][0], top[j][1]);
+      ctx.lineTo(top[i][0], top[i][1]);
+      ctx.closePath();
+      ctx.fill();
+    }
   }
 
-  // Raised deck
   const rim = Math.max(0.85, h * 0.22);
   const deck = deckPoly(top, rim);
-  ctx.fillStyle = cols.top;
-  poly(ctx, deck);
-  ctx.fill();
-  ctx.strokeStyle = shade(cols.top, 32);
-  ctx.lineWidth = 0.5;
-  ctx.globalAlpha = 0.28;
-  ctx.lineJoin = 'round';
-  ctx.stroke();
-  ctx.globalAlpha = 1;
 
-  if (cols.trim) {
-    ctx.strokeStyle = cols.trim;
-    ctx.lineWidth = 0.55;
+  if (phase !== 'base') {
+    // Raised deck
+    ctx.fillStyle = cols.top;
+    poly(ctx, deck);
+    ctx.fill();
+    ctx.strokeStyle = shade(cols.top, 32);
+    ctx.lineWidth = 0.5;
+    ctx.globalAlpha = 0.28;
     ctx.lineJoin = 'round';
-    ctx.globalAlpha = 0.8;
+    poly(ctx, deck);
     ctx.stroke();
     ctx.globalAlpha = 1;
-  }
 
-  if (cols.panel) {
-    const inner = deckPoly(top, rim + 1.05);
-    const inset = deckPoly(top, rim + 1.5);
-    ctx.fillStyle = shade(cols.panel, -14);
-    poly(ctx, inner);
-    ctx.fill();
-    ctx.fillStyle = cols.panel;
-    poly(ctx, inset);
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-    ctx.lineWidth = 0.45;
-    ctx.stroke();
+    if (cols.trim) {
+      ctx.strokeStyle = cols.trim;
+      ctx.lineWidth = 0.55;
+      ctx.lineJoin = 'round';
+      ctx.globalAlpha = 0.8;
+      poly(ctx, deck);
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+    }
+
+    if (cols.panel) {
+      const inner = deckPoly(top, rim + 1.05);
+      const inset = deckPoly(top, rim + 1.5);
+      ctx.fillStyle = shade(cols.panel, -14);
+      poly(ctx, inner);
+      ctx.fill();
+      ctx.fillStyle = cols.panel;
+      poly(ctx, inset);
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+      ctx.lineWidth = 0.45;
+      poly(ctx, inset);
+      ctx.stroke();
+    }
   }
 
   return deck;
@@ -233,6 +246,7 @@ export function extrude(ctx, footprint, h, cols) {
 }
 
 function rivets(ctx, pts, count = 6) {
+  if (extrudePhase() === 'base') return;
   ctx.fillStyle = 'rgba(12,10,8,0.55)';
   for (let i = 0; i < count; i++) {
     const t = (i + 0.5) / count;

@@ -6,11 +6,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
-### Changed
-- Docs: long-term north star is ***Stranger in the Galaxy*** (`VISION.md`); former Hyperdrift Crewline vision folded under multiplayer extensions; prototype stays engine/sandbox (`GDD.md`, `OPEN_QUESTIONS.md`, `PROJECT.md`)
-- Docs: locked **presentation layers** — Space top-down; hangar / ship interior / derelict unified 2.5D; hybrid narrative (portraits + ambient barks); subsystem build order in `VISION.md`
-
 ### Planned
+
 - Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
 - Hangar turret/hardpoint install beat: mech weld-detach → crane removes old → crane installs new from staging → mech weld-seat (`GDD.md`)
 - Unique silhouette polish per catalog variant
@@ -23,6 +20,452 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 - Precision power-pip allocation for laser / scanner
 - Ambient NPC mining HP drain
 - Blueprint per-hardpoint item **category** swap
+- More hangar `decor` wall-art variants
+
+---
+
+## [0.1.231] — 2026-07-17
+
+### Fixed
+- High-speed approach from south of the station no longer buries the ship under the hangar roof — exit occlusion keys off `exitBurn`, not any northbound velocity
+
+---
+
+## [0.1.230] — 2026-07-17
+
+### Fixed
+- Launch lift-off keeps the 8-thruster hover burst (and plume particles) through the full pad rise — idle hangar clear no longer wipes thrusters mid-sequence
+
+---
+
+## [0.1.229] — 2026-07-17
+
+### Fixed
+- Direct-load from south staging skips hold cargo when the ship bay is full (or unloads still pending) — crate mid-stages instead
+
+---
+
+## [0.1.228] — 2026-07-17
+
+### Changed
+- Idle bay mechs helping the crane load fuel/ammo/hold cargo straight from south staging onto the ship (no mid-shelf detour)
+
+---
+
+## [0.1.227] — 2026-07-17
+
+### Changed
+- Each Hull service pip repairs 18–22% of ship health (pip count from missing hull; ship-size tuning later)
+
+---
+
+## [0.1.226] — 2026-07-17
+
+### Fixed
+- Hull repair board % spreads across each pip’s multi-spot weld animations and pauses while the welder walks between spots; ship no longer hits 100% before the final pip’s last weld wraps up
+
+---
+
+## [0.1.225] — 2026-07-17
+
+### Changed
+- All hangar job claims are per item or pile quadrant (load/unload/weld/install/strip/ferry/forklift) — no more pile-wide exclusive locks
+
+---
+
+## [0.1.224] — 2026-07-17
+
+### Fixed
+- Both bay mechs can load/unload in parallel — each claims a different crate/checklist unit instead of locking the whole pile
+
+---
+
+## [0.1.223] — 2026-07-17
+
+### Fixed
+- Load cargo staging no longer false-matches ambient hangar crates — forklifts fetch tagged hold freight to the mid-left inbound pad again
+
+---
+
+## [0.1.222] — 2026-07-17
+
+### Fixed
+- Visitors no longer start exit while service is still live — wait for finishing mechs (pips green), run the final scan, show green, then leave after a short beat (no emergency/hurry exit path)
+
+---
+
+## [0.1.221] — 2026-07-17
+
+### Fixed
+- Departure completion scan keeps the same laser sweep speed as the intro scan (still ~1s long)
+
+---
+
+## [0.1.220] — 2026-07-17
+
+### Changed
+- Load/unload mechs emit soft dust puffs instead of weld sparks
+- Service pips stay yellow until a bay mechanic claims that unit, blue while they work it, and turn green only after they walk away from finishing it
+
+---
+
+## [0.1.219] — 2026-07-17
+
+### Fixed
+- Crew poster mounts flat on the north wall west of B1 (tile line x≈−302) and redraws after wall occlusion so it is no longer buried under the door wall
+
+---
+
+## [0.1.218] — 2026-07-17
+
+### Fixed
+- Load/unload no longer shows mechanic welding torch or arc tip glow (hull repair + install/strip only)
+
+---
+
+## [0.1.217] — 2026-07-17
+
+### Fixed
+- Crew wall poster now sits on the north wall just west of the B1 door (was edge-on into the west wall and invisible)
+
+---
+
+## [0.1.216] — 2026-07-17
+
+### Changed
+- Service board cargo cells are top-down crate lids (body/accent stripe/latch/scuff) matching hangar 2.5D freight; load/unload keep the same crate colors
+
+---
+
+## [0.1.215] — 2026-07-17
+
+### Added
+- Hangar `decor` prop category + `wallPoster` kind (engine-drawn wall art for the layout editor)
+- Crew poster (bubble-helm pilot + cyan-eye bot) taped on the west wall left of B1 — scrap frame, duct tape, bolts; no PNG
+
+---
+
+## [0.1.214] — 2026-07-17
+
+### Changed
+- Quick Launch boots a live hangar sim (same distance LOD as after launch) so bay lights and visitor traffic stay truthful in space
+- Empty-bay door fills while the pilot is in space request runway approaches (landings visible outside); departures still egress into space
+- Ambient mouth approaches spawn on hangar request cadence so outside bay traffic matches hangar-inside feel
+
+---
+
+## [0.1.213] — 2026-07-17
+
+### Changed
+- After all bay service jobs finish, corner scanners run a ~1s verify pass before the board/header go green
+
+---
+
+## [0.1.212] — 2026-07-17
+
+### Changed
+- Door ticker lifecycle / reveal lines are all-caps (`BAY EMPTY`, `SHIP INCOMING`, `PLEASE SELECT SERVICES`, …)
+
+---
+
+## [0.1.211] — 2026-07-17
+
+### Changed
+- Hangar door tickers: Bay Empty / disabled, Ship incoming / Departing, Elevator Active, Scanning, Please select services, then live service status
+
+---
+
+## [0.1.210] — 2026-07-17
+
+### Changed
+- Bay lane warning lights smaller; glow scaled down; spin beacon stays inside the disc with glow on the lit sector
+
+---
+
+## [0.1.209] — 2026-07-17
+
+### Fixed
+- Space land cinematic draws the ship again (pad occupied flag restored after reservation abort)
+
+---
+
+## [0.1.208] — 2026-07-17
+
+### Fixed
+- Leaving a reserved runway lane abandons the pad (doors close, ops/lights clear)
+- No service-board scan during launch / Dev hijack exit
+
+---
+
+## [0.1.207] — 2026-07-17
+
+### Fixed
+- Space→hangar land always plays the approach cinematic (headless runway prep no longer seats the ship early)
+
+---
+
+## [0.1.206] — 2026-07-17
+
+### Fixed
+- Hangar LAUNCH button follows the selected pad ship’s bay door (e.g. land B1, select B3 → button on B3)
+
+---
+
+## [0.1.205] — 2026-07-17
+
+### Changed
+- Hangar sim distance LOD in space: full tick near station, slows with range, pauses far out (nearest human pilot; multiplayer-ready)
+
+---
+
+## [0.1.204] — 2026-07-17
+
+### Changed
+- Reserved runway lane: bay lights pulse green; hangar plays the bay approach animation for that pad while the ship holds the reservation
+
+---
+
+## [0.1.203] — 2026-07-17
+
+### Changed
+- Runway approach at safe speed in a pad lane reserves that bay (lights go red for others; reserver can still land)
+
+---
+
+## [0.1.202] — 2026-07-17
+
+### Changed
+- Bay pad lights: spinning yellow during elevator activity (in addition to green / red / spinning red depart)
+- Two floating three-light bay-signal rows on the runway (outermost approach-light row + halfway to the caution paint), same per-lane logic; ships pass under them
+
+---
+
+## [0.1.201] — 2026-07-17
+
+### Changed
+- Station full: dock prompt becomes “Engage holding pattern”; Enter/Click hands AI the hold then auto-land on a green bay; any thruster/yaw/engine input returns control to the captain
+
+---
+
+## [0.1.200] — 2026-07-17
+
+### Changed
+- Jennings Station: three pad status lights on caution paint (green / red / spinning depart); apron third-lane lines; choose-your-bay landing (player + AI) on green only
+- Approach lights: all blink red when station full; reverse red chase during any bay exit; hangar sim stays live in space so lights stay truthful
+- Hangar↔space hull carry-over (no starter reload on dock/launch); Dev can launch a selected visitor pad ship; visitor departures continue as nearby space traffic
+- Open hangar doors show apron pavement in the lower space view; multi-ship mouth occlusion for ambient + controlled ship
+
+---
+
+## [0.1.199] — 2026-07-17
+
+### Fixed
+- Bay service board corner scanners stay mounted when the pad is empty or mid-elevator (dormant until a scan)
+
+---
+
+## [0.1.198] — 2026-07-16
+
+### Changed
+- Captain pip picks use fixed per-pip gaps (0.2–0.6s on type change, 0.1–0.2s when repeating the same type) instead of compressing into a 5s budget
+
+---
+
+## [0.1.197] — 2026-07-16
+
+### Changed
+- Board reveal: cargo panel fill ~1s; green ship scan holds ~0.5s after cargo finishes before fading out
+
+---
+
+## [0.1.196] — 2026-07-16
+
+### Changed
+- Bay service boards: green corner scanners warm up 0.5s before stats fill, then sweep scan lines over the pad ship until stats + cargo panels finish
+
+---
+
+## [0.1.195] — 2026-07-16
+
+### Changed
+- Bay service boards: after pad settle, staged reveal — ship stats top→bottom (~2s), then cargo (~0.5s), then captain-style service pips one at a time (≤5s, random order/gaps; starts within 2s of cargo)
+- Cargo hold display/packing uses 1×1 slots only (one load/unload = one slot); unload pips capped by filled slots, load pips by free space after those unloads; cargo Load staging waits until Unloads finish
+
+---
+
+## [0.1.194] — 2026-07-16
+
+### Fixed
+- Map landing: player bay checklist / station services wait until the full land settle finishes (same `playerArrivalPending` gate as elevator arrival)
+
+---
+
+## [0.1.193] — 2026-07-16
+
+### Fixed
+- Entrance occlusion no longer drops when rotating under the tape (heading no longer required while overlapping the roof/apron)
+
+---
+
+## [0.1.192] — 2026-07-16
+
+### Changed
+- Hangar→space exit burn holds until the ship nears the outer (furthest) approach-light pair, not a short fixed timer
+
+---
+
+## [0.1.191] — 2026-07-16
+
+### Fixed
+- Entrance occlusion uses station-closest hull edge (not travel leading edge); full exit stays under roof/tape until that tip clears (no end-of-burn pop-on-top)
+
+---
+
+## [0.1.190] — 2026-07-16
+
+### Changed
+- Hangar roof pad depth (N→S) doubled
+
+---
+
+## [0.1.189] — 2026-07-16
+
+### Fixed
+- Entrance occlusion: zone covers apron+tape+roof; overlap tests nose/aft/center so a slow crawl under the sill occludes; under-layer keeps the station disc (only roof/tape draw above)
+
+---
+
+## [0.1.188] — 2026-07-16
+
+### Changed
+- Station entrance: cheek flares attach mouth to the disc; unique rounded hangar-roof pad south of the caution tape
+- Occlusion uses tape + hangar roof only; requires safe speed + heading (hysteresis) — no more tape-over-ship when too fast; exit burn still occludes
+
+---
+
+## [0.1.187] — 2026-07-16
+
+### Changed
+- Station entrance: caution paint sits on the north circle rim; short black apron only north of the paint; hull filled solid south of the paint; Enter/auto-ingress/exit nest/approach lights retargeted to the rim sill
+
+---
+
+## [0.1.186] — 2026-07-16
+
+### Changed
+- Hangar→space exit starts deep in the bay mouth under the occluding sill/frame (not at the outer black-floor lip); station draws above the ship while emerging / in the tunnel
+
+---
+
+## [0.1.185] — 2026-07-16
+
+### Changed
+- Jennings Station space exterior is **4×** larger (`STATION.SCALE`); dock face, mouth/caution sill, approach lights, Enter/auto-ingress zones, exit spawn, and ambient near/mid/deep + police/patrol rings all scale with it (dock max speed + ship extents unchanged)
+
+---
+
+## [0.1.184] — 2026-07-16
+
+### Fixed
+- Station NE/NW arms match SE/SW length
+- Auto-ingress: reverse docking (nose-out / aft-first) works; trigger window widened; auto path no longer blocked by Enter-ready circle
+
+---
+
+## [0.1.183] — 2026-07-16
+
+### Changed
+- Jennings Station: add NE / NW exterior arms (still no due-north arm over the bay mouth)
+
+---
+
+## [0.1.182] — 2026-07-16
+
+### Fixed
+- Removed north station arm (box tip sat on the bay-mouth caution tape); approach lights no longer bob
+- Dock/ingress contact uses the ship silhouette’s leading edge (`forwardExtent`), not a hard-coded nose tip
+
+---
+
+## [0.1.181] — 2026-07-16
+
+### Changed
+- Safe southbound approach: station hull / caution paint / lights draw above the ship; black bay floor stays under so the leading edge can slide into the aperture (wrong angle or too fast keeps the old under-ship stack)
+- Auto-ingress waits until the leading edge is a short way past the caution stripes (`INGRESS_EDGE_OVERHANG`)
+
+---
+
+## [0.1.180] — 2026-07-16
+
+### Added
+- Jennings Station approach: 5 floating light pairs chase yellow (furthest→closest, next wave starts as the inner pair blinks); turn green in-corridor at safe speed, red if too fast; furthest pair sits at Enter/Click ready range
+- Auto-ingress: nose-south approach at safe speed triggers landing when the nose meets the bay-mouth caution stripes (Enter/Click still works)
+
+---
+
+## [0.1.179] — 2026-07-16
+
+### Fixed
+- Hangar enter/exit: scrolling zoom takes control — cinematic zoom stops overriding for the rest of that sequence (and settle no longer snaps zoom back)
+
+---
+
+## [0.1.178] — 2026-07-16
+
+### Fixed
+- Hangar sequence camera still allows scroll zoom (pan stays locked to the ship)
+- Hangar→space exit: handoff stops mid-hangar tick, relocates the live ship into the open north bay mouth with northbound speed + a short exit-burn plume (was easy to miss / feel like a dead spawn)
+
+---
+
+## [0.1.177] — 2026-07-16
+
+### Fixed
+- Hangar enter/exit camera locks onto the player ship for the whole sequence, then frees for pad look once settled
+- Space handoff after launch: nose north out the station bay mouth with outbound momentum (and kept ship loadout), instead of a dead spawn drop
+
+---
+
+## [0.1.176] — 2026-07-16
+
+### Fixed
+- Player launch / land / elevator sequences no longer get snapped back to the pad every frame (Dev `playerFlight` sync was overwriting Launch-button door exit on all bays, most obvious on B1/B3)
+
+---
+
+## [0.1.175] — 2026-07-16
+
+### Fixed
+- Engine / thruster plumes draw under flat (2D) ships; on angled 2.5D ships they sit mid-height (after side walls, before the raised deck) so flames leave the nozzle instead of under the hull plate
+
+---
+
+## [0.1.174] — 2026-07-16
+
+### Changed
+- Hangar flavor props: single `props[]` list (merged former `yardProps`); each prop has a `category` theme (`desk` / `shelf` / `storage` / `tool` / `yard` / `anchor`) for a future filterable catalogue
+- Hangar Layout Editor palette groups by category; removed separate Yard layer
+- Prop set-dressing stencils/labels removed (blank shift board, unlabeled drums/chargers/racks)
+
+---
+
+## [0.1.173] — 2026-07-16
+
+### Added
+- Hangar Layout Editor: drag B1/B3 bay units left/right (doors, boards, pads, staging, lane lights, bay-unit linger/props); outer bays stay symmetric about B2; spacing saved as `sidePadX` in `hangar-layout.js`
+
+### Fixed
+- Hangar layout edit pointer (bay grips / props) works while crew is frozen — simSpeed 0 no longer skips editor hit-testing
+- Hangar layout edit keeps scroll zoom + empty-space LMB pan (item drags still suppress pan)
+- Hangar enter applies baked `sidePadX` before dock/ship/camera placement (ship no longer spawns offset from the pad after a layout save)
+- Leaving hangar edit restores pad-centered default zoom (edit camera is session-only, not saved)
+- Hangar zoom range retuned for wider bay spacing: lower zoom-out floor, manual zoom-in cap 9×, elevator intro uses pad close-up (~7.5×) instead of old 14× hull-fill; title always ticks so hangar zoom can’t stick on the backdrop
+- Crane unfreezes after player ops on B1/B3 (was only clearing pause for hardcoded B2)
+- Hangar B2 leftovers / spacing harden: KEEP CLEAR follows live pads; crane divert + mechanic fallback no longer force B2; sidePad live-sync shifts forklifts/crane; warmup skips stocking player bay; danger-lane width + crane job distance scale with `sidePadX`; removed unused `PLAYER_PAD_X`
+
+### Changed
+- Docs: long-term north star is ***Stranger in the Galaxy*** (`VISION.md`); former Hyperdrift Crewline vision folded under multiplayer extensions; prototype stays engine/sandbox (`GDD.md`, `OPEN_QUESTIONS.md`, `PROJECT.md`)
+- Docs: locked **presentation layers** — Space top-down; hangar / ship interior / derelict unified 2.5D; hybrid narrative (portraits + ambient barks); subsystem build order in `VISION.md`
 
 ---
 

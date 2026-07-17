@@ -100,22 +100,25 @@ export const BLUEPRINT = {
 export const HANGAR = {
   /** Dock pad disc radius (B2 Mk2; HangarBay BAY.PAD_R) */
   PAD_R: 38,
-  /** Ceiling stop — three pads + bay door still readable */
-  ZOOM_MIN: 1.85,
-  /** Close enough that the hull fills most of the play circle */
-  ZOOM_MAX: 14,
+  /**
+   * Widest zoom-out floor (actual min also tracks sidePadX so B1–B3 stay
+   * frameable after layout edits). Was 1.85 @ SIDE_PAD_X=155.
+   */
+  ZOOM_MIN: 1.15,
+  /** Manual scroll zoom-in cap (pad/hull detail). Elevator uses ZOOM_ELEVATOR. */
+  ZOOM_MAX: 9,
+  /** Title → hangar elevator arrival start (pad-centered close-up, not hull-fill). */
+  ZOOM_ELEVATOR: 7.5,
   /** ~1080p fallback — runtime uses hangarDefaultZoom(viewportRadius) */
   ZOOM_DEFAULT: 5,
   /** Wider during launch/land so doors + path read clearly */
   ZOOM_LAUNCH: 3.2,
   ZOOM_WHEEL_STEP: 0.35,
-  /** Neighbor pad offset from center (B1 left / B3 right) */
-  SIDE_PAD_X: 155,
   /**
-   * Legacy alias for bay-center X (B2). Prefer hangarPadX(bayIndex) —
-   * player bay is chosen at random on hangar enter.
+   * Neighbor pad offset from center (B1 left / B3 right).
+   * Runtime value is driven by hangar-layout `sidePadX` (Dev hangar editor).
    */
-  PLAYER_PAD_X: 0,
+  SIDE_PAD_X: 155,
   /** Bay half-height (must match HangarBay BAY.HALF_H) */
   BAY_HALF_H: 200,
   DOOR_H: 42,
@@ -154,12 +157,41 @@ export const HANGAR = {
   /** Empty pad wait before next arrive / raise (longer so bays stay clear) */
   VISITOR_COOLDOWN_EMPTY_MIN: 18,
   VISITOR_COOLDOWN_EMPTY_MAX: 42,
-  /** After captain checklist complete, wait before exit */
-  VISITOR_SERVICE_DWELL_MIN: 8,
-  VISITOR_SERVICE_DWELL_MAX: 20,
-  /** Beat after settle before deck work starts */
+  /**
+   * When the pilot is in space, empty-bay door fills are requested for ambient
+   * approach (keeps outside traffic cadence close to hangar-side cooldowns).
+   */
+  SPACE_ARRIVAL_REQUEST_RETRY_MIN: 14,
+  SPACE_ARRIVAL_REQUEST_RETRY_MAX: 28,
+  /**
+   * After final scan turns service pips green, short beat before visitor exit.
+   * (Longer legacy dwell replaced — depart should follow the green board.)
+   */
+  VISITOR_SERVICE_DWELL_MIN: 1.4,
+  VISITOR_SERVICE_DWELL_MAX: 3.2,
+  /** If a mech never walks away after status=done, force-settle pips after this */
+  VISITOR_PIP_SETTLE_FAILSAFE_SEC: 5,
+  /** Beat after settle before deck work starts (visitors; player uses board reveal) */
   VISITOR_ARRIVE_SETTLE_DWELL_MIN: 2,
   VISITOR_ARRIVE_SETTLE_DWELL_MAX: 5,
+  /** Green corner scanners warm up before board text fills */
+  BOARD_REVEAL_PRESCAN_SEC: 0.5,
+  /** Player/visitor board scan after pad settle: SHIP STATS rows top→bottom */
+  BOARD_REVEAL_STATS_SEC: 2,
+  /** Cargo panel populate after stats */
+  BOARD_REVEAL_CARGO_SEC: 1,
+  /** Green ship scan continues this long after cargo panel finishes */
+  BOARD_REVEAL_SCAN_TAIL_SEC: 0.5,
+  /** Max wait after cargo before first service pip (captain menu) */
+  BOARD_REVEAL_PIP_GAP_MAX: 2,
+  /** Captain pip pick: delay between different service types */
+  BOARD_REVEAL_PIP_GAP_DIFF_MIN: 0.2,
+  BOARD_REVEAL_PIP_GAP_DIFF_MAX: 0.6,
+  /** Captain pip pick: delay when repeating the same type as the previous pip */
+  BOARD_REVEAL_PIP_GAP_SAME_MIN: 0.1,
+  BOARD_REVEAL_PIP_GAP_SAME_MAX: 0.2,
+  /** Quick corner-scanner pass after all service jobs finish (before board goes green) */
+  BOARD_FINAL_SCAN_SEC: 1,
   /** After B2 captain checklist finishes, wait before rolling a new list (player owns exit). */
   PLAYER_SERVICE_REROLL_MIN: 10,
   PLAYER_SERVICE_REROLL_MAX: 60,
@@ -197,23 +229,115 @@ export const PAD_MK_RADIUS = {
  */
 export const PAD_MK4_TEASE_RADIUS = 300;
 
-/** Jennings Station overworld exterior */
+/**
+ * Jennings Station overworld exterior.
+ * SCALE multiplies all station-authored world lengths vs the original (radius 160).
+ * Ship-relative limits (dock speed, hull extents, angle slack) stay unscaled.
+ */
+const STATION_SCALE = 4;
+
 export const STATION = {
+  /** World size vs original authoring (linear). */
+  SCALE: STATION_SCALE,
   WORLD_X: 0,
   WORLD_Y: 0,
-  RADIUS: 160,
-  /** Spawn distance north of station center after hangar exit */
-  EXIT_OFFSET: 210,
-  /** Dock face Y relative to station center (bay mouth) */
-  DOCK_FACE_Y: 150,
-  APPROACH_RADIUS: 420,
-  DOCK_RADIUS: 160,
+  RADIUS: 160 * STATION_SCALE,
+  /**
+   * Dock / official entrance on the north rim (must match RADIUS).
+   * Enter-ready circle is centered here; caution paint sits on this Y.
+   */
+  DOCK_FACE_Y: 160 * STATION_SCALE,
+  APPROACH_RADIUS: 420 * STATION_SCALE,
+  /** Enter/Click ready distance from dock face (furthest approach lights sit here) */
+  DOCK_RADIUS: 160 * STATION_SCALE,
+  /** Safe approach speed — ship handling, not station scale */
   DOCK_MAX_SPEED: 120,
+  /** Bay mouth half-width (caution stripe span); approach corridor matches */
+  MOUTH_HALF_W: 58 * STATION_SCALE,
+  /**
+   * Mouth geometry (local Y): caution paint on the circle at −RADIUS.
+   * Black apron is only north of the paint; hull is solid south of it.
+   */
+  MOUTH_APRON: 28 * STATION_SCALE,
+  MOUTH_STRIPE_H: 6 * STATION_SCALE,
+  MOUTH_FRAME_PAD: 10 * STATION_SCALE,
+  MOUTH_SILL_BAR_H: 8 * STATION_SCALE,
+  /** How far cheeks flare out past the jambs to blend into the disc */
+  MOUTH_CHEEK_OUT: 18 * STATION_SCALE,
+  /** How far south cheeks wrap onto the disc from the paint */
+  MOUTH_CHEEK_SOUTH: 26 * STATION_SCALE,
+  /**
+   * Unique hangar roof pad just south of the caution paint (rounded rect).
+   * Part of entrance occlusion with the tape.
+   */
+  HANGAR_ROOF_DEPTH: 80 * STATION_SCALE,
+  HANGAR_ROOF_HALF_W: (58 + 10 + 6) * STATION_SCALE,
+  HANGAR_ROOF_CORNER: 12 * STATION_SCALE,
+  /**
+   * Hangar→space exit: nest this far south of the paint (under hangar roof)
+   * so the ship starts occluded and crosses the sill outbound.
+   */
+  EXIT_NEST: 22 * STATION_SCALE,
+  /**
+   * Hangar→space exit burn ends when the north tip is this close to the
+   * furthest (outer) approach-light pair.
+   */
+  EXIT_BURN_LIGHT_PAD: 36 * STATION_SCALE,
+  /** Failsafe max duration for exit burn (seconds) */
+  EXIT_BURN_MAX_SEC: 14,
+  /** Occlusion speed hysteresis above DOCK_MAX_SPEED (avoids tape flicker) */
+  OCCLUDE_SPEED_SLACK: 18,
+  /** Approach guide lights: pairs from DOCK_RADIUS inward to the stripe sill */
+  APPROACH_LIGHT_PAIRS: 5,
+  APPROACH_LIGHT_HALF_W: 72 * STATION_SCALE,
+  APPROACH_LIGHT_R: 3.2 * STATION_SCALE,
+  /** Chase: seconds between successive pair blinks (furthest → closest) */
+  APPROACH_LIGHT_STEP: 0.26,
+  /** How long each pair stays lit in a chase step */
+  APPROACH_LIGHT_ON: 0.2,
+  /** Full-station blink period when all pads blocked */
+  APPROACH_LIGHT_FULL_BLINK: 0.45,
+  /** Pad / runway bay status lights (core disc radius) */
+  PAD_STATUS_LIGHT_R: 2.0 * STATION_SCALE,
+  /** Auto-ingress: nose-in (south) or reverse nose-out (north) within this slack (rad) */
+  INGRESS_ANGLE_SLACK: 0.5,
+  /** Fallback ship-local +X / −X extents when a def has no footprint */
+  LEADING_EDGE_FALLBACK: 22,
+  AFT_EDGE_FALLBACK: 20,
+  /**
+   * How far past the caution sill (world +Y, into the bay) the inbound hull edge
+   * may travel before auto-ingress fires — tip enters the aperture first.
+   */
+  INGRESS_EDGE_OVERHANG: 16 * STATION_SCALE,
+  /** Max edge depth past trigger still counted (avoids one-frame skips) */
+  INGRESS_TRIGGER_WINDOW: 48 * STATION_SCALE,
+  INGRESS_CORRIDOR_PAD_Y: 28 * STATION_SCALE,
+  INGRESS_CORRIDOR_PAD_X: 10 * STATION_SCALE,
+  INGRESS_MOUTH_SLACK: 4 * STATION_SCALE,
+  /**
+   * Hangar sim LOD while flying (distance from station to closest human pilot).
+   * ≤ FULL → real-time tick; FULL→PAUSE → rate falls 1→0; ≥ PAUSE → frozen.
+   * Multiplayer: use nearest real human, not NPCs.
+   */
+  HANGAR_LOD_FULL_DIST: 900 * STATION_SCALE,
+  HANGAR_LOD_PAUSE_DIST: 2800 * STATION_SCALE,
+  /** Exterior arms / core set dressing */
+  ARM_ROOT: 70 * STATION_SCALE,
+  ARM_LEN: 110 * STATION_SCALE,
+  ARM_LEN_S: 90 * STATION_SCALE,
+  ARM_BEAM_HALF_H: 10 * STATION_SCALE,
+  ARM_TIP_W: 28 * STATION_SCALE,
+  ARM_TIP_H: 32 * STATION_SCALE,
+  CORE_HALF_W: 48 * STATION_SCALE,
+  CORE_HALF_H: 38 * STATION_SCALE,
+  BEACON_R: 3.5 * STATION_SCALE,
+  LABEL_GAP: 22 * STATION_SCALE,
 };
 
 /**
  * Sparse ambient traffic (modular ships in open space).
  * Near hangar: a few ships + always-on police pack. Deep: rare, not zero.
+ * Near/mid/deep bands scale with STATION.SCALE so density stays station-relative.
  * Spawn/despawn only off-screen (never pop in/out of the player's view).
  */
 export const AMBIENT = {
@@ -223,22 +347,23 @@ export const AMBIENT = {
   /** Always maintain at least this many police around the station */
   MIN_POLICE: 3,
   MAX_POLICE: 6,
-  NEAR_RADIUS: 900,
-  MID_RADIUS: 2800,
-  DEEP_RADIUS: 9000,
+  NEAR_RADIUS: 900 * STATION_SCALE,
+  MID_RADIUS: 2800 * STATION_SCALE,
+  DEEP_RADIUS: 9000 * STATION_SCALE,
   FALLOFF_K: 2.4,
   DEEP_FLOOR: 0.04,
   DEEP_FALLOFF: 1.8,
   NEAR_ACCEPT: 0.75,
   DEEP_ACCEPT: 0.35,
   DEEP_SPAWN_CHANCE: 0.12,
-  DEEP_SPAWN_MIN: 4200,
-  DEEP_SPAWN_MAX: 7800,
-  FLYBY_RADIUS: 1600,
+  DEEP_SPAWN_MIN: 4200 * STATION_SCALE,
+  DEEP_SPAWN_MAX: 7800 * STATION_SCALE,
+  FLYBY_RADIUS: 1600 * STATION_SCALE,
   SPAWN_INTERVAL_MIN: 2.2,
   SPAWN_INTERVAL_MAX: 6.5,
   /** Absolute far cull (still requires off-screen) */
-  CULL_DIST: 7500,
+  CULL_DIST: 7500 * STATION_SCALE,
+  /** Ship-relative clearance / scan (not station scale) */
   PLAYER_CLEARANCE: 220,
   SCAN_RANGE: 520,
   /**
@@ -248,6 +373,12 @@ export const AMBIENT = {
   VISIBLE_MARGIN: 140,
   /** Seed this many non-police near the station on flight start (off-screen) */
   SEED_NEAR_TRAFFIC: 3,
+  /**
+   * Min gap between spawned bay approaches (hangar-requested fills).
+   * Tuned so outside mouth traffic feels like hangar visitor cadence.
+   */
+  BAY_APPROACH_SPAWN_MIN: 12,
+  BAY_APPROACH_SPAWN_MAX: 26,
 };
 
 export const RENDER = {

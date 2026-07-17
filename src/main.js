@@ -149,12 +149,13 @@ function rebuildHangarPalette() {
   const host = document.getElementById('hangar-edit-palette');
   if (!host) return;
   const pal = HangarLayoutEditor.paletteKinds();
-  const kinds = [...pal.deck, ...pal.yard, ...pal.special];
-  host.innerHTML = kinds
-    .map(
-      (k) =>
-        `<button type="button" data-place="${k}">${k}</button>`
-    )
+  host.innerHTML = Object.entries(pal)
+    .map(([cat, kinds]) => {
+      const buttons = kinds
+        .map((k) => `<button type="button" data-place="${k}" title="${cat}">${k}</button>`)
+        .join('');
+      return `<div class="hangar-edit-pal-cat" data-cat="${cat}">${cat}</div>${buttons}`;
+    })
     .join('');
 }
 
@@ -163,7 +164,24 @@ function syncHangarEditInspector() {
   if (!el) return;
   const sel = DevTools.hangarSel;
   if (!sel) {
-    el.textContent = 'Select a prop / linger / gossip';
+    el.textContent = 'Select a bay / prop / linger / gossip';
+    return;
+  }
+  if (sel.type === 'bay') {
+    const side = HangarLayoutEditor.layout?.sidePadX ?? 155;
+    const locked = sel.bayIndex === 1;
+    el.innerHTML =
+      `<div>bay B${sel.bayIndex + 1}<br/>pad x ${sel.ref?.x ?? 0}<br/>` +
+      `spacing ±${side} (symmetric)</div>` +
+      (locked
+        ? `<div class="hangar-edit-tools">B2 is the center anchor</div>`
+        : `<div class="hangar-edit-tools">` +
+          `<button type="button" class="hangar-dev-btn" data-bay-nudge="-5">« 5</button>` +
+          `<button type="button" class="hangar-dev-btn" data-bay-nudge="-1">‹</button>` +
+          `<button type="button" class="hangar-dev-btn" data-bay-nudge="1">›</button>` +
+          `<button type="button" class="hangar-dev-btn" data-bay-nudge="5">5 »</button>` +
+          `</div>` +
+          `<div style="opacity:.75;font-size:11px">Drag left/right · outer bays stay mirrored</div>`);
     return;
   }
   if (sel.type === 'linger') {
@@ -188,7 +206,8 @@ function syncHangarEditInspector() {
       `<label>Cap <input type="number" id="hangar-gossip-cap" min="1" max="8" value="${sel.ref.capacity}" style="width:4em" /></label>`;
     return;
   }
-  el.textContent = `${sel.type} ${sel.ref.id}\n${sel.ref.kind || ''} face ${sel.ref.facing | 0}\nxy ${sel.ref.x}, ${sel.ref.y}`;
+  const cat = sel.ref.category ? ` [${sel.ref.category}]` : '';
+  el.textContent = `${sel.type} ${sel.ref.id}\n${sel.ref.kind || ''}${cat} face ${sel.ref.facing | 0}\nxy ${sel.ref.x}, ${sel.ref.y}`;
 }
 
 function escapeBpAttr(s) {
@@ -863,13 +882,13 @@ document.getElementById('bp-export-mounts')?.addEventListener('click', async () 
 
 function enterHangarEdit() {
   if (!Settings.isDevMode() || engine.mode !== 'hangar') return;
-  HangarLayoutEditor.enter();
+  HangarLayoutEditor.enter(engine);
   engine.setSimSpeed(0);
   syncSimSpeedUi();
   rebuildHangarPalette();
   if (hangarEditPanel) hangarEditPanel.classList.remove('hidden');
   syncHangarEditInspector();
-  setDevStatus('Hangar edit — crew frozen');
+  setDevStatus('Hangar edit — drag grips · empty LMB pans · scroll zooms');
 }
 
 function exitHangarEdit() {
@@ -878,6 +897,10 @@ function exitHangarEdit() {
   if (engine.getSimSpeed() === 0) {
     engine.setSimSpeed(1);
     syncSimSpeedUi();
+  }
+  // Edit pan/zoom are session-only — never baked; restore pad-centered default view.
+  if (engine.mode === 'hangar') {
+    engine.resetHangarCameraToDock();
   }
   setDevStatus('');
 }
@@ -1053,6 +1076,16 @@ document.getElementById('hangar-edit-panel')?.addEventListener('change', (ev) =>
 });
 
 document.getElementById('hangar-edit-inspector')?.addEventListener('click', (ev) => {
+  const nudgeBtn = ev.target.closest?.('[data-bay-nudge]');
+  if (nudgeBtn && DevTools.hangarSel?.type === 'bay') {
+    const raw = Number(nudgeBtn.dataset.bayNudge);
+    const bay = DevTools.hangarSel.bayIndex;
+    // Button sign is world left/right; spacing grows when an outer bay moves outward.
+    const spaceDelta = bay === 0 ? -raw : raw;
+    HangarLayoutEditor.nudgeBaySpacing(spaceDelta);
+    syncHangarEditInspector();
+    return;
+  }
   const btn = ev.target.closest?.('[data-bay-toggle]');
   if (!btn || DevTools.hangarSel?.type !== 'linger') return;
   const b = Number(btn.dataset.bayToggle);
@@ -1136,6 +1169,18 @@ document.addEventListener('keydown', (e) => {
     }
     if (e.key === '[' || e.key === ']') {
       HangarLayoutEditor.rotateSelected(e.key === ']' ? 1 : -1);
+      syncHangarEditInspector();
+    }
+    if (
+      DevTools.hangarSel?.type === 'bay' &&
+      DevTools.hangarSel.bayIndex !== 1 &&
+      (e.key === 'ArrowLeft' || e.key === 'ArrowRight')
+    ) {
+      e.preventDefault();
+      const step = e.shiftKey ? 5 : 1;
+      const raw = e.key === 'ArrowLeft' ? -step : step;
+      const spaceDelta = DevTools.hangarSel.bayIndex === 0 ? -raw : raw;
+      HangarLayoutEditor.nudgeBaySpacing(spaceDelta);
       syncHangarEditInspector();
     }
   }

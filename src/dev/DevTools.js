@@ -47,8 +47,8 @@ export const DevTools = {
   },
   hangarEdit: false,
   hangarLayers: {
+    bays: true,
     props: true,
-    yard: true,
     linger: true,
     gossip: true,
     warn: true,
@@ -150,30 +150,136 @@ export const DevTools = {
 
   serializeHangarLayout() {
     const layout = cloneHangarLayout(HANGAR_LAYOUT);
+    if (!Number.isFinite(layout.sidePadX)) layout.sidePadX = 155;
+    delete layout.yardProps;
     const json = JSON.stringify(layout, null, 2);
     return (
       '/**\n' +
       ' * Hangar flavor layout — props, linger stands, gossip path-to points.\n' +
       ' * Machine-editable via Dev Mode Hangar Layout Editor.\n' +
+      ' * `sidePadX` = B1/B3 pad offset from center (outer bays stay symmetric).\n' +
+      ' * Props use one list + `category` (desk/shelf/storage/tool/yard/decor/anchor).\n' +
       ' */\n\n' +
+      'export const HANGAR_SIDE_PAD_DEFAULT = 155;\n' +
+      'export const HANGAR_SIDE_PAD_MIN = 145;\n' +
+      'export const HANGAR_SIDE_PAD_MAX = 240;\n' +
+      'export const HANGAR_BAY_UNIT_HALF = 120;\n\n' +
       `export let HANGAR_LAYOUT = ${json};\n\n` +
+      '/**\n' +
+      ' * Prop catalog themes — one prop class; `category` filters future item browsers.\n' +
+      ' * desk / shelf / storage / tool / yard / decor / anchor\n' +
+      ' * decor = wall art / posters (engine-drawn, higher-fidelity faces)\n' +
+      ' */\n' +
+      'export const HANGAR_PROP_CATEGORY_KINDS = {\n' +
+      "  desk: ['workbench', 'bayTerminal', 'shiftBoard'],\n" +
+      "  shelf: ['partsRack', 'bottleRack', 'suitLocker'],\n" +
+      "  storage: ['drumStack', 'pallet', 'breakCrate', 'cableSpool', 'diagCart'],\n" +
+      "  tool: ['weldScreen'],\n" +
+      "  yard: ['forkCharger', 'forkTireRack', 'forkCones', 'forkCrate'],\n" +
+      "  decor: ['wallPoster'],\n" +
+      "  anchor: ['computer'],\n" +
+      '};\n\n' +
+      '/** Flat kind list for the editor palette (excludes linger-only anchors). */\n' +
+      'export const HANGAR_PROP_KINDS = Object.entries(HANGAR_PROP_CATEGORY_KINDS)\n' +
+      "  .filter(([cat]) => cat !== 'anchor')\n" +
+      '  .flatMap(([, kinds]) => kinds);\n\n' +
+      '/** @deprecated use HANGAR_PROP_CATEGORY_KINDS.yard */\n' +
+      'export const HANGAR_YARD_KINDS = HANGAR_PROP_CATEGORY_KINDS.yard;\n\n' +
+      '/** @param {string} kind */\n' +
+      'export function categoryForPropKind(kind) {\n' +
+      '  for (const [cat, kinds] of Object.entries(HANGAR_PROP_CATEGORY_KINDS)) {\n' +
+      '    if (kinds.includes(kind)) return cat;\n' +
+      '  }\n' +
+      "  return 'storage';\n" +
+      '}\n\n' +
+      '/**\n' +
+      ' * Merge legacy yardProps into props and ensure every prop has a category.\n' +
+      ' * @param {typeof HANGAR_LAYOUT} layout\n' +
+      ' */\n' +
+      'export function normalizeHangarLayout(layout) {\n' +
+      '  if (!layout) return layout;\n' +
+      '  if (!Array.isArray(layout.props)) layout.props = [];\n' +
+      '  if (Array.isArray(layout.yardProps) && layout.yardProps.length) {\n' +
+      '    for (const p of layout.yardProps) {\n' +
+      '      if (!p.category) p.category = categoryForPropKind(p.kind);\n' +
+      '      layout.props.push(p);\n' +
+      '    }\n' +
+      '  }\n' +
+      '  delete layout.yardProps;\n' +
+      '  for (const p of layout.props) {\n' +
+      '    if (!p.category) p.category = categoryForPropKind(p.kind);\n' +
+      '  }\n' +
+      '  if (!Number.isFinite(layout.sidePadX)) {\n' +
+      '    layout.sidePadX = HANGAR_SIDE_PAD_DEFAULT;\n' +
+      '  }\n' +
+      '  return layout;\n' +
+      '}\n\n' +
       'export function cloneHangarLayout(layout = HANGAR_LAYOUT) {\n' +
-      '  return JSON.parse(JSON.stringify(layout));\n' +
+      '  return normalizeHangarLayout(JSON.parse(JSON.stringify(layout)));\n' +
       '}\n\n' +
       'export function setHangarLayout(next) {\n' +
-      '  HANGAR_LAYOUT = next;\n' +
+      '  HANGAR_LAYOUT = normalizeHangarLayout(next);\n' +
       '}\n\n' +
-      'export function getHangarProps() {\n  return HANGAR_LAYOUT.props;\n}\n\n' +
-      'export function getYardProps() {\n  return HANGAR_LAYOUT.yardProps;\n}\n\n' +
-      'export function getGossipWaypoints() {\n  return HANGAR_LAYOUT.gossip;\n}\n\n' +
+      'export function getHangarProps() {\n' +
+      '  return HANGAR_LAYOUT.props;\n' +
+      '}\n\n' +
+      '/** @param {string} category */\n' +
+      'export function getHangarPropsByCategory(category) {\n' +
+      '  return HANGAR_LAYOUT.props.filter((p) => (p.category || categoryForPropKind(p.kind)) === category);\n' +
+      '}\n\n' +
+      "/** @deprecated use getHangarPropsByCategory('yard') */\n" +
+      'export function getYardProps() {\n' +
+      "  return getHangarPropsByCategory('yard');\n" +
+      '}\n\n' +
+      'export function getGossipWaypoints() {\n' +
+      '  return HANGAR_LAYOUT.gossip;\n' +
+      '}\n\n' +
+      'export function getHangarSidePadX(layout = HANGAR_LAYOUT) {\n' +
+      '  const v = layout?.sidePadX;\n' +
+      '  return Number.isFinite(v) ? v : HANGAR_SIDE_PAD_DEFAULT;\n' +
+      '}\n\n' +
+      'export function clampHangarSidePadX(value) {\n' +
+      '  const n = Math.round(Number(value));\n' +
+      '  if (!Number.isFinite(n)) return HANGAR_SIDE_PAD_DEFAULT;\n' +
+      '  return Math.max(HANGAR_SIDE_PAD_MIN, Math.min(HANGAR_SIDE_PAD_MAX, n));\n' +
+      '}\n\n' +
+      'export function isBayUnitProp(prop, bay, sidePadX) {\n' +
+      '  if (!prop || prop.bay !== bay) return false;\n' +
+      '  if (bay !== 0 && bay !== 2) return false;\n' +
+      '  const cx = bay === 0 ? -sidePadX : sidePadX;\n' +
+      '  return Math.abs(prop.x - cx) <= HANGAR_BAY_UNIT_HALF;\n' +
+      '}\n\n' +
+      'export function shiftBayUnitFlavor(layout, oldSide, newSide) {\n' +
+      '  const d = Math.round(newSide) - Math.round(oldSide);\n' +
+      '  if (!d || !layout?.props) return;\n' +
+      '  for (const prop of layout.props) {\n' +
+      '    let shift = 0;\n' +
+      '    if (isBayUnitProp(prop, 0, oldSide)) shift = -d;\n' +
+      '    else if (isBayUnitProp(prop, 2, oldSide)) shift = d;\n' +
+      '    if (!shift) continue;\n' +
+      '    prop.x = Math.round(prop.x + shift);\n' +
+      '    for (const L of prop.linger || []) {\n' +
+      '      L.x = Math.round(L.x + shift);\n' +
+      '    }\n' +
+      '  }\n' +
+      '}\n\n' +
+      'export function setHangarSidePadX(next, opts = {}) {\n' +
+      '  const shiftFlavor = opts.shiftFlavor !== false;\n' +
+      '  const old = getHangarSidePadX();\n' +
+      '  const clamped = clampHangarSidePadX(next);\n' +
+      '  const delta = clamped - old;\n' +
+      '  if (delta && shiftFlavor) shiftBayUnitFlavor(HANGAR_LAYOUT, old, clamped);\n' +
+      '  HANGAR_LAYOUT.sidePadX = clamped;\n' +
+      '  return { old, next: clamped, delta };\n' +
+      '}\n\n' +
       'export function resolveLingerBays(stand, prop) {\n' +
       '  if (stand?.bays && Array.isArray(stand.bays) && stand.bays.length) {\n' +
       '    return stand.bays.filter((b) => b === 0 || b === 1 || b === 2);\n' +
       '  }\n' +
-      '  if (typeof stand?.bay === \"number\" && stand.bay >= 0 && stand.bay <= 2) {\n' +
+      '  if (typeof stand?.bay === "number" && stand.bay >= 0 && stand.bay <= 2) {\n' +
       '    return [stand.bay];\n' +
       '  }\n' +
-      '  if (typeof prop?.bay === \"number\" && prop.bay >= 0 && prop.bay <= 2) {\n' +
+      '  if (typeof prop?.bay === "number" && prop.bay >= 0 && prop.bay <= 2) {\n' +
       '    return [prop.bay];\n' +
       '  }\n' +
       '  return [0, 1, 2];\n' +
@@ -181,8 +287,7 @@ export const DevTools = {
       'export function lingerAllowsBay(bays, homeBay) {\n' +
       '  return bays.includes(homeBay);\n' +
       '}\n\n' +
-      "export const HANGAR_PROP_KINDS = ['workbench','bayTerminal','partsRack','cableSpool','drumStack','suitLocker','pallet','diagCart','breakCrate','weldScreen','bottleRack','shiftBoard'];\n" +
-      "export const HANGAR_YARD_KINDS = ['forkCharger','forkTireRack','forkCones','forkCrate'];\n"
+      'normalizeHangarLayout(HANGAR_LAYOUT);\n'
     );
   },
 

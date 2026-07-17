@@ -98,14 +98,33 @@ let _activeShipView = { mode: VIEW_TOP_DOWN };
 /** Deck lift from the last angled extrude — skins/overlays follow the raised face. */
 let _lastDeckLift = { x: 0, y: 0 };
 
+/**
+ * Angled extrude pass for mid-height plumes:
+ * - `all` — full extrude (default / hardware)
+ * - `base` — shadow + underside + side walls only
+ * - `deck` — raised top face / trim / panel only
+ */
+let _extrudePhase = 'all';
+
 export function beginShipDraw(view) {
   _activeShipView = view && view.mode ? view : topDownView();
   _lastDeckLift = { x: 0, y: 0 };
+  _extrudePhase = 'all';
 }
 
 export function endShipDraw() {
   _activeShipView = topDownView();
   _lastDeckLift = { x: 0, y: 0 };
+  _extrudePhase = 'all';
+}
+
+/** @param {'all'|'base'|'deck'} phase */
+export function setExtrudePhase(phase) {
+  _extrudePhase = phase === 'base' || phase === 'deck' ? phase : 'all';
+}
+
+export function extrudePhase() {
+  return _extrudePhase;
 }
 
 export function activeShipView() {
@@ -124,8 +143,9 @@ export function lastDeckLift() {
   return _lastDeckLift;
 }
 
-/** Run deck-overlay draws in the lifted top-face space (no-op when flat). */
+/** Run deck-overlay draws in the lifted top-face space (no-op when flat / base pass). */
 export function withDeckLift(ctx, fn) {
+  if (_extrudePhase === 'base') return;
   const lift = _lastDeckLift;
   if (!lift.x && !lift.y) {
     fn();
@@ -135,6 +155,15 @@ export function withDeckLift(ctx, fn) {
   ctx.translate(lift.x, lift.y);
   fn();
   ctx.restore();
+}
+
+/**
+ * Mid-height lift for angled plumes (halfway up a typical hull extrude).
+ * @param {number} [headingIndex]
+ */
+export function angledPlumeMidLift(headingIndex = 0) {
+  const liftH = Math.max(1.2, 4.5 * 0.45) * 0.5;
+  return angledLiftLocal(headingIndex, liftH);
 }
 
 export function topDownView() {

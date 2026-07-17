@@ -343,8 +343,22 @@ html, body {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
-  max-height: 120px;
+  max-height: 160px;
   overflow: auto;
+  align-items: center;
+}
+
+.hangar-edit-pal-cat {
+  flex: 1 0 100%;
+  margin-top: 4px;
+  font-size: 0.5rem;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: rgba(160, 180, 200, 0.65);
+}
+
+.hangar-edit-pal-cat:first-child {
+  margin-top: 0;
 }
 
 .hangar-edit-palette button {

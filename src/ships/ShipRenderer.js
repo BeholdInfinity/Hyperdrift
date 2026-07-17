@@ -6,9 +6,11 @@ import { SHIP } from '../core/Constants.js';
 import {
   VIEW_ANGLED,
   angledDepthScale,
+  angledPlumeMidLift,
   topDownView,
   beginShipDraw,
   endShipDraw,
+  setExtrudePhase,
 } from './ShipViews.js';
 import { createPlayerStarter } from './ShipGenerator.js';
 import { drawCatalogSection } from './SectionDraw.js';
@@ -104,43 +106,72 @@ function drawMiningBeam(ctx, ship, def, itemOffset = null) {
 /**
  * Draw modular ship in ship-local space (caller applies world transform).
  * Propulsion plumes are mount-driven (equipped mainEngine / maneuverThruster
- * items only) and draw under hull/cups so flames emerge from the nozzle.
+ * items only). Top-down: under the flat hull. Angled 2.5D: mid-height
+ * (after side walls, before raised deck); cups/bells paint over the root.
  */
 export function drawModularShip(ctx, ship, view = topDownView()) {
   const def = ensureDef(ship);
   const layout = explodeFromView(view) ? computeExplodeLayout(def) : null;
   const sectionDx = layout?.sectionDx || null;
   const itemOffset = layout?.itemOffset || null;
+  const angled = view.mode === VIEW_ANGLED;
 
   beginShipDraw(view);
   ctx.save();
   try {
-    if (view.mode === VIEW_ANGLED) {
+    if (angled) {
       const d = angledDepthScale(view.headingIndex ?? 0);
       ctx.scale(1, d);
     }
 
     if (layout) drawExplodeGuides(ctx, layout);
 
-    // Plumes first — tied to equipped propulsion mounts, not ship identity
-    if (ship.thrusters) drawMountPlumes(ctx, ship, itemOffset);
-
     const roles = def.sectionRoles();
     const aftRoles = roles.filter((r) => r === 'engine' || r === 'aft');
     const midRoles = roles.filter((r) => r === 'body' || r === 'hull');
     const foreRoles = roles.filter((r) => r === 'bridge' || r === 'cockpit');
 
-    // Underside mounts first (chin under bridge, wing guns under body), then decks, then dorsal/side/props
-    drawSectionsOrdered(ctx, def, sectionDx, aftRoles);
-    drawCatalogHardware(ctx, ship, def, itemOffset, { faces: UNDER_FACES });
-    drawSectionsOrdered(ctx, def, sectionDx, midRoles);
-    drawSectionsOrdered(ctx, def, sectionDx, foreRoles);
-    drawCatalogHardware(ctx, ship, def, itemOffset, {
-      excludeFaces: UNDER_FACES,
-    });
+    const drawHullSections = () => {
+      drawSectionsOrdered(ctx, def, sectionDx, aftRoles);
+      drawSectionsOrdered(ctx, def, sectionDx, midRoles);
+      drawSectionsOrdered(ctx, def, sectionDx, foreRoles);
+    };
+
+    if (angled) {
+      // Base + side walls → mid-height plumes → raised decks → dorsal/prop hardware
+      setExtrudePhase('base');
+      drawHullSections();
+      setExtrudePhase('all');
+      drawCatalogHardware(ctx, ship, def, itemOffset, { faces: UNDER_FACES });
+      if (ship.thrusters) {
+        const mid = angledPlumeMidLift(view.headingIndex ?? 0);
+        ctx.save();
+        ctx.translate(mid.x, mid.y);
+        drawMountPlumes(ctx, ship, itemOffset);
+        ctx.restore();
+      }
+      setExtrudePhase('deck');
+      drawHullSections();
+      setExtrudePhase('all');
+      drawCatalogHardware(ctx, ship, def, itemOffset, {
+        excludeFaces: UNDER_FACES,
+      });
+    } else {
+      // Flat silhouette: plumes under the entire hull fill
+      if (ship.thrusters) drawMountPlumes(ctx, ship, itemOffset);
+      drawSectionsOrdered(ctx, def, sectionDx, aftRoles);
+      drawCatalogHardware(ctx, ship, def, itemOffset, { faces: UNDER_FACES });
+      drawSectionsOrdered(ctx, def, sectionDx, midRoles);
+      drawSectionsOrdered(ctx, def, sectionDx, foreRoles);
+      drawCatalogHardware(ctx, ship, def, itemOffset, {
+        excludeFaces: UNDER_FACES,
+      });
+    }
+
     drawMiningBeam(ctx, ship, def, itemOffset);
     drawTurretBloom(ctx, ship, def, itemOffset);
   } finally {
+    setExtrudePhase('all');
     ctx.restore();
     endShipDraw();
   }

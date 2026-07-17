@@ -271,6 +271,14 @@ export class InputSystem {
     return d;
   }
 
+  /** Drop an in-progress hangar pan (e.g. layout editor grabbed the pointer). */
+  cancelHangarPan() {
+    this._pan.tracking = false;
+    this._pan.dragged = false;
+    this._pan.dx = 0;
+    this._pan.dy = 0;
+  }
+
   /** True while an LMB hangar pan drag is past the click threshold. */
   isPanDragging() {
     return !!(this.hangarPanEnabled && this._pan.dragged && this.mouseDown);

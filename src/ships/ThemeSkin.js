@@ -4,7 +4,7 @@
  */
 
 import { hexToRgba } from './Themes.js';
-import { lastDeckLift } from './ShipViews.js';
+import { extrudePhase, lastDeckLift } from './ShipViews.js';
 
 function shade(hex, amt) {
   const s = String(hex || '#445566').trim();
@@ -385,6 +385,8 @@ function paintMarks(ctx, b, finish, colors, wear, role) {
  */
 export function paintSectionSkin(ctx, footprint, pal, opts = {}) {
   if (!footprint?.length || !pal) return;
+  // Base pass is sides-only; skins ride the raised deck on the deck/`all` pass.
+  if (extrudePhase() === 'base') return;
   const finish = pal.finish || {};
   const colors = pal.colors || {};
   const wear = pal.wear ?? 0.5;

@@ -6,6 +6,7 @@ import { getShipClass, cargoCapacityFor, seatCapacityFor } from './ShipClasses.j
 import { getSection } from './SectionCatalog.js';
 import { getItem } from './ItemCatalog.js';
 import { resolvePalette } from './Themes.js';
+import { BELL_FEET, ULTRA_FEET, sectionScale } from './SectionGeometry.js';
 
 /**
  * @typedef {{
@@ -147,6 +148,56 @@ export class ShipDefinition {
       };
     }
     return table;
+  }
+
+  /**
+   * Ship-local extents along ±X (nose = +X, aft = −X) from section footprints.
+   * Used for dock/ingress contact — not hard-coded tip offsets.
+   * @returns {{ forward: number, aft: number }}
+   */
+  hullExtents() {
+    let forward = 0;
+    let aft = 0;
+    const classScale = this.scale;
+    for (const sec of this.sections()) {
+      let feet = null;
+      if (sec.geometryKey === 'bell') {
+        feet = BELL_FEET[sec.role];
+      } else if (sec.role === 'hull' || this.swapGroup === 'ultraLight') {
+        feet = ULTRA_FEET[this.classId] || ULTRA_FEET.lightFighter;
+      }
+      if (!feet) continue;
+      const s =
+        sec.geometryKey === 'bell'
+          ? classScale || 1
+          : sectionScale(classScale, sec.morph || 0);
+      for (const [x] of feet) {
+        const sx = x * s;
+        if (sx > forward) forward = sx;
+        if (-sx > aft) aft = -sx;
+      }
+    }
+    if (forward < 1 && aft < 1) {
+      for (const m of Object.values(this.hardpointsTable())) {
+        const x = m.x || 0;
+        if (x > forward) forward = x;
+        if (-x > aft) aft = -x;
+      }
+    }
+    return {
+      forward: forward > 1 ? forward : 22,
+      aft: aft > 1 ? aft : 20,
+    };
+  }
+
+  /** Ship-local +X distance to the nose tip of the silhouette. */
+  forwardExtent() {
+    return this.hullExtents().forward;
+  }
+
+  /** Ship-local −X distance to the aft tip of the silhouette. */
+  aftExtent() {
+    return this.hullExtents().aft;
   }
 
   thrusterKeys() {

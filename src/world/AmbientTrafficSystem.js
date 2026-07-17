@@ -52,8 +52,14 @@ function setCruiseThrust(ship, power = 0.55) {
   }
 }
 
+/** Station-relative orbit ring [min,max] — authored at SCALE=1, multiplied by STATION.SCALE. */
+function stationRing(lo, hi) {
+  return [lo * STATION.SCALE, hi * STATION.SCALE];
+}
+
 /**
  * Role → behaviour archetypes for every catalog class (+ police theme overlay).
+ * Patrol/police rings are station-scaled so they sit outside the larger hull.
  * @type {Record<string, { behavior: string, groupMin?: number, groupMax?: number, ring?: [number, number], deep?: boolean, police?: boolean }>}
  */
 export const ROLE_BEHAVIOR = {
@@ -61,16 +67,21 @@ export const ROLE_BEHAVIOR = {
   drone: { behavior: 'flyby', groupMin: 2, groupMax: 3 },
   scout: { behavior: 'recon', groupMin: 1, groupMax: 1 },
   racer: { behavior: 'race', groupMin: 2, groupMax: 3 },
-  lightFighter: { behavior: 'patrol', groupMin: 2, groupMax: 3, ring: [700, 1400] },
+  lightFighter: { behavior: 'patrol', groupMin: 2, groupMax: 3, ring: stationRing(700, 1400) },
   // Light
-  fighter: { behavior: 'patrol', groupMin: 2, groupMax: 3, ring: [800, 1600] },
+  fighter: { behavior: 'patrol', groupMin: 2, groupMax: 3, ring: stationRing(800, 1600) },
   transport: { behavior: 'shuttle', groupMin: 1, groupMax: 1 },
   // Standard
   miner: { behavior: 'mine', groupMin: 1, groupMax: 1 },
   generalist: { behavior: 'cruise', groupMin: 1, groupMax: 1 },
   science: { behavior: 'survey', groupMin: 1, groupMax: 1 },
   hauler: { behavior: 'freight', groupMin: 1, groupMax: 1 },
-  standardFighter: { behavior: 'patrol', groupMin: 2, groupMax: 2, ring: [1100, 1900] },
+  standardFighter: {
+    behavior: 'patrol',
+    groupMin: 2,
+    groupMax: 2,
+    ring: stationRing(1100, 1900),
+  },
   standardTransport: { behavior: 'shuttle', groupMin: 1, groupMax: 1 },
   // Heavy — deep-space rare cruise-by
   heavyMiner: { behavior: 'deepCruise', groupMin: 1, groupMax: 1, deep: true },
@@ -80,7 +91,13 @@ export const ROLE_BEHAVIOR = {
   heavyFighter: { behavior: 'deepPatrol', groupMin: 1, groupMax: 1, deep: true },
   heavyTransport: { behavior: 'deepCruise', groupMin: 1, groupMax: 1, deep: true },
   // Police is a theme overlay on light/standard fighters
-  police: { behavior: 'police', groupMin: 2, groupMax: 4, ring: [600, 1500], police: true },
+  police: {
+    behavior: 'police',
+    groupMin: 2,
+    groupMax: 4,
+    ring: stationRing(600, 1500),
+    police: true,
+  },
 };
 
 const NEAR_SPAWN_WEIGHTS = [
@@ -153,15 +170,21 @@ export class AmbientTrafficSystem {
     this.ships = [];
     this._spawnCooldown = 1.5;
     this._eventCooldown = 4;
+    /** Gap between hangar-requested bay approaches (matches visitor cadence) */
+    this._bayApproachCooldown = 2;
     /** @type {{ x: number, y: number, viewRadius: number }|null} */
     this._view = null;
+    /** Mouth transit mutex — one bayApproach/Ingress/Egress at a time */
+    this._mouthBusyId = null;
   }
 
   reset() {
     this.ships = [];
     this._spawnCooldown = 0.8;
     this._eventCooldown = 3;
+    this._bayApproachCooldown = 1.5;
     this._view = null;
+    this._mouthBusyId = null;
   }
 
   countNonPolice() {
@@ -193,19 +216,173 @@ export class AmbientTrafficSystem {
     return dist(x, y, view.x, view.y) <= view.viewRadius;
   }
 
+  /** Pose bag for Station occlusion / ingress helpers. */
+  asStationPose(ship) {
+    if (!ship) return null;
+    return {
+      id: ship.id,
+      position: { x: ship.x, y: ship.y },
+      angle: ship.angle,
+      velocity: { x: ship.vx || 0, y: ship.vy || 0 },
+      shipDef: ship.shipDef,
+      exitBurn: !!ship.exitBurn,
+    };
+  }
+
+  /**
+   * Space→hangar: spawn a freighter on the approach corridor for a requested bay.
+   * May be on-screen — mouth traffic is meant to be seen while near the station.
+   * @param {import('./Station.js').Station} station
+   * @param {number} lane
+   * @param {{ x: number, y: number, viewRadius: number }|null} view
+   * @param {number} px
+   * @param {number} py
+   */
+  spawnBayApproach(station, lane, view, px, py) {
+    if (!station) return null;
+    if (this.ships.length >= AMBIENT.MAX_SHIPS) return null;
+    if (this._mouthBusyId != null) return null;
+    const bi = ((lane | 0) + 3) % 3;
+    if (
+      this.ships.some(
+        (s) =>
+          (s.state === 'bayApproach' ||
+            s.state === 'bayIngress' ||
+            s.state === 'bayHold') &&
+          s.targetLane === bi
+      )
+    ) {
+      return null;
+    }
+
+    const tx = station.laneCenterWorldX(bi);
+    const approachY = station.furthestApproachLightY();
+    // Prefer further north so the ship flies the runway; nudge if on top of player
+    let y = approachY - (380 + Math.random() * 320);
+    let x = tx + (Math.random() - 0.5) * 36;
+    if (dist(x, y, px, py) < AMBIENT.PLAYER_CLEARANCE * 0.85) {
+      y = Math.min(y, py) - AMBIENT.PLAYER_CLEARANCE;
+    }
+    // If still inside view and player is south of approach, push further north
+    if (view && this._isVisible(x, y, view) && py > approachY - 80) {
+      y = view.y - view.viewRadius - 80;
+    }
+
+    const classId = pickWeighted([
+      { classId: 'hauler', w: 1.4 },
+      { classId: 'transport', w: 1.1 },
+      { classId: 'standardTransport', w: 0.8 },
+      { classId: 'generalist', w: 0.9 },
+    ]);
+    const role = ROLE_BEHAVIOR[classId] || ROLE_BEHAVIOR.hauler;
+    const heading = Math.PI / 2; // nose south toward the bay mouth
+    const ship = this._makeShip(classId, role, x, y, heading, _nextGroup++, false);
+    if (!ship) return null;
+    ship.behavior = 'freight';
+    ship.state = 'bayApproach';
+    ship.stateT = 0;
+    ship.targetLane = bi;
+    ship.maxAge = 80 + Math.random() * 40;
+    const spd = Math.min(STATION.DOCK_MAX_SPEED * 0.85, 95);
+    ship.vx = Math.cos(heading) * spd;
+    ship.vy = Math.sin(heading) * spd;
+    ship.velocity.x = ship.vx;
+    ship.velocity.y = ship.vy;
+    setCruiseThrust(ship, 0.4);
+    this._mouthBusyId = ship.id;
+    this.ships.push(ship);
+    return ship;
+  }
+
+  /**
+   * Drain hangar `wantSpaceArrival` lanes into visible runway approaches.
+   */
+  _fulfillHangarArrivalRequests(station, hangarBay, px, py, view) {
+    if (this._bayApproachCooldown > 0) return;
+    if (this._mouthBusyId != null) return;
+    const requested = hangarBay.getSpaceArrivalRequestLanes?.() || [];
+    const open = requested.filter((i) => station.padAvailable?.(i));
+    if (!open.length) return;
+    const lane = open[(Math.random() * open.length) | 0];
+    const ship = this.spawnBayApproach(station, lane, view, px, py);
+    if (!ship) return;
+    this._bayApproachCooldown =
+      AMBIENT.BAY_APPROACH_SPAWN_MIN +
+      Math.random() * (AMBIENT.BAY_APPROACH_SPAWN_MAX - AMBIENT.BAY_APPROACH_SPAWN_MIN);
+  }
+
+  /**
+   * Hangar→space: visitor hull continues as nearby ambient with exit burn.
+   * @param {import('./Station.js').Station} station
+   * @param {{ shipDef: object, bayIndex: number }} egress
+   */
+  spawnBayEgress(station, egress) {
+    if (!station || !egress?.shipDef) return null;
+    if (this.ships.length >= AMBIENT.MAX_SHIPS) return null;
+    const spawn = station.getExitSpawn(egress.bayIndex ?? 1);
+    const thrusters = makeVisitorThrusters(egress.shipDef);
+    const ship = {
+      id: _nextId++,
+      groupId: _nextGroup++,
+      classId: 'hauler',
+      behavior: 'freight',
+      isPolice: false,
+      shipDef: egress.shipDef,
+      thrusters,
+      x: spawn.x,
+      y: spawn.y,
+      angle: spawn.angle,
+      vx: Math.cos(spawn.angle) * 200,
+      vy: Math.sin(spawn.angle) * 200,
+      angularVelocity: 0,
+      age: 0,
+      maxAge: 45 + Math.random() * 40,
+      pendingCull: false,
+      state: 'bayEgress',
+      stateT: 0,
+      targetLane: egress.bayIndex ?? 1,
+      exitBurn: true,
+      orbitAngle: 0,
+      orbitR: 0,
+      targetAsteroid: null,
+      scanTarget: null,
+      miningLaserFiring: false,
+      miningLaserRelAngle: 0,
+      miningLaserBeamLength: 0,
+      muzzleFlash: 0,
+      getTurretLocalAngle: () => 0,
+      velocity: { x: 0, y: 0 },
+    };
+    ship.velocity.x = ship.vx;
+    ship.velocity.y = ship.vy;
+    setCruiseThrust(ship, 1);
+    ship.thrusters.mainEngine = 1;
+    this._mouthBusyId = ship.id;
+    this.ships.push(ship);
+    // Keep arrive/leave mouth events spaced like hangar visitor cadence
+    this._bayApproachCooldown = Math.max(
+      this._bayApproachCooldown,
+      AMBIENT.BAY_APPROACH_SPAWN_MIN * 0.65
+    );
+    return ship;
+  }
+
   /**
    * @param {number} dt
    * @param {{
    *   player: object,
-   *   station: { x: number, y: number },
+   *   station: object,
+   *   hangarBay?: object|null,
    *   asteroids: object[],
    *   camera?: { x: number, y: number, viewRadius: number },
    * }} ctx
    */
   update(dt, ctx) {
     const player = ctx.player;
-    const sx = ctx.station?.x ?? STATION.WORLD_X;
-    const sy = ctx.station?.y ?? STATION.WORLD_Y;
+    const station = ctx.station;
+    const hangarBay = ctx.hangarBay || null;
+    const sx = station?.x ?? STATION.WORLD_X;
+    const sy = station?.y ?? STATION.WORLD_Y;
     const px = player?.position?.x ?? sx;
     const py = player?.position?.y ?? sy;
     const asteroids = ctx.asteroids || [];
@@ -218,8 +395,16 @@ export class AmbientTrafficSystem {
 
     this._maintainPolice(sx, sy, px, py, view);
 
+    // Hangar departures → nearby space actors
+    if (hangarBay?.drainSpaceEgress && station) {
+      for (const eg of hangarBay.drainSpaceEgress()) {
+        this.spawnBayEgress(station, eg);
+      }
+    }
+
     this._spawnCooldown -= dt;
     this._eventCooldown -= dt;
+    this._bayApproachCooldown -= dt;
 
     if (this._spawnCooldown <= 0 && this.ships.length < AMBIENT.MAX_SHIPS) {
       this._trySpawn(sx, sy, px, py, view);
@@ -228,11 +413,30 @@ export class AmbientTrafficSystem {
         Math.random() * (AMBIENT.SPAWN_INTERVAL_MAX - AMBIENT.SPAWN_INTERVAL_MIN);
     }
 
+    // Clear mouth mutex if owner gone
+    if (
+      this._mouthBusyId != null &&
+      !this.ships.some((s) => s.id === this._mouthBusyId)
+    ) {
+      this._mouthBusyId = null;
+    }
+
+    // Hangar empty-bay door fills → visible runway approaches (space view)
+    if (hangarBay && station) {
+      this._fulfillHangarArrivalRequests(station, hangarBay, px, py, view);
+    }
+
     for (const ship of this.ships) {
       ship.age += dt;
       ship.stateT += dt;
       // Age expired while visible → mark leave, do not cull yet
-      if (ship.age > ship.maxAge && !ship.pendingCull) {
+      if (
+        ship.age > ship.maxAge &&
+        !ship.pendingCull &&
+        ship.state !== 'bayApproach' &&
+        ship.state !== 'bayIngress' &&
+        ship.state !== 'bayEgress'
+      ) {
         if (this._isVisible(ship.x, ship.y, view)) {
           ship.pendingCull = true;
           ship.state = 'leave';
@@ -240,7 +444,18 @@ export class AmbientTrafficSystem {
           this._steerOffCamera(ship, view);
         }
       }
-      this._tickShip(ship, dt, { sx, sy, px, py, player, asteroids, peers: this.ships, view });
+      this._tickShip(ship, dt, {
+        sx,
+        sy,
+        px,
+        py,
+        player,
+        asteroids,
+        peers: this.ships,
+        view,
+        station,
+        hangarBay,
+      });
       // Keep velocity bag in sync for mount plume flow + exhaust
       if (ship.velocity) {
         ship.velocity.x = ship.vx;
@@ -270,7 +485,14 @@ export class AmbientTrafficSystem {
     const groupId = _nextGroup++;
     let placed = 0;
     for (let attempt = 0; attempt < 24 && placed < need; attempt++) {
-      const pos = this._pickOffscreenNearStation(sx, sy, px, py, view, role.ring || [600, 1500]);
+      const pos = this._pickOffscreenNearStation(
+        sx,
+        sy,
+        px,
+        py,
+        view,
+        role.ring || stationRing(600, 1500)
+      );
       if (!pos) continue;
       const heading = pos.orbitAng + Math.PI / 2;
       const ship = this._makeShip('police', role, pos.x, pos.y, heading, groupId, true);
@@ -568,12 +790,25 @@ export class AmbientTrafficSystem {
   }
 
   _tickShip(ship, dt, env) {
-    const { sx, sy, px, py, player, asteroids, peers, view } = env;
+    const { sx, sy, player, asteroids, peers, view, station, hangarBay } = env;
     ship.velocity.x = ship.vx;
     ship.velocity.y = ship.vy;
 
+    if (
+      ship.state === 'bayApproach' ||
+      ship.state === 'bayIngress' ||
+      ship.state === 'bayEgress' ||
+      ship.state === 'bayHold'
+    ) {
+      this._tickBayMouth(ship, dt, station, hangarBay);
+      ship.x += ship.vx * dt;
+      ship.y += ship.vy * dt;
+      ship.velocity.x = ship.vx;
+      ship.velocity.y = ship.vy;
+      return;
+    }
+
     if (ship.pendingCull || ship.state === 'leave') {
-      // Keep fleeing off-camera; refresh heading if still visible
       if (view && this._isVisible(ship.x, ship.y, view)) {
         this._steerOffCamera(ship, view);
       } else {
@@ -607,6 +842,7 @@ export class AmbientTrafficSystem {
       case 'cruise':
       case 'recon':
         this._tickLane(ship, dt, sx, sy);
+        this._maybeBeginBayApproach(ship, station, hangarBay);
         break;
       case 'deepCruise':
       case 'deepPatrol':
@@ -623,8 +859,134 @@ export class AmbientTrafficSystem {
     ship.velocity.y = ship.vy;
   }
 
+  _maybeBeginBayApproach(ship, station, hangarBay) {
+    if (!station || !hangarBay) return;
+    if (this._mouthBusyId != null) return;
+    if (ship.stateT < 8) return;
+    // Hangar drives mouth cadence via wantSpaceArrival; freighters only
+    // divert onto those requested lanes (backup if a dedicated spawn was delayed).
+    const requested = hangarBay.getSpaceArrivalRequestLanes?.() || [];
+    if (!requested.length) return;
+    if (Math.random() > 0.01) return;
+    const open = requested.filter((i) => station.padAvailable?.(i));
+    if (!open.length) return;
+    ship.targetLane = open[(Math.random() * open.length) | 0];
+    ship.state = 'bayApproach';
+    ship.stateT = 0;
+    this._mouthBusyId = ship.id;
+    this._bayApproachCooldown = Math.max(
+      this._bayApproachCooldown,
+      AMBIENT.BAY_APPROACH_SPAWN_MIN * 0.5
+    );
+  }
+
+  _tickBayMouth(ship, dt, station, hangarBay) {
+    if (!station) {
+      ship.state = 'leave';
+      return;
+    }
+    const pose = this.asStationPose(ship);
+
+    if (ship.state === 'bayEgress') {
+      ship.thrusters.mainEngine = 1;
+      ship.exitBurn = true;
+      const nose = -Math.PI / 2;
+      ship.angle = lerpAngle(ship.angle, nose, Math.min(1, 3 * dt));
+      const burnSpd = 210;
+      ship.vx = Math.cos(ship.angle) * burnSpd;
+      ship.vy = Math.sin(ship.angle) * burnSpd;
+      if (
+        station.isExitBurnFinished(pose) ||
+        ship.stateT > STATION.EXIT_BURN_MAX_SEC
+      ) {
+        ship.exitBurn = false;
+        ship.state = 'leave';
+        ship.stateT = 0;
+        ship.pendingCull = true;
+        if (this._mouthBusyId === ship.id) this._mouthBusyId = null;
+        const out = angleTo(ship.x - station.x, ship.y - station.y);
+        ship.angle = out;
+        setCruiseThrust(ship, 0.75);
+      }
+      return;
+    }
+
+    if (ship.state === 'bayHold') {
+      const greens = [];
+      for (let i = 0; i < 3; i++) {
+        if (station.padAvailable?.(i) && !hangarBay?.isPlayerBay?.(i)) {
+          greens.push(i);
+        }
+      }
+      const holdY = station.furthestApproachLightY() - 80;
+      const tx = station.x + Math.sin(ship.stateT * 0.4) * 40;
+      const desired = angleTo(tx - ship.x, holdY - ship.y);
+      ship.angle = lerpAngle(ship.angle, desired, Math.min(1, 2 * dt));
+      ship.vx = Math.cos(ship.angle) * 55;
+      ship.vy = Math.sin(ship.angle) * 55;
+      setCruiseThrust(ship, 0.25);
+      if (greens.length) {
+        ship.targetLane = greens[0];
+        ship.state = 'bayApproach';
+        ship.stateT = 0;
+      }
+      return;
+    }
+
+    const lane = ship.targetLane ?? 1;
+    // Own runway reservation still counts as available for this hull
+    if (!station.padAvailable?.(lane, pose) && ship.state !== 'bayIngress') {
+      ship.state = 'bayHold';
+      ship.stateT = 0;
+      return;
+    }
+
+    const tx = station.laneCenterWorldX(lane);
+
+    if (ship.state === 'bayApproach') {
+      const noseIn = Math.PI / 2;
+      const near =
+        dist(ship.x, ship.y, tx, station.stripeWorldY()) <
+        STATION.DOCK_RADIUS * 0.85;
+      const aim = near
+        ? noseIn
+        : angleTo(tx - ship.x, station.furthestApproachLightY() + 60 - ship.y);
+      ship.angle = lerpAngle(ship.angle, aim, Math.min(1, 2.2 * dt));
+      const approachSpd = Math.min(STATION.DOCK_MAX_SPEED * 0.85, 95);
+      ship.vx = Math.cos(ship.angle) * approachSpd;
+      ship.vy = Math.sin(ship.angle) * approachSpd;
+      setCruiseThrust(ship, 0.4);
+      if (station.shouldAutoIngress(pose, approachSpd)) {
+        ship.state = 'bayIngress';
+        ship.stateT = 0;
+      }
+      return;
+    }
+
+    // bayIngress
+    const noseIn = Math.PI / 2;
+    ship.angle = lerpAngle(ship.angle, noseIn, Math.min(1, 3 * dt));
+    ship.vx = (tx - ship.x) * 1.2;
+    ship.vy = 70;
+    setCruiseThrust(ship, 0.35);
+    const underRoof = ship.y > station.stripeWorldY() + STATION.EXIT_NEST;
+    if (underRoof || ship.stateT > 6) {
+      const ok = hangarBay?.acceptSpaceArrival?.(lane, ship.shipDef, 'hauler');
+      if (this._mouthBusyId === ship.id) this._mouthBusyId = null;
+      if (ok) {
+        ship.pendingCull = true;
+        ship.state = 'leave';
+      } else {
+        ship.state = 'bayHold';
+        ship.stateT = 0;
+        ship.y = station.furthestApproachLightY() - 40;
+        ship.vy = 0;
+      }
+    }
+  }
+
   _tickPatrol(ship, dt, sx, sy, player, peers) {
-    const ring = ROLE_BEHAVIOR[ship.classId]?.ring || [800, 1500];
+    const ring = ROLE_BEHAVIOR[ship.classId]?.ring || stationRing(800, 1500);
     const targetR = (ring[0] + ring[1]) * 0.5;
     ship.orbitAngle += (ship.isPolice ? 0.18 : 0.12) * dt;
     const tx = sx + Math.cos(ship.orbitAngle) * targetR;
@@ -853,9 +1215,11 @@ export class AmbientTrafficSystem {
 
   /**
    * @param {CanvasRenderingContext2D} ctx — world-space (camera already applied)
+   * @param {{ only?: object[] }} [opts] if `only` set, draw that subset
    */
-  render(ctx) {
-    for (const ship of this.ships) {
+  render(ctx, opts = {}) {
+    const list = opts.only || this.ships;
+    for (const ship of list) {
       ctx.save();
       ctx.translate(ship.x, ship.y);
       ctx.rotate(ship.angle);

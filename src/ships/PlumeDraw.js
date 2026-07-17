@@ -165,7 +165,8 @@ function engineIntensity(thrusters) {
 
 /**
  * Draw plumes for every equipped mainEngine / maneuverThruster mount.
- * Call before hull/cups so nozzles paint over the flame root.
+ * Caller owns depth: under flat hull (2D), or mid-height between angled
+ * side walls and raised deck (2.5D). Cups/bells still paint after.
  */
 export function drawMountPlumes(ctx, ship, itemOffset = null) {
   const t = ship?.thrusters;
