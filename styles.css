@@ -463,6 +463,26 @@ html, body {
   font-weight: 700;
 }
 
+.dev-panel-drag-handle {
+  cursor: grab;
+  touch-action: none;
+  user-select: none;
+  padding: 2px 0;
+  margin: -2px 0;
+}
+
+.dev-panel-dragging .dev-panel-drag-handle,
+.dev-panel-drag-handle:active {
+  cursor: grabbing;
+}
+
+.dev-bay-panel.dev-panel-floating,
+.hangar-edit-panel.dev-panel-floating {
+  position: fixed;
+  z-index: 26;
+  margin: 0;
+}
+
 .dev-bay-close {
   padding: 0 6px;
   font-size: 1rem;
@@ -547,6 +567,7 @@ html, body {
   letter-spacing: 2px;
   font-weight: 700;
   color: rgba(255, 180, 120, 0.95);
+  padding: 2px 0;
 }
 
 .hangar-edit-layers,
@@ -664,6 +685,10 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+}
+
+.dev-drawer-section.hidden {
+  display: none;
 }
 
 .dev-drawer-label {
@@ -1766,6 +1791,18 @@ html, body {
   color: rgba(100, 180, 255, 0.6);
   pointer-events: none;
   z-index: 5;
+}
+
+#fps-counter {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+  font-size: 0.75rem;
+  letter-spacing: 2px;
+  color: rgba(100, 180, 255, 0.55);
+  pointer-events: none;
+  z-index: 6;
+  font-variant-numeric: tabular-nums;
 }
 
 #pause-menu {

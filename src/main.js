@@ -1,6 +1,11 @@
 import { GameEngine } from './core/GameEngine.js';
 import { Settings } from './core/Settings.js';
 import { DevTools } from './dev/DevTools.js';
+import {
+  enableDevPanelDrag,
+  saveDevPanelPositions,
+  restoreDevPanelPositions,
+} from './dev/DevPanelDrag.js';
 import { HangarLayoutEditor } from './dev/HangarLayoutEditor.js';
 import { resolveLingerBays } from './world/hangar-layout.js';
 import { applyTitleMenuCss } from './ui/TitleLayoutRuntime.js';
@@ -99,11 +104,36 @@ function syncDevModeUi() {
     if (hangarEditPanel) hangarEditPanel.classList.add('hidden');
   }
   if (on) {
+    syncDevDrawerMode();
     syncSimSpeedUi();
     syncBayOptionsUi();
+    syncPlacePanelUi();
     syncTitleLayoutUi();
   }
   syncBpAuthorSliders();
+}
+
+/** Show only Dev drawer sections / panels relevant to the active game mode. */
+function syncDevDrawerMode() {
+  const mode = engine?.mode || 'title';
+  document
+    .querySelectorAll('#dev-drawer-body .dev-drawer-section[data-dev-modes]')
+    .forEach((sec) => {
+      const modes = (sec.dataset.devModes || '').split(/\s+/).filter(Boolean);
+      sec.classList.toggle('hidden', !modes.includes(mode));
+    });
+
+  if (mode !== 'title' && DevTools.titlePanelOpen) {
+    DevTools.titlePanelOpen = false;
+  }
+  if (mode !== 'hangar') {
+    if (DevTools.bayPanelOpen) DevTools.bayPanelOpen = false;
+    if (DevTools.placePanelOpen) DevTools.placePanelOpen = false;
+    if (HangarLayoutEditor.isActive()) {
+      HangarLayoutEditor.exit();
+      if (hangarEditPanel) hangarEditPanel.classList.add('hidden');
+    }
+  }
 }
 
 function syncBpAuthorSliders() {
@@ -465,6 +495,7 @@ function showPlayingUi() {
   hud.classList.remove('hidden');
   pauseMenu.classList.add('hidden');
   if (cornerUi) cornerUi.classList.remove('hidden');
+  syncDevModeUi();
 }
 
 function showHangarUi() {
@@ -509,6 +540,7 @@ function showBlueprintUi() {
   DevTools.bayPanelOpen = false;
   if (devBayPanel) devBayPanel.classList.add('hidden');
   syncBlueprintUi();
+  syncDevModeUi();
 }
 
 function startGame() {
@@ -938,7 +970,12 @@ function bayIsOffline(bayIndex) {
 
 function syncBayOptionsUi() {
   if (!devBayPanel) return;
-  const open = !!(Settings.isDevMode() && DevTools.bayPanelOpen && DevTools.drawerOpen);
+  const open = !!(
+    Settings.isDevMode() &&
+    DevTools.bayPanelOpen &&
+    DevTools.drawerOpen &&
+    engine.mode === 'hangar'
+  );
   devBayPanel.classList.toggle('hidden', !open);
   document.querySelectorAll('[data-bay-sel]').forEach((btn) => {
     const i = Number(btn.dataset.baySel);
@@ -1031,6 +1068,7 @@ const TITLE_SLIDERS = [
     fmt: (n) => String(Math.round(n)),
   },
   { id: 'title-mark-scale', key: 'markScale', fmt: (n) => n.toFixed(2) },
+  { id: 'title-mark-y', key: 'markOffsetY', fmt: (n) => String(Math.round(n)) },
   { id: 'title-stranger', key: 'strangerScale', fmt: (n) => n.toFixed(2) },
   { id: 'title-inthe', key: 'inTheScale', fmt: (n) => n.toFixed(2) },
   { id: 'title-galaxy', key: 'galaxyScale', fmt: (n) => n.toFixed(2) },
@@ -1038,6 +1076,7 @@ const TITLE_SLIDERS = [
   { id: 'title-menu-scale', key: 'menuScale', fmt: (n) => n.toFixed(2) },
   { id: 'title-menu-x', key: 'menuOffsetX', fmt: (n) => String(Math.round(n)) },
   { id: 'title-menu-y', key: 'menuOffsetY', fmt: (n) => String(Math.round(n)) },
+  { id: 'title-dof-blur', key: 'dofBlur', fmt: (n) => n.toFixed(1) },
   { id: 'title-bokeh', key: 'bokehScale', fmt: (n) => n.toFixed(2) },
 ];
 
@@ -1046,7 +1085,8 @@ function syncTitleLayoutUi() {
   const open = !!(
     Settings.isDevMode() &&
     DevTools.titlePanelOpen &&
-    DevTools.drawerOpen
+    DevTools.drawerOpen &&
+    engine.mode === 'title'
   );
   devTitlePanel.classList.toggle('hidden', !open);
   if (!open) return;
@@ -1083,8 +1123,14 @@ function wireTitleSliders() {
 wireTitleSliders();
 applyTitleMenuCss();
 
+enableDevPanelDrag(devTitlePanel);
+enableDevPanelDrag(devBayPanel);
+enableDevPanelDrag(devPlacePanel);
+enableDevPanelDrag(hangarEditPanel);
+restoreDevPanelPositions();
+
 document.getElementById('dev-title-layout-btn')?.addEventListener('click', () => {
-  if (!Settings.isDevMode()) return;
+  if (!Settings.isDevMode() || engine.mode !== 'title') return;
   if (!DevTools.drawerOpen) {
     DevTools.drawerOpen = true;
     if (devDrawer) devDrawer.classList.add('open');
@@ -1092,9 +1138,6 @@ document.getElementById('dev-title-layout-btn')?.addEventListener('click', () =>
   DevTools.bayPanelOpen = false;
   DevTools.placePanelOpen = false;
   DevTools.titlePanelOpen = !DevTools.titlePanelOpen;
-  if (DevTools.titlePanelOpen && engine.mode !== 'title') {
-    setDevStatus('Title Layout — switch to title screen to preview');
-  }
   syncBayOptionsUi();
   syncPlacePanelUi();
   syncTitleLayoutUi();
@@ -1105,6 +1148,7 @@ document.getElementById('dev-title-close')?.addEventListener('click', () => {
 });
 document.getElementById('dev-title-save')?.addEventListener('click', async () => {
   if (!Settings.isDevMode()) return;
+  saveDevPanelPositions();
   const r = await DevTools.saveTitleLayout();
   if (!r.ok) {
     await DevTools.exportText('title');
@@ -1112,7 +1156,7 @@ document.getElementById('dev-title-save')?.addEventListener('click', async () =>
       `Disk save failed (${r.error || 'unknown'}) — copied JS to clipboard. Restart dev-server.py if path was just allowlisted.`
     );
   } else {
-    setDevStatus(DevTools.status);
+    setDevStatus(`${DevTools.status} · panel pos saved`);
   }
   syncTitleLayoutUi();
 });
@@ -1127,7 +1171,8 @@ function syncPlacePanelUi() {
   const open = !!(
     Settings.isDevMode() &&
     DevTools.placePanelOpen &&
-    DevTools.drawerOpen
+    DevTools.drawerOpen &&
+    engine.mode === 'hangar'
   );
   if (devPlacePanel) devPlacePanel.classList.toggle('hidden', !open);
   if (!open) return;
@@ -1163,7 +1208,7 @@ function syncPlacePanelUi() {
 
 document.getElementById('dev-hangar-edit-btn')?.addEventListener('click', enterHangarEdit);
 document.getElementById('dev-bay-options-btn')?.addEventListener('click', () => {
-  if (!Settings.isDevMode()) return;
+  if (!Settings.isDevMode() || engine.mode !== 'hangar') return;
   if (!DevTools.drawerOpen) {
     DevTools.drawerOpen = true;
     if (devDrawer) devDrawer.classList.add('open');
@@ -1180,7 +1225,7 @@ document.getElementById('dev-bay-close')?.addEventListener('click', () => {
   syncBayOptionsUi();
 });
 document.getElementById('dev-place-btn')?.addEventListener('click', () => {
-  if (!Settings.isDevMode()) return;
+  if (!Settings.isDevMode() || engine.mode !== 'hangar') return;
   if (!DevTools.drawerOpen) {
     DevTools.drawerOpen = true;
     if (devDrawer) devDrawer.classList.add('open');
@@ -1296,8 +1341,11 @@ document.querySelectorAll('[data-bay-action]').forEach((btn) => {
 });
 document.getElementById('hangar-edit-done')?.addEventListener('click', exitHangarEdit);
 document.getElementById('hangar-edit-save')?.addEventListener('click', async () => {
+  saveDevPanelPositions();
   const r = await DevTools.saveHangar();
-  setDevStatus(DevTools.status);
+  setDevStatus(
+    r.ok ? `${DevTools.status} · panel pos saved` : DevTools.status
+  );
   if (!r.ok) await DevTools.exportText('hangar');
 });
 document.getElementById('hangar-edit-export')?.addEventListener('click', async () => {

@@ -64,7 +64,7 @@ src/
     data/visualTuning.js, data/mountLayouts.js   Dev bake targets
     index.js              Modular ship public API
   dev/
-    DevTools.js, DevSave.js, DevOverlay.js, BlueprintAuthoring.js, HangarLayoutEditor.js
+    DevTools.js, DevSave.js, DevOverlay.js, DevPanelDrag.js, BlueprintAuthoring.js, HangarLayoutEditor.js
   world/
     hangar-layout.js      Flavor props / linger / gossip (Dev bake target)
     place/                Place → Area → Feature registry (stations, ships, outposts, vessels)
@@ -169,6 +169,24 @@ src/
 - Ambient miner asteroid damage (visual cue only today)
 
 ### Shipped recently (context)
+- **v0.1.262** Unified nebula paint (title/hangar/space); sparse recipe kills dither weave
+- **v0.1.261** Hangar door/window spacefield weave fix (peephole zoom sparsify)
+- **v0.1.260** Title Layout wordmark+ship Offset Y (`markOffsetY`)
+- **v0.1.259** Dev pop-out panel positions save/restore with Title/Hangar Save
+- **v0.1.258** Title Blur > 0 keeps station (full-res capture → LO blur)
+- **v0.1.257** Title/zoom-out woven grid: sparse starfield + nebula (less dither mesh)
+- **v0.1.256** Title Blur 0 = sharp full-res; starfield zoom-out weave fix; bloom removed
+- **v0.1.255** Title DoF: fix LO pixel-weave; blur/bloom independent of bokeh
+- **v0.1.254** Dev pop-out panels draggable by title bar
+- **v0.1.253** Title Layout Look X/Y range ±5000
+- **v0.1.252** Dev drawer mode-scoped; Title Layout Blur/Bloom/Bokeh sliders
+- **v0.1.251** Title bg-sim: gentler XY sine bob
+- **v0.1.250** Title Layout zoom slider centered on 0.12 (0.02–0.22)
+- **v0.1.249** Title bg-sim: gentler zoom bob; center at saved zoom 0.12
+- **v0.1.248** Title DoF: restored LO dual-pass blur + bloom
+- **v0.1.247** Title DoF: LO upsample only (no CSS blur/bloom)
+- **v0.1.246** Title DoF: LO-res blur + upscale (fixes ~15 FPS title vs hangar)
+- **v0.1.245** Top-right real FPS counter (rAF average; ignores sim-speed clamps)
 - **v0.1.244** Title: remove showcase-ship flyaway cinematic; ENTER HANGAR / QUICK LAUNCH enter immediately
 - **v0.1.243** Dev Title Layout panel — camera/type/ship/menu/bokeh sliders; Save → `title-layout.js`; Reset to last save
 - **v0.1.242** Title: bokeh DoF backdrop; centerpiece afterburner takeoff on hangar/quick launch; GALAXY twinkles; softer STRANGER sweep
@@ -274,7 +292,7 @@ src/
 
 ## Dev Mode + Blueprint + Hangar editor
 
-**Dev Mode** (Settings toggle, default on): floating **DEV** drawer (` key) — sim speed, inspect, overlays, **Title Layout** (camera / wordmark / ship / buttons / bokeh; Save → `src/ui/title-layout.js`), hangar-edit entry, **Bay Options** side menu (multi-bay Service/Door/Elev/Pad/Empty·Occupy/On·Off/Reset), **Place** composer (presets / crane toggle / vessel scar & interior tests). Bake via `POST /dev/save` (allowlisted paths) or clipboard Export.
+**Dev Mode** (Settings toggle, default on): floating **DEV** drawer (` key), **scoped by game mode** — title: **Title Layout** only (camera / wordmark / ship / buttons / DoF blur·bokeh; Save → `src/ui/title-layout.js`); hangar: sim / inspect / overlays / edit layout / Bay Options / Place / vessel; flight: sim / inspect / overlays / vessel; blueprint & controls: sim / inspect / overlays (+ Blueprint Author in BP HUD). Bake via `POST /dev/save` (allowlisted paths) or clipboard Export.
 
 **Data files (machine-editable):**
 - `src/ships/data/visualTuning.js` — cup / plume / generic engine class scale

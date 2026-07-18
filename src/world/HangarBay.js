@@ -12650,7 +12650,6 @@ export class HangarBay {
     const vpH = BAY.VIEWPORT_H;
     const vpY = -BAY.HALF_H - 40;
     const pads = padCenters();
-    const { starfield, nebulaField, spaceX, spaceY, time, nebulae } = space;
 
     // One continuous space pass behind the north wall; each window clips a
     // different slice (not three re-centered copies of the same chunk).
@@ -12668,16 +12667,7 @@ export class HangarBay {
     ctx.clip();
 
     ctx.translate(midX, midY);
-    nebulaField.renderProcedural(ctx, spaceX, spaceY, time, cover, 0.55);
-    starfield.render(ctx, spaceX, spaceY, cover, time, 0.55);
-    if (nebulae?.length) {
-      ctx.save();
-      ctx.translate(-spaceX, -spaceY);
-      ctx.scale(0.12, 0.12);
-      ctx.translate(spaceX, spaceY);
-      nebulaField.renderWorldNebulae(ctx, nebulae, time);
-      ctx.restore();
-    }
+    this._paintHangarSpacefield(ctx, space, cover);
     ctx.restore();
   }
 
@@ -12690,7 +12680,6 @@ export class HangarBay {
     const vpH = BAY.VIEWPORT_H;
     const vpY = -BAY.HALF_H - 40;
     const pads = padCenters();
-    const { starfield, nebulaField, spaceX, spaceY, time, nebulae } = space;
 
     // Match window backdrop anchor exactly — doors peek into the same chunk
     const left = pads[0] - vpW / 2;
@@ -12699,7 +12688,6 @@ export class HangarBay {
     const midY = vpY + vpH / 2;
     const doorTop = -BAY.HALF_H;
     const doorH = BAY.DOOR_H;
-    const dh = BAY.DOOR_HALF;
     // Cover must reach door bottoms (south of window mid) without changing windows
     const cover = Math.max(
       Math.hypot(right - left, vpH) / 2 + 40,
@@ -12724,8 +12712,21 @@ export class HangarBay {
     ctx.clip();
 
     ctx.translate(midX, midY);
-    nebulaField.renderProcedural(ctx, spaceX, spaceY, time, cover, 0.55);
-    starfield.render(ctx, spaceX, spaceY, cover, time, 0.55);
+    this._paintHangarSpacefield(ctx, space, cover);
+    // Space-view apron pavement in the lower door aperture (ships draw above)
+    this._drawDoorApronPavement(ctx, cover);
+    ctx.restore();
+  }
+
+  /**
+   * Same ambient nebula + starfield path as title/flight (`paintAmbient`),
+   * plus world nebulae at a fixed peephole scale.
+   */
+  _paintHangarSpacefield(ctx, space, cover) {
+    const { starfield, nebulaField, spaceX, spaceY, time, nebulae } = space;
+    const zoom = 0.55;
+    nebulaField.paintAmbient(ctx, spaceX, spaceY, time, cover, zoom);
+    starfield.render(ctx, spaceX, spaceY, cover, time, zoom);
     if (nebulae?.length) {
       ctx.save();
       ctx.translate(-spaceX, -spaceY);
@@ -12734,9 +12735,6 @@ export class HangarBay {
       nebulaField.renderWorldNebulae(ctx, nebulae, time);
       ctx.restore();
     }
-    // Space-view apron pavement in the lower door aperture (ships draw above)
-    this._drawDoorApronPavement(ctx, cover);
-    ctx.restore();
   }
 
   /**

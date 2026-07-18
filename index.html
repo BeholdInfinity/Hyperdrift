@@ -96,7 +96,7 @@
       <div class="dev-drawer-stack">
         <button type="button" id="dev-drawer-toggle" class="dev-drawer-toggle" title="Toggle Dev drawer (` )">DEV</button>
         <div class="dev-drawer-body" id="dev-drawer-body">
-          <div class="dev-drawer-section">
+          <div class="dev-drawer-section" data-dev-modes="hangar playing controls blueprint">
             <span class="dev-drawer-label">SIM</span>
             <div class="hangar-sim-speed" role="group" aria-label="Simulation speed">
               <button type="button" class="hangar-sim-btn" data-sim-speed="0.5">SLOW</button>
@@ -107,27 +107,27 @@
               <span id="dev-sim-speed-readout" class="hangar-sim-speed-readout">1×</span>
             </div>
           </div>
-          <div class="dev-drawer-section">
+          <div class="dev-drawer-section" data-dev-modes="hangar playing controls blueprint">
             <span class="dev-drawer-label">INSPECT</span>
             <pre id="dev-inspect" class="dev-inspect">—</pre>
           </div>
-          <div class="dev-drawer-section">
+          <div class="dev-drawer-section" data-dev-modes="playing controls blueprint hangar">
             <span class="dev-drawer-label">OVERLAYS</span>
             <label class="dev-check"><input type="checkbox" id="dev-ov-mounts" /> Mounts</label>
             <label class="dev-check"><input type="checkbox" id="dev-ov-vel" /> Velocity</label>
             <label class="dev-check"><input type="checkbox" id="dev-ov-axes" /> Axes</label>
           </div>
-          <div class="dev-drawer-section">
+          <div class="dev-drawer-section" data-dev-modes="title">
             <span class="dev-drawer-label">TITLE</span>
             <button type="button" class="hangar-dev-btn" id="dev-title-layout-btn">Title Layout</button>
           </div>
-          <div class="dev-drawer-section">
+          <div class="dev-drawer-section" data-dev-modes="hangar">
             <span class="dev-drawer-label">HANGAR</span>
             <button type="button" class="hangar-dev-btn" id="dev-hangar-edit-btn">Edit layout</button>
             <button type="button" class="hangar-dev-btn" id="dev-bay-options-btn">Bay Options</button>
             <button type="button" class="hangar-dev-btn" id="dev-place-btn">Place</button>
           </div>
-          <div class="dev-drawer-section">
+          <div class="dev-drawer-section" data-dev-modes="hangar playing">
             <span class="dev-drawer-label">VESSEL</span>
             <button type="button" class="hangar-dev-btn" id="dev-enter-interior">Enter interior</button>
             <button type="button" class="hangar-dev-btn" id="dev-exit-interior">Exit interior</button>
@@ -170,12 +170,13 @@
         <p class="dev-title-hint">Live on title screen · Save bakes to disk</p>
         <div class="dev-title-scroll">
           <span class="dev-drawer-label">CAMERA</span>
-          <label class="dev-title-slider">Look X <input type="range" id="title-look-x" min="-2000" max="2000" step="10" /><span data-for="title-look-x">0</span></label>
-          <label class="dev-title-slider">Look Y <input type="range" id="title-look-y" min="-2000" max="2000" step="10" /><span data-for="title-look-y">0</span></label>
-          <label class="dev-title-slider">Zoom <input type="range" id="title-zoom" min="0.12" max="1.2" step="0.01" /><span data-for="title-zoom">0</span></label>
+          <label class="dev-title-slider">Look X <input type="range" id="title-look-x" min="-5000" max="5000" step="10" /><span data-for="title-look-x">0</span></label>
+          <label class="dev-title-slider">Look Y <input type="range" id="title-look-y" min="-5000" max="5000" step="10" /><span data-for="title-look-y">0</span></label>
+          <label class="dev-title-slider">Zoom <input type="range" id="title-zoom" min="0.02" max="0.22" step="0.01" /><span data-for="title-zoom">0</span></label>
           <label class="dev-title-slider">Rot ° <input type="range" id="title-rot" min="-180" max="180" step="1" /><span data-for="title-rot">0</span></label>
           <span class="dev-drawer-label">WORDMARK</span>
           <label class="dev-title-slider">All <input type="range" id="title-mark-scale" min="0.4" max="2" step="0.02" /><span data-for="title-mark-scale">1</span></label>
+          <label class="dev-title-slider">Offset Y <input type="range" id="title-mark-y" min="-400" max="400" step="4" /><span data-for="title-mark-y">0</span></label>
           <label class="dev-title-slider">Stranger <input type="range" id="title-stranger" min="0.4" max="2" step="0.02" /><span data-for="title-stranger">1</span></label>
           <label class="dev-title-slider">In The <input type="range" id="title-inthe" min="0.4" max="2.5" step="0.02" /><span data-for="title-inthe">1</span></label>
           <label class="dev-title-slider">Galaxy <input type="range" id="title-galaxy" min="0.4" max="2" step="0.02" /><span data-for="title-galaxy">1</span></label>
@@ -185,8 +186,9 @@
           <label class="dev-title-slider">Scale <input type="range" id="title-menu-scale" min="0.5" max="2" step="0.02" /><span data-for="title-menu-scale">1</span></label>
           <label class="dev-title-slider">Offset X <input type="range" id="title-menu-x" min="-400" max="400" step="4" /><span data-for="title-menu-x">0</span></label>
           <label class="dev-title-slider">Offset Y <input type="range" id="title-menu-y" min="-400" max="400" step="4" /><span data-for="title-menu-y">0</span></label>
-          <span class="dev-drawer-label">BOKEH</span>
-          <label class="dev-title-slider">Scale <input type="range" id="title-bokeh" min="0" max="3" step="0.05" /><span data-for="title-bokeh">1</span></label>
+          <span class="dev-drawer-label">DoF / BOKEH</span>
+          <label class="dev-title-slider" title="0 = sharp full-res BG; higher = soft DoF">Blur <input type="range" id="title-dof-blur" min="0" max="8" step="0.1" /><span data-for="title-dof-blur">0</span></label>
+          <label class="dev-title-slider" title="Floating out-of-focus orb overlay">Bokeh <input type="range" id="title-bokeh" min="0" max="3" step="0.05" /><span data-for="title-bokeh">1</span></label>
         </div>
         <div class="dev-bay-actions">
           <button type="button" class="hangar-dev-btn" id="dev-title-save">Save</button>
@@ -363,6 +365,8 @@
         <div id="zoom-readout">ZOOM: <span id="zoom-value">1.0</span>x</div>
         <div id="precision-readout"><span id="precision-value"></span></div>
     </div>
+
+    <div id="fps-counter" aria-live="off">-- FPS</div>
   </div>
 
   <!-- Inline so the stamp / changelog do not depend on cached ES modules -->

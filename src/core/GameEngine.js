@@ -61,6 +61,11 @@ import { TitleScreen } from '../ui/TitleScreen.js';
 const TITLE_DRIFT_SPEED = 52;
 /** How quickly the hangar-door space drift heading turns (rad / sec) */
 const TITLE_TURN_RATE = 0.12;
+/**
+ * Title DoF backdrop resolution vs screen.
+ * Full-res CSS blur was ~15 FPS; too-low LO without enough blur shows a pixel weave.
+ */
+const TITLE_DOF_RES = 0.5;
 
 const MANEUVER_THRUSTER_KEYS = [
   'aftPort',
@@ -125,9 +130,14 @@ export class GameEngine {
     this._titleFade = 0;
     this._titleHasDrawn = false;
     this._lastFrameDt = 1 / 60;
-    /** Offscreen buffer for title backdrop blur / DoF */
+    /** Title DoF: full-res capture + LO blur working buffers */
     this._titleDof = null;
     this._titleDofCtx = null;
+    this._titleDofLo = null;
+    this._titleDofLoCtx = null;
+    this._titleDofBlur = null;
+    this._titleDofBlurCtx = null;
+    this._titleDofScale = TITLE_DOF_RES;
     /** Soft out-of-focus orbs over the blurred title sim */
     this._titleBokeh = null;
     this._dockPos = { x: 0, y: 0 };
@@ -191,6 +201,10 @@ export class GameEngine {
     this._hudZoom = document.getElementById('zoom-value');
     this._hudPrecision = document.getElementById('precision-value');
     this._hudHangarZoom = document.getElementById('hangar-zoom-value');
+    this._fpsCounter = document.getElementById('fps-counter');
+    this._fpsFrames = 0;
+    this._fpsAccumMs = 0;
+    this._fpsLastTs = 0;
     this._pauseMenu = document.getElementById('pause-menu');
     this._fullscreenBtn = document.getElementById('fullscreen-btn');
     this._pauseFullscreenBtn = document.getElementById('pause-fullscreen-btn');
@@ -257,14 +271,28 @@ export class GameEngine {
   }
 
   _ensureTitleDof() {
-    const w = this.renderer.width | 0;
-    const h = this.renderer.height | 0;
-    if (!w || !h) return;
-    if (!this._titleDof || this._titleDof.width !== w || this._titleDof.height !== h) {
+    const fullW = this.renderer.width | 0;
+    const fullH = this.renderer.height | 0;
+    if (!fullW || !fullH) return;
+    const scale = TITLE_DOF_RES;
+    const loW = Math.max(2, Math.round(fullW * scale));
+    const loH = Math.max(2, Math.round(fullH * scale));
+    this._titleDofScale = scale;
+    if (!this._titleDof || this._titleDof.width !== fullW || this._titleDof.height !== fullH) {
       this._titleDof = document.createElement('canvas');
-      this._titleDof.width = w;
-      this._titleDof.height = h;
-      this._titleDofCtx = this._titleDof.getContext('2d');
+      this._titleDof.width = fullW;
+      this._titleDof.height = fullH;
+      this._titleDofCtx = this._titleDof.getContext('2d', { alpha: false });
+    }
+    if (!this._titleDofLo || this._titleDofLo.width !== loW || this._titleDofLo.height !== loH) {
+      this._titleDofLo = document.createElement('canvas');
+      this._titleDofLo.width = loW;
+      this._titleDofLo.height = loH;
+      this._titleDofLoCtx = this._titleDofLo.getContext('2d', { alpha: false });
+      this._titleDofBlur = document.createElement('canvas');
+      this._titleDofBlur.width = loW;
+      this._titleDofBlur.height = loH;
+      this._titleDofBlurCtx = this._titleDofBlur.getContext('2d', { alpha: false });
     }
   }
 
@@ -1427,6 +1455,8 @@ export class GameEngine {
 
   _loop(timestamp) {
     if (!this.running) return;
+
+    this._updateFps(timestamp);
 
     const rawDt = Math.min((timestamp - this.lastTime) / 1000, 0.05);
     this.lastTime = timestamp;
@@ -2711,7 +2741,7 @@ export class GameEngine {
     );
     if (this.camera.rotation) this.renderer.ctx.rotate(this.camera.rotation);
 
-    this.nebulaField.renderProcedural(
+    this.nebulaField.paintAmbient(
       this.renderer.ctx,
       cameraPos.x,
       cameraPos.y,
@@ -2809,49 +2839,80 @@ export class GameEngine {
     );
   }
 
-  /** Blurred live sim + soft bokeh orbs (wordmark/ship stay sharp on top). */
+  /** Live sim backdrop + optional DoF blur; bokeh orbs; wordmark/ship stay sharp. */
   _blitTitleDofBackdrop() {
-    this._ensureTitleDof();
-    if (!this._titleDof || !this._titleDofCtx) {
-      this._renderBackground({ fullscreen: true, includeWorldNebulae: true });
-      this._renderTitleWorld();
-      return;
-    }
-
-    const prev = this.renderer.ctx;
-    this.renderer.ctx = this._titleDofCtx;
-    this.renderer.beginFrame();
-    this._renderBackground({ fullscreen: true, includeWorldNebulae: true });
-    this._renderTitleWorld();
-    this.renderer.ctx = prev;
-
+    const blurAmt = Math.max(0, TITLE_LAYOUT.dofBlur ?? 0);
     const ctx = this.renderer.ctx;
     const w = this.renderer.width;
     const h = this.renderer.height;
+
+    const paintSharp = () => {
+      this.renderer.beginFrame();
+      this._renderBackground({ fullscreen: true, includeWorldNebulae: true });
+      this._renderTitleWorld();
+    };
+
+    // Blur 0 → sharp full-res direct to screen
+    if (blurAmt <= 0.05) {
+      paintSharp();
+      this._drawTitleBokeh(ctx, this.gameTime);
+      ctx.fillStyle = 'rgba(0,4,12,0.18)';
+      ctx.fillRect(0, 0, w, h);
+      return;
+    }
+
+    this._ensureTitleDof();
+    if (
+      !this._titleDofCtx ||
+      !this._titleDofLoCtx ||
+      !this._titleDofBlurCtx
+    ) {
+      paintSharp();
+      this._drawTitleBokeh(ctx, this.gameTime);
+      ctx.fillStyle = 'rgba(0,4,12,0.18)';
+      ctx.fillRect(0, 0, w, h);
+      return;
+    }
+
+    // Capture at full resolution (same centers/zoom as sharp path — station stays)
+    const prevCtx = this.renderer.ctx;
+    this.renderer.ctx = this._titleDofCtx;
+    try {
+      paintSharp();
+    } finally {
+      this.renderer.ctx = prevCtx;
+    }
+
+    const scale = this._titleDofScale || TITLE_DOF_RES;
+    const dw = this._titleDofLo.width;
+    const dh = this._titleDofLo.height;
+    const blur = Math.max(0.5, blurAmt * scale);
+
+    const lo = this._titleDofLoCtx;
+    lo.setTransform(1, 0, 0, 1, 0, 0);
+    lo.imageSmoothingEnabled = true;
+    if (lo.imageSmoothingQuality) lo.imageSmoothingQuality = 'high';
+    lo.fillStyle = '#000';
+    lo.fillRect(0, 0, dw, dh);
+    lo.drawImage(this._titleDof, 0, 0, dw, dh);
+
+    const bctx = this._titleDofBlurCtx;
+    bctx.setTransform(1, 0, 0, 1, 0, 0);
+    bctx.imageSmoothingEnabled = true;
+    if (bctx.imageSmoothingQuality) bctx.imageSmoothingQuality = 'high';
+    bctx.fillStyle = '#000';
+    bctx.fillRect(0, 0, dw, dh);
+    bctx.save();
+    bctx.filter = `blur(${blur.toFixed(2)}px)`;
+    bctx.drawImage(this._titleDofLo, 0, 0);
+    bctx.filter = 'none';
+    bctx.restore();
+
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, w, h);
-
-    // Dual-pass blur: soft plate + stronger bloom wash for bokeh depth
-    const blur = Math.max(0, TITLE_LAYOUT.dofBlur ?? 2.8);
-    const bloom = Math.max(0, TITLE_LAYOUT.dofBloom ?? 14);
-    const bokehMul = Number.isFinite(TITLE_LAYOUT.bokehScale)
-      ? Math.max(0, TITLE_LAYOUT.bokehScale)
-      : 1;
-    ctx.save();
-    if (blur * bokehMul > 0.05) {
-      ctx.filter = `blur(${blur * bokehMul}px)`;
-      ctx.drawImage(this._titleDof, 0, 0);
-      if (bloom * bokehMul > 0.05) {
-        ctx.globalAlpha = 0.42;
-        ctx.filter = `blur(${bloom * bokehMul}px)`;
-        ctx.drawImage(this._titleDof, 0, 0);
-        ctx.globalAlpha = 1;
-      }
-      ctx.filter = 'none';
-    } else {
-      ctx.drawImage(this._titleDof, 0, 0);
-    }
-    ctx.restore();
+    ctx.imageSmoothingEnabled = true;
+    if (ctx.imageSmoothingQuality) ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(this._titleDofBlur, 0, 0, dw, dh, 0, 0, w, h);
 
     this._drawTitleBokeh(ctx, this.gameTime);
 
@@ -3463,5 +3524,25 @@ export class GameEngine {
         this._hudPrecision.className = '';
       }
     }
+  }
+
+  /** Real rAF frame rate (unclamped; ignores sim-speed / pause). */
+  _updateFps(timestamp) {
+    if (!this._fpsCounter) return;
+    if (this._fpsLastTs > 0) {
+      const frameMs = timestamp - this._fpsLastTs;
+      // Ignore huge gaps (tab backgrounded / first frames after focus).
+      if (frameMs > 0 && frameMs < 1000) {
+        this._fpsFrames += 1;
+        this._fpsAccumMs += frameMs;
+        if (this._fpsAccumMs >= 500) {
+          const fps = Math.round((this._fpsFrames * 1000) / this._fpsAccumMs);
+          this._fpsCounter.textContent = `${fps} FPS`;
+          this._fpsFrames = 0;
+          this._fpsAccumMs = 0;
+        }
+      }
+    }
+    this._fpsLastTs = timestamp;
   }
 }

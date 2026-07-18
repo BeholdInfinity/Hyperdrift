@@ -103,9 +103,10 @@ export class TitleScreen {
     const floatY = Math.sin((time * Math.PI * 2) / TITLE_LOOP) * T.floatAmp;
     const breath = 1 + Math.sin((time * Math.PI * 2) / TITLE_LOOP + 0.6) * T.breath;
     const markMul = Math.max(0.05, L.markScale || 1);
+    const markY = Number.isFinite(L.markOffsetY) ? L.markOffsetY : 0;
     const scale = (Math.min(box.width, box.height) / DESIGN) * markMul;
     const cx = box.x + box.width * 0.5;
-    const cy = box.y + box.height * 0.5 + floatY;
+    const cy = box.y + box.height * 0.5 + floatY + markY;
 
     ctx.save();
     ctx.translate(cx, cy);
@@ -188,16 +189,12 @@ export class TitleScreen {
     }
     this._ship.velocity = { x: 0, y: 0 };
 
+    // No per-frame ctx.filter / shadowBlur — both were costly on the modular hull
     ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,0.75)';
-    ctx.shadowBlur = 24;
-    ctx.shadowOffsetY = 8;
     ctx.translate(x, y);
     ctx.scale(shipScale, shipScale);
     ctx.rotate(FACE_NORTH);
-    ctx.filter = 'brightness(1.22) contrast(1.08)';
     drawModularShip(ctx, this._ship, hangarShipView(FACE_NORTH));
-    ctx.filter = 'none';
     ctx.restore();
   }
 

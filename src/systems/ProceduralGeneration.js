@@ -76,19 +76,20 @@ export class ProceduralGeneration {
     const cy = chunk.y * WORLD.CHUNK_SIZE + rng.range(200, WORLD.CHUNK_SIZE - 200);
     const radius = rng.range(400, 900);
     const hue = rng.range(180, 320);
-    const depthAlpha = [0.06, 0.09, 0.12][depth - 1] || 0.08;
+    // Match ambient nebula recipe: fewer stronger blobs (avoids dither weave)
+    const depthAlpha = [0.1, 0.13, 0.16][depth - 1] || 0.12;
 
     chunk.nebulae.push({
       x: cx,
       y: cy,
       radius,
       hue,
-      alpha: rng.range(depthAlpha * 0.5, depthAlpha),
+      alpha: rng.range(depthAlpha * 0.7, depthAlpha),
       driftX: rng.range(-5, 5),
       driftY: rng.range(-5, 5),
       phase: rng.range(0, Math.PI * 2),
       depth,
-      blobs: Array.from({ length: rng.int(4, 8) }, () => ({
+      blobs: Array.from({ length: rng.int(2, 4) }, () => ({
         offsetX: rng.range(-radius * 0.5, radius * 0.5),
         offsetY: rng.range(-radius * 0.5, radius * 0.5),
         size: rng.range(radius * 0.3, radius * 0.8),

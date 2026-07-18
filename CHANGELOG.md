@@ -25,6 +25,145 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.262] — 2026-07-18
+
+### Fixed
+- Nebula woven-grid dither: one sparse stronger-blob recipe for all views (no zoom forks); shared `_fillBlob` / `paintAmbient`
+
+### Changed
+- Hangar windows/doors use the same `paintAmbient` path as title + space flight
+
+---
+
+## [0.1.261] — 2026-07-18
+
+### Fixed
+- Hangar door/window spacefield woven grid — nebula/star sparsify now covers peephole zoom (0.55), not only extreme title zoom-out
+
+---
+
+## [0.1.260] — 2026-07-18
+
+### Added
+- Title Layout: Offset Y slider for wordmark + showcase ship block (`markOffsetY`)
+
+---
+
+## [0.1.259] — 2026-07-18
+
+### Added
+- Dev pop-out panel positions persist on Title Layout / Hangar Save (localStorage; restore on load)
+
+---
+
+## [0.1.258] — 2026-07-18
+
+### Fixed
+- Title Blur > 0 no longer drops station / world layers — capture full-res (same camera centers), then downscale + blur
+
+---
+
+## [0.1.257] — 2026-07-18
+
+### Fixed
+- Woven-grid BG at title / extreme zoom-out: starfield drops far layers + caps tile stamps; procedural nebulae sparsified (was thousands of low-alpha gradient overlaps → GPU dither mesh)
+
+---
+
+## [0.1.256] — 2026-07-18
+
+### Fixed
+- Title Blur 0 is sharp full-res again (no LO upscale / forced soften)
+- Starfield “woven tapestry” at extreme zoom-out — thin far layers + crisp 1px dots instead of sub-pixel arc AA mesh
+
+### Removed
+- Title Bloom slider / pass
+
+---
+
+## [0.1.255] — 2026-07-18
+
+### Fixed
+- Title BG “woven grid” artifact — DoF blur/bloom no longer scaled by Bokeh; LO plate raised to 50% + high-quality upsample; bare upscale gets a tiny soften
+
+### Changed
+- Title Bloom uses additive glow wash (brights only); slider tooltips clarify Blur vs Bloom vs Bokeh
+
+---
+
+## [0.1.254] — 2026-07-18
+
+### Added
+- Dev pop-out panels (Title Layout, Bay Options, Place, Hangar Edit) — drag by title bar to reposition
+
+---
+
+## [0.1.253] — 2026-07-18
+
+### Changed
+- Title Layout Look X/Y slider range widened (±2000 → ±5000)
+
+---
+
+## [0.1.252] — 2026-07-18
+
+### Added
+- Title Layout Dev: Blur / Bloom / Bokeh sliders (`dofBlur`, `dofBloom`, `bokehScale`)
+
+### Changed
+- Dev drawer is mode-scoped — title only shows Title tools; hangar / flight / blueprint / controls each get their own sections (foreign panels close on mode change)
+
+---
+
+## [0.1.251] — 2026-07-18
+
+### Changed
+- Title bg-sim: relaxed XY sine bob (`bobAmpX` 48→22, `bobAmpY` 36→16)
+
+---
+
+## [0.1.250] — 2026-07-18
+
+### Changed
+- Title Layout Dev zoom slider re-centered on saved zoom 0.12 (range 0.02–0.22; was 0.12–1.2)
+
+---
+
+## [0.1.249] — 2026-07-18
+
+### Changed
+- Title bg-sim: zoom bob amplitude relaxed (`bobZoom` 0.012 → 0.004); center stays at saved layout zoom (0.12)
+
+---
+
+## [0.1.248] — 2026-07-18
+
+### Changed
+- Title DoF: restored LO dual-pass blur + bloom (reverted upsample-only cheap path)
+
+---
+
+## [0.1.247] — 2026-07-18
+
+### Changed
+- Title DoF: dropped CSS blur + bloom — soft look is LO render + bilinear upsample only
+
+---
+
+## [0.1.246] — 2026-07-18
+
+### Fixed
+- Title screen FPS: DoF backdrop now blurs at ~35% resolution then upscales (was dual full-res CSS blur); dropped per-frame showcase-ship canvas filter
+
+---
+
+## [0.1.245] — 2026-07-18
+
+### Added
+- Top-right FPS counter — real `requestAnimationFrame` rate (0.5s average; ignores sim-speed / pause clamps)
+
+---
+
 ## [0.1.244] — 2026-07-18
 
 ### Changed

@@ -311,7 +311,7 @@ Sparse NPC ships in open space (modular catalog defs). Density falls off with di
 | Jennings Station (overworld) | Industrial exterior (~4× hull); approach lights + Enter / auto edge dock | Done |
 | Settings / controls | Ship-only sandbox viewport with live bindings | Done |
 | Top-left | Radar | Placeholder |
-| Top-right | Systems (+ fullscreen) | Partial |
+| Top-right | Systems (+ fullscreen); FPS counter | Partial |
 | Bottom-left | Weapons | Placeholder |
 | Bottom-right | Navigation | Placeholder |
 | Center HUD | Speed, position, zoom | Done |
