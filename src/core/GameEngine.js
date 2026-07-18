@@ -44,6 +44,7 @@ import { DevTools } from '../dev/DevTools.js';
 import { drawDevOverlays } from '../dev/DevOverlay.js';
 import { HangarLayoutEditor } from '../dev/HangarLayoutEditor.js';
 import { blueprintAuthoring } from '../dev/BlueprintAuthoring.js';
+import { TITLE_LAYOUT } from '../ui/title-layout.js';
 import {
   placeRegistry,
   ensureVesselSimState,
@@ -54,10 +55,11 @@ import {
   applyHullScar,
   interactFeature,
 } from '../world/place/index.js';
+import { TitleScreen } from '../ui/TitleScreen.js';
 
-/** Slow title-screen drift (world units / sec) */
+/** Slow space-cam drift behind hangar bay doors (world units / sec) */
 const TITLE_DRIFT_SPEED = 52;
-/** How quickly the drift heading turns (rad / sec) */
+/** How quickly the hangar-door space drift heading turns (rad / sec) */
 const TITLE_TURN_RATE = 0.12;
 
 const MANEUVER_THRUSTER_KEYS = [
@@ -98,6 +100,8 @@ export class GameEngine {
     this.starfield = new Starfield();
     this.nebulaField = new NebulaField();
     this.speedStreaks = new SpeedStreaks();
+    this.titleScreen = new TitleScreen();
+    this.titleScreen.bindSpacer(document.getElementById('title-art-spacer'));
     this.hangarBay = new HangarBay();
     this.station = new Station();
     this.ambientTraffic = new AmbientTrafficSystem();
@@ -120,6 +124,12 @@ export class GameEngine {
     this._titleHeading = Math.random() * Math.PI * 2;
     this._titleFade = 0;
     this._titleHasDrawn = false;
+    this._lastFrameDt = 1 / 60;
+    /** Offscreen buffer for title backdrop blur / DoF */
+    this._titleDof = null;
+    this._titleDofCtx = null;
+    /** Soft out-of-focus orbs over the blurred title sim */
+    this._titleBokeh = null;
     this._dockPos = { x: 0, y: 0 };
     /** Bay index 0/1/2 where the controlled ship is seated */
     this.playerBayIndex = 1;
@@ -226,7 +236,89 @@ export class GameEngine {
     if (this._buildMeta) this._buildMeta.style.opacity = String(opacity);
   }
 
-  /** Begin the title-screen loop (fullscreen starfield + nebula drift). */
+  /**
+   * ENTER HANGAR / QUICK LAUNCH — immediate mode switch from title.
+   * @param {'hangar'|'play'} dest
+   * @returns {boolean}
+   */
+  requestTitleExit(dest) {
+    if (this.mode !== 'title') return false;
+    if (dest === 'hangar') {
+      this.beginHangar({ fromMenu: true });
+      if (typeof this.onEnterHangar === 'function') this.onEnterHangar();
+      return true;
+    }
+    if (dest === 'play') {
+      this.beginPlay();
+      if (typeof this.onLaunchComplete === 'function') this.onLaunchComplete();
+      return true;
+    }
+    return false;
+  }
+
+  _ensureTitleDof() {
+    const w = this.renderer.width | 0;
+    const h = this.renderer.height | 0;
+    if (!w || !h) return;
+    if (!this._titleDof || this._titleDof.width !== w || this._titleDof.height !== h) {
+      this._titleDof = document.createElement('canvas');
+      this._titleDof.width = w;
+      this._titleDof.height = h;
+      this._titleDofCtx = this._titleDof.getContext('2d');
+    }
+  }
+
+  _seedTitleBokeh() {
+    const orbs = [];
+    const colors = [
+      ['rgba(255,210,140,0.22)', 'rgba(255,160,80,0.06)'],
+      ['rgba(160,210,255,0.2)', 'rgba(80,140,220,0.05)'],
+      ['rgba(255,240,200,0.18)', 'rgba(200,160,100,0.04)'],
+      ['rgba(180,240,255,0.16)', 'rgba(60,160,220,0.04)'],
+    ];
+    for (let i = 0; i < 28; i++) {
+      const c = colors[i % colors.length];
+      orbs.push({
+        x: Math.random(),
+        y: Math.random(),
+        r: 18 + Math.random() * 70,
+        drift: 8 + Math.random() * 28,
+        spd: 0.12 + Math.random() * 0.28,
+        ph: Math.random() * Math.PI * 2,
+        core: c[0],
+        mid: c[1],
+      });
+    }
+    return orbs;
+  }
+
+  _drawTitleBokeh(ctx, time) {
+    if (!this._titleBokeh) this._titleBokeh = this._seedTitleBokeh();
+    const w = this.renderer.width;
+    const h = this.renderer.height;
+    const scale = Number.isFinite(TITLE_LAYOUT.bokehScale)
+      ? Math.max(0, TITLE_LAYOUT.bokehScale)
+      : 1;
+    if (scale <= 0.001) return;
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const o of this._titleBokeh) {
+      const x = o.x * w + Math.sin(time * o.spd + o.ph) * o.drift * scale;
+      const y = o.y * h + Math.cos(time * o.spd * 0.73 + o.ph) * o.drift * 0.65 * scale;
+      const r = Math.max(1, o.r * scale);
+      const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+      g.addColorStop(0, o.core);
+      g.addColorStop(0.4, o.mid);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** Begin the title-screen loop (live Jennings space sim + wordmark). */
   startTitle() {
     this.mode = 'title';
     this.running = true;
@@ -237,18 +329,102 @@ export class GameEngine {
     this._setTitleFade(0);
     this.lastTime = performance.now();
     this.input.consumeZoomDelta();
-    this.camera.position.set(0, 0);
-    this.camera.offset.set(0, 0);
-    this.camera.effectiveZoom = 1;
-    this.camera.userZoom = 1;
-    this.camera.targetUserZoom = 1;
-    this.camera.speedZoom = 1;
-    this.asteroidSystem.update(0, 0);
+    this._enterTitleSim({ fadeIn: true });
     requestAnimationFrame((t) => this._loop(t));
+  }
+
+  /**
+   * Live Jennings Station backdrop for the title screen.
+   * Ambient traffic + hangar LOD run; no player ship.
+   * @param {{ fadeIn?: boolean }} [opts]
+   */
+  _enterTitleSim({ fadeIn = false } = {}) {
+    this._clearPlaySession();
+    this._hangarSeq = null;
+    HangarLayoutEditor.exit();
+    this.simSpeed = 1;
+    this.paused = false;
+
+    syncHangarSidePadFromLayout(null);
+    this.playerBayIndex = 1;
+    this.hangarBay.reset(null, {
+      playerBayIndex: this.playerBayIndex,
+      placeId: placeRegistry.activePlaceId,
+    });
+    this.hangarBay.warmStartHeadless();
+    this.hangarBay.clearControlledPadAfterLaunch();
+    this.hangarBay.preferExternalDoorTraffic = true;
+    this._hangarLive = true;
+    this._hangarLodAccum = 0;
+
+    this.ambientTraffic.reset();
+    this.station.setBaySignals(this.hangarBay.getBaySignals());
+
+    this.camera.rotation = TITLE_LAYOUT.rotation;
+    this.camera.offset.set(0, 0);
+    this.camera.speedZoom = 1;
+    this._applyTitleCamera(this.gameTime || 0);
+    this._spaceCam.x = this.camera.position.x;
+    this._spaceCam.y = this.camera.position.y;
+    this.asteroidSystem.update(this.camera.position.x, this.camera.position.y);
+
+    // Seed a freighter on the runway so the title vignette always has motion
+    const view = {
+      x: this.camera.position.x,
+      y: this.camera.position.y,
+      viewRadius: TITLE_LAYOUT.trafficViewRadius,
+    };
+    this.ambientTraffic.spawnBayApproach(
+      this.station,
+      1,
+      null, // allow on-screen — title wants the approach visible
+      this.station.x,
+      this.station.y + 800
+    );
+    // Kick one update so seed bubble + approach exist on first paint
+    this.ambientTraffic.update(1 / 60, {
+      player: null,
+      station: this.station,
+      hangarBay: this.hangarBay,
+      asteroids: this.asteroidSystem.getActiveAsteroids(),
+      particles: this.particleSystem,
+      camera: view,
+    });
+
+    if (this._hangarHud) this._hangarHud.classList.add('hidden');
+    if (this._controlsHud) this._controlsHud.classList.add('hidden');
+    if (this._blueprintHud) this._blueprintHud.classList.add('hidden');
+    if (this._buildStamp) this._buildStamp.classList.remove('hidden');
+    this._setLaunchBtnVisible(false);
+    this._setDockHud(false);
+
+    if (fadeIn) this._setTitleFade(0);
+    else this._setTitleFade(1);
+  }
+
+  /** Sine-bob look-at + zoom for the title vignette (reads TITLE_LAYOUT live). */
+  _applyTitleCamera(time) {
+    const V = TITLE_LAYOUT;
+    const period = Math.max(0.5, V.bobPeriod || 10.5);
+    const w = (Math.PI * 2) / period;
+    const bob = Math.sin(time * w);
+    const bob2 = Math.sin(time * w * 0.73 + 1.1);
+    this.camera.position.set(
+      V.lookX + bob * V.bobAmpX,
+      V.lookY + bob2 * V.bobAmpY
+    );
+    this.camera.offset.set(0, 0);
+    const z = V.zoom + Math.sin(time * w * 0.55 + 0.4) * V.bobZoom;
+    this.camera.userZoom = z;
+    this.camera.targetUserZoom = z;
+    this.camera.speedZoom = 1;
+    this.camera.effectiveZoom = z;
+    this.camera.rotation = V.rotation;
   }
 
   /** Quick-launch into playable flight near Jennings Station. */
   beginPlay() {
+    this.camera.rotation = 0;
     this._clearPlaySession();
     const spawn = this.station.getExitSpawn();
     this.ship = new Ship(spawn.x, spawn.y);
@@ -306,6 +482,7 @@ export class GameEngine {
     entryTurret = null,
     targetBay = null,
   } = {}) {
+    this.camera.rotation = 0;
     this._spaceCam.x = this.camera.position.x;
     this._spaceCam.y = this.camera.position.y;
     this.input.consumeZoomDelta();
@@ -418,27 +595,11 @@ export class GameEngine {
     this.input.hangarPanEnabled = false;
     this.input.disable();
     this.input.consumeZoomDelta();
-    this._clearPlaySession();
     this.hangarBay.clearOps();
-    this._hangarLive = false;
-    // Never leave title frozen at simSpeed 0 from hangar edit.
-    this.simSpeed = 1;
-    HangarLayoutEditor.exit();
     this.mode = 'title';
     this.paused = false;
     this._titleHasDrawn = true;
-    this._setTitleFade(1);
-    this.camera.position.set(this._spaceCam.x, this._spaceCam.y);
-    this.camera.offset.set(0, 0);
-    this.camera.effectiveZoom = 1;
-    this.camera.userZoom = 1;
-    this.camera.targetUserZoom = 1;
-    this.camera.speedZoom = 1;
-    this.asteroidSystem.update(this._spaceCam.x, this._spaceCam.y);
-
-    if (this._hangarHud) this._hangarHud.classList.add('hidden');
-    if (this._buildStamp) this._buildStamp.classList.remove('hidden');
-    this._setLaunchBtnVisible(false);
+    this._enterTitleSim({ fadeIn: false });
   }
 
   /** Controls sandbox — ship only, no world. */
@@ -500,11 +661,7 @@ export class GameEngine {
     this.mode = 'title';
     this.paused = false;
     this._titleHasDrawn = true;
-    this._setTitleFade(1);
-    this.camera.position.set(this._spaceCam.x || 0, this._spaceCam.y || 0);
-    this.camera.effectiveZoom = 1;
-    this.camera.userZoom = 1;
-    this.camera.targetUserZoom = 1;
+    this._enterTitleSim({ fadeIn: false });
     return 'title';
   }
 
@@ -701,12 +858,7 @@ export class GameEngine {
     this.mode = 'title';
     this.paused = false;
     this._titleHasDrawn = true;
-    this._setTitleFade(1);
-    this.camera.position.set(this._spaceCam.x || 0, this._spaceCam.y || 0);
-    this.camera.effectiveZoom = 1;
-    this.camera.userZoom = 1;
-    this.camera.targetUserZoom = 1;
-    this.camera.speedZoom = 1;
+    this._enterTitleSim({ fadeIn: false });
     return 'title';
   }
 
@@ -719,25 +871,11 @@ export class GameEngine {
     }
     this.input.disable();
     this.input.consumeZoomDelta();
-    this._clearPlaySession();
     this.hangarBay.clearOps();
     this._hangarSeq = null;
-    this.simSpeed = 1;
     this.mode = 'title';
     this._titleHasDrawn = true;
-    this._setTitleFade(1);
-    this.camera.position.set(this._spaceCam.x || 0, this._spaceCam.y || 0);
-    this.camera.offset.set(0, 0);
-    this.camera.effectiveZoom = 1;
-    this.camera.userZoom = 1;
-    this.camera.targetUserZoom = 1;
-    this.camera.speedZoom = 1;
-    if (this._hangarHud) this._hangarHud.classList.add('hidden');
-    if (this._controlsHud) this._controlsHud.classList.add('hidden');
-    if (this._blueprintHud) this._blueprintHud.classList.add('hidden');
-    if (this._buildStamp) this._buildStamp.classList.remove('hidden');
-    this._setLaunchBtnVisible(false);
-    this._setDockHud(false);
+    this._enterTitleSim({ fadeIn: false });
   }
 
   _clearPlaySession() {
@@ -1312,6 +1450,7 @@ export class GameEngine {
     // Title always ticks (sim-speed pause must not leave a hangar zoom stuck on the backdrop).
     if (this.mode === 'title') {
       const deltaTime = Math.min(rawDt, 0.05);
+      this._lastFrameDt = deltaTime;
       this.gameTime += deltaTime;
       this._updateTitle(deltaTime);
     } else if (!this.paused && speed > 0) {
@@ -1357,18 +1496,77 @@ export class GameEngine {
   }
 
   _updateTitle(deltaTime) {
-    this._titleHeading += TITLE_TURN_RATE * deltaTime;
-    this.camera.position.x += Math.cos(this._titleHeading) * TITLE_DRIFT_SPEED * deltaTime;
-    this.camera.position.y += Math.sin(this._titleHeading) * TITLE_DRIFT_SPEED * deltaTime;
-    this.camera.offset.set(0, 0);
-    this.camera.userZoom = 1;
-    this.camera.targetUserZoom = 1;
-    this.camera.speedZoom = 1;
-    this.camera.effectiveZoom = 1;
+    this._applyTitleCamera(this.gameTime);
     this._spaceCam.x = this.camera.position.x;
     this._spaceCam.y = this.camera.position.y;
 
     this.asteroidSystem.update(this.camera.position.x, this.camera.position.y);
+    const asteroids = this.asteroidSystem.getActiveAsteroids();
+
+    // Keep hangar + ambient alive so bay traffic flies the runway
+    if (this._hangarLive) {
+      this.hangarBay.preferExternalDoorTraffic = true;
+      this.hangarBay.spaceTrafficActive = true;
+      this.hangarBay.update(deltaTime, null, {});
+      this.station.setBaySignals(this.hangarBay.getBaySignals());
+    }
+
+    this.ambientTraffic.update(deltaTime, {
+      player: null,
+      station: this.station,
+      hangarBay: this._hangarLive ? this.hangarBay : null,
+      asteroids,
+      particles: this.particleSystem,
+      camera: {
+        x: this.camera.position.x,
+        y: this.camera.position.y,
+        // Tight interest bubble so traffic seeds near Jennings (not deep space)
+        viewRadius: TITLE_LAYOUT.trafficViewRadius,
+      },
+    });
+
+    const reserveEntries = [];
+    for (const a of this.ambientTraffic.ships || []) {
+      if (a.state !== 'bayApproach' && a.state !== 'bayIngress') continue;
+      const pose = this.ambientTraffic.asStationPose?.(a) || {
+        position: { x: a.x, y: a.y },
+        angle: a.angle,
+        velocity: { x: a.vx, y: a.vy },
+        id: a.id,
+        shipDef: a.shipDef,
+      };
+      reserveEntries.push({
+        ship: pose,
+        speed: Math.hypot(a.vx || 0, a.vy || 0),
+        shipDef: a.shipDef,
+        isPlayer: false,
+        visitorId: a.classId || a.visitorId || 'hauler',
+      });
+    }
+    this.station.refreshLaneReservations(reserveEntries);
+    if (this._hangarLive) {
+      const claims = this.station.getLaneReservationClaims().map((c) => ({
+        ...c,
+        playerShip: null,
+      }));
+      this.hangarBay.syncSpaceApproachReservations(claims);
+    }
+
+    this.particleSystem.update(deltaTime);
+
+    // Keep a runway approach ship in the vignette when the mouth is free
+    const hasApproach = (this.ambientTraffic.ships || []).some(
+      (s) => s.state === 'bayApproach' || s.state === 'bayIngress'
+    );
+    if (!hasApproach && Math.random() < deltaTime * 0.12) {
+      this.ambientTraffic.spawnBayApproach(
+        this.station,
+        (Math.random() * 3) | 0,
+        null,
+        this.station.x,
+        this.station.y + 800
+      );
+    }
 
     if (this._titleHasDrawn && this._titleFade < 1) {
       this._setTitleFade(Math.min(1, this._titleFade + deltaTime / 0.7));
@@ -2511,6 +2709,7 @@ export class GameEngine {
       this.renderer.centerX + this.camera.offset.x,
       this.renderer.centerY + this.camera.offset.y
     );
+    if (this.camera.rotation) this.renderer.ctx.rotate(this.camera.rotation);
 
     this.nebulaField.renderProcedural(
       this.renderer.ctx,
@@ -2539,14 +2738,149 @@ export class GameEngine {
     }
   }
 
-  render() {
-    this.renderer.beginFrame();
+  /** Fullscreen Jennings space vignette used by the title screen. */
+  _renderTitleWorld() {
+    const baySignals = this.station.baySignals;
+    const ambientOccluded = [];
+    const ambientClear = [];
+    for (const a of this.ambientTraffic.ships || []) {
+      const pose = this.ambientTraffic.asStationPose?.(a) || {
+        position: { x: a.x, y: a.y },
+        angle: a.angle,
+        velocity: { x: a.vx, y: a.vy },
+        shipDef: a.shipDef,
+        id: a.id,
+      };
+      const spd = Math.hypot(a.vx || 0, a.vy || 0);
+      if (this.station.shouldOccludeShip(pose, spd)) ambientOccluded.push(a);
+      else ambientClear.push(a);
+    }
+    const anyOccluded = ambientOccluded.length > 0;
 
-    if (this.mode === 'title') {
+    this.renderer.renderWorldLayer((ctx) => {
+      this.station.render(ctx, {
+        time: this.gameTime,
+        ship: null,
+        speed: 0,
+        baySignals,
+        layer: anyOccluded ? 'under' : 'all',
+      });
+    }, this.camera);
+
+    this.renderer.renderAsteroids(
+      this.asteroidSystem.getActiveAsteroids(),
+      this.camera
+    );
+
+    this.renderer.renderWorldLayer((ctx) => {
+      this.ambientTraffic.render(ctx, { only: ambientOccluded });
+    }, this.camera);
+
+    if (anyOccluded) {
+      this.renderer.renderWorldLayer((ctx) => {
+        this.station.render(ctx, {
+          time: this.gameTime,
+          ship: null,
+          speed: 0,
+          baySignals,
+          layer: 'over',
+        });
+      }, this.camera);
+    }
+
+    this.renderer.renderWorldLayer((ctx) => {
+      this.ambientTraffic.render(ctx, { only: ambientClear });
+    }, this.camera);
+
+    this.renderer.renderWorldLayer((ctx) => {
+      this.station.render(ctx, {
+        time: this.gameTime,
+        ship: null,
+        speed: 0,
+        baySignals,
+        layer: 'bayBeacons',
+      });
+    }, this.camera);
+
+    this.renderer.renderParticles(
+      this.particleSystem.particles,
+      this.camera,
+      null
+    );
+  }
+
+  /** Blurred live sim + soft bokeh orbs (wordmark/ship stay sharp on top). */
+  _blitTitleDofBackdrop() {
+    this._ensureTitleDof();
+    if (!this._titleDof || !this._titleDofCtx) {
       this._renderBackground({ fullscreen: true, includeWorldNebulae: true });
+      this._renderTitleWorld();
+      return;
+    }
+
+    const prev = this.renderer.ctx;
+    this.renderer.ctx = this._titleDofCtx;
+    this.renderer.beginFrame();
+    this._renderBackground({ fullscreen: true, includeWorldNebulae: true });
+    this._renderTitleWorld();
+    this.renderer.ctx = prev;
+
+    const ctx = this.renderer.ctx;
+    const w = this.renderer.width;
+    const h = this.renderer.height;
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, w, h);
+
+    // Dual-pass blur: soft plate + stronger bloom wash for bokeh depth
+    const blur = Math.max(0, TITLE_LAYOUT.dofBlur ?? 2.8);
+    const bloom = Math.max(0, TITLE_LAYOUT.dofBloom ?? 14);
+    const bokehMul = Number.isFinite(TITLE_LAYOUT.bokehScale)
+      ? Math.max(0, TITLE_LAYOUT.bokehScale)
+      : 1;
+    ctx.save();
+    if (blur * bokehMul > 0.05) {
+      ctx.filter = `blur(${blur * bokehMul}px)`;
+      ctx.drawImage(this._titleDof, 0, 0);
+      if (bloom * bokehMul > 0.05) {
+        ctx.globalAlpha = 0.42;
+        ctx.filter = `blur(${bloom * bokehMul}px)`;
+        ctx.drawImage(this._titleDof, 0, 0);
+        ctx.globalAlpha = 1;
+      }
+      ctx.filter = 'none';
+    } else {
+      ctx.drawImage(this._titleDof, 0, 0);
+    }
+    ctx.restore();
+
+    this._drawTitleBokeh(ctx, this.gameTime);
+
+    // Slight darken so the sharp showcase ship / wordmark read on top
+    ctx.fillStyle = 'rgba(0,4,12,0.18)';
+    ctx.fillRect(0, 0, w, h);
+  }
+
+  render() {
+    if (this.mode === 'title') {
+      this._blitTitleDofBackdrop();
+      {
+        const spacer = document.getElementById('title-art-spacer');
+        const r = spacer?.getBoundingClientRect?.();
+        const rect = r
+          ? { x: r.left, y: r.top, width: r.width, height: r.height }
+          : null;
+        this.titleScreen.render(
+          this.renderer.ctx,
+          rect,
+          this.gameTime,
+          this._lastFrameDt
+        );
+      }
       this._titleHasDrawn = true;
       return;
     }
+
+    this.renderer.beginFrame();
 
     if (this.mode === 'hangar') {
       this._renderHangar();

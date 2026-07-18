@@ -14,6 +14,14 @@ import {
   cloneHangarLayout,
   setHangarLayout,
 } from '../world/hangar-layout.js';
+import { TITLE_LAYOUT } from '../ui/title-layout.js';
+import {
+  applyTitleLayout,
+  applyTitleMenuCss,
+  markTitleLayoutSaved,
+  resetTitleLayoutToSaved,
+  getTitleLayout,
+} from '../ui/TitleLayoutRuntime.js';
 import { SAVE_PATHS, saveToRepo, exportToClipboard } from './DevSave.js';
 
 function clone(o) {
@@ -57,6 +65,7 @@ export const DevTools = {
     tuning: false,
     mounts: false,
     hangar: false,
+    title: false,
   },
   /** @type {null|{ key: string, layout: 'bell'|'ultra', roleOrClass: string }} */
   selectedMount: null,
@@ -67,6 +76,8 @@ export const DevTools = {
   bayPanelOpen: false,
   /** Place composer side panel open */
   placePanelOpen: false,
+  /** Title Layout side panel open */
+  titlePanelOpen: false,
   /** Selected bay indices for Bay Options actions */
   baySel: [true, true, true],
   status: '',
@@ -314,10 +325,49 @@ export const DevTools = {
     return r;
   },
 
+  getTitleLayout() {
+    return getTitleLayout();
+  },
+
+  applyTitleLayout(partial = {}) {
+    applyTitleLayout(partial);
+    this.dirty.title = true;
+  },
+
+  resetTitleLayout() {
+    resetTitleLayoutToSaved();
+    this.dirty.title = false;
+    this.status = 'Title layout reset to last save';
+  },
+
+  serializeTitleLayout() {
+    const L = TITLE_LAYOUT;
+    const json = JSON.stringify(L, null, 2);
+    return (
+      '/**\n' +
+      ' * Title screen layout — camera vignette, wordmark/ship scales, menu pose, bokeh.\n' +
+      ' * Machine-editable via Dev Mode → Title Layout. Save overwrites this file.\n' +
+      ' */\n\n' +
+      `export const TITLE_LAYOUT = ${json};\n`
+    );
+  },
+
+  async saveTitleLayout() {
+    const r = await saveToRepo(SAVE_PATHS.titleLayout, this.serializeTitleLayout());
+    if (r.ok) {
+      this.dirty.title = false;
+      markTitleLayoutSaved();
+      applyTitleMenuCss();
+    }
+    this.status = r.ok ? 'Saved title-layout.js' : `Save failed: ${r.error}`;
+    return r;
+  },
+
   async exportText(kind) {
     let text = '';
     if (kind === 'tuning') text = this.serializeVisualTuning();
     else if (kind === 'mounts') text = this.serializeMountLayouts();
+    else if (kind === 'title') text = this.serializeTitleLayout();
     else text = this.serializeHangarLayout();
     const ok = await exportToClipboard(text);
     this.status = ok ? `Copied ${kind} to clipboard` : 'Clipboard failed';

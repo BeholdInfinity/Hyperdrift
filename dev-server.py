@@ -60,6 +60,7 @@ SAVE_ALLOWLIST = frozenset(
         "src/ships/data/visualTuning.js",
         "src/ships/data/mountLayouts.js",
         "src/world/hangar-layout.js",
+        "src/ui/title-layout.js",
     }
 )
 

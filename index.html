@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Hyperdrift</title>
+  <title>Stranger in the Galaxy</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Alfa+Slab+One&amp;family=Barlow+Condensed:wght@500;600;700&amp;family=Russo+One&amp;display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
@@ -28,12 +31,14 @@
 
     <div id="overlay">
       <div id="start-screen">
-        <h1>HYPERDRIFT</h1>
-        <p class="subtitle">Procedural Universe Prototype</p>
-        <button id="start-btn">ENTER HANGAR</button>
-        <button id="quick-launch-btn" class="secondary-btn">QUICK LAUNCH</button>
-        <button id="settings-title-btn" class="secondary-btn">SETTINGS</button>
-        <button id="blueprint-title-btn" class="secondary-btn" type="button">BLUEPRINT</button>
+        <!-- Spacer matches Canvas title badge; PNG is concept reference only -->
+        <div id="title-art-spacer" class="title-art-spacer" aria-hidden="true"></div>
+        <nav class="title-menu" aria-label="Main menu">
+          <button id="start-btn" class="panel-btn panel-btn-primary" type="button">ENTER HANGAR</button>
+          <button id="quick-launch-btn" class="panel-btn" type="button">QUICK LAUNCH</button>
+          <button id="settings-title-btn" class="panel-btn" type="button">SETTINGS</button>
+          <button id="blueprint-title-btn" class="panel-btn" type="button">BLUEPRINT</button>
+        </nav>
       </div>
       <div id="build-meta" class="build-meta">
         <p id="build-stamp" class="build-stamp">v0.1.42 · Last edit: loading…</p>
@@ -60,7 +65,7 @@
         <span class="hangar-zoom">ZOOM <span id="hangar-zoom-value">9.0</span>x</span>
       </div>
       <p class="hangar-hint">Click ship to select/control · LMB drag pans · LMB fires when selected · scroll zoom</p>
-      <button id="hangar-back-btn" class="menu-btn">Back to Title</button>
+      <button id="hangar-back-btn" class="menu-btn panel-btn" type="button">Back to Title</button>
       <button id="hangar-blueprint-btn" class="hangar-blueprint-btn" type="button">BLUEPRINT</button>
       <div id="hangar-edit-panel" class="hangar-edit-panel hidden">
         <div class="hangar-edit-head">HANGAR EDIT</div>
@@ -113,6 +118,10 @@
             <label class="dev-check"><input type="checkbox" id="dev-ov-axes" /> Axes</label>
           </div>
           <div class="dev-drawer-section">
+            <span class="dev-drawer-label">TITLE</span>
+            <button type="button" class="hangar-dev-btn" id="dev-title-layout-btn">Title Layout</button>
+          </div>
+          <div class="dev-drawer-section">
             <span class="dev-drawer-label">HANGAR</span>
             <button type="button" class="hangar-dev-btn" id="dev-hangar-edit-btn">Edit layout</button>
             <button type="button" class="hangar-dev-btn" id="dev-bay-options-btn">Bay Options</button>
@@ -152,6 +161,37 @@
           <input type="checkbox" id="dev-crane-authority" checked /> Player crane authority
         </label>
         <button type="button" class="hangar-dev-btn" id="dev-toggle-crane" title="Install/remove shared crane module">Toggle crane</button>
+      </div>
+      <div id="dev-title-panel" class="dev-bay-panel dev-title-panel hidden">
+        <div class="dev-bay-panel-head">
+          <span>TITLE LAYOUT</span>
+          <button type="button" class="dev-bay-close" id="dev-title-close" title="Close">×</button>
+        </div>
+        <p class="dev-title-hint">Live on title screen · Save bakes to disk</p>
+        <div class="dev-title-scroll">
+          <span class="dev-drawer-label">CAMERA</span>
+          <label class="dev-title-slider">Look X <input type="range" id="title-look-x" min="-2000" max="2000" step="10" /><span data-for="title-look-x">0</span></label>
+          <label class="dev-title-slider">Look Y <input type="range" id="title-look-y" min="-2000" max="2000" step="10" /><span data-for="title-look-y">0</span></label>
+          <label class="dev-title-slider">Zoom <input type="range" id="title-zoom" min="0.12" max="1.2" step="0.01" /><span data-for="title-zoom">0</span></label>
+          <label class="dev-title-slider">Rot ° <input type="range" id="title-rot" min="-180" max="180" step="1" /><span data-for="title-rot">0</span></label>
+          <span class="dev-drawer-label">WORDMARK</span>
+          <label class="dev-title-slider">All <input type="range" id="title-mark-scale" min="0.4" max="2" step="0.02" /><span data-for="title-mark-scale">1</span></label>
+          <label class="dev-title-slider">Stranger <input type="range" id="title-stranger" min="0.4" max="2" step="0.02" /><span data-for="title-stranger">1</span></label>
+          <label class="dev-title-slider">In The <input type="range" id="title-inthe" min="0.4" max="2.5" step="0.02" /><span data-for="title-inthe">1</span></label>
+          <label class="dev-title-slider">Galaxy <input type="range" id="title-galaxy" min="0.4" max="2" step="0.02" /><span data-for="title-galaxy">1</span></label>
+          <span class="dev-drawer-label">SHIP</span>
+          <label class="dev-title-slider">Scale <input type="range" id="title-ship" min="0.3" max="2.5" step="0.02" /><span data-for="title-ship">1</span></label>
+          <span class="dev-drawer-label">BUTTONS</span>
+          <label class="dev-title-slider">Scale <input type="range" id="title-menu-scale" min="0.5" max="2" step="0.02" /><span data-for="title-menu-scale">1</span></label>
+          <label class="dev-title-slider">Offset X <input type="range" id="title-menu-x" min="-400" max="400" step="4" /><span data-for="title-menu-x">0</span></label>
+          <label class="dev-title-slider">Offset Y <input type="range" id="title-menu-y" min="-400" max="400" step="4" /><span data-for="title-menu-y">0</span></label>
+          <span class="dev-drawer-label">BOKEH</span>
+          <label class="dev-title-slider">Scale <input type="range" id="title-bokeh" min="0" max="3" step="0.05" /><span data-for="title-bokeh">1</span></label>
+        </div>
+        <div class="dev-bay-actions">
+          <button type="button" class="hangar-dev-btn" id="dev-title-save">Save</button>
+          <button type="button" class="hangar-dev-btn" id="dev-title-reset">Reset</button>
+        </div>
       </div>
       <div id="dev-bay-panel" class="dev-bay-panel hidden">
         <div class="dev-bay-panel-head">
@@ -283,7 +323,7 @@
         <pre class="bp-inspector-body" id="bp-inspector-body"></pre>
       </section>
 
-      <button id="blueprint-back-btn" class="menu-btn">Back</button>
+      <button id="blueprint-back-btn" class="menu-btn panel-btn" type="button">Back</button>
     </div>
 
     <div id="controls-hud" class="hidden">
@@ -303,17 +343,17 @@
         </label>
         <p class="settings-toggle-hint">Dev drawer (`), hangar edit, Blueprint Author (mounts / Save)</p>
       </div>
-      <button id="controls-back-btn" class="menu-btn">Back</button>
+      <button id="controls-back-btn" class="menu-btn panel-btn" type="button">Back</button>
     </div>
 
     <button id="dock-hud" class="hidden" type="button">APPROACH BAY MOUTH · SLOW TO DOCK</button>
 
     <div id="pause-menu" class="hidden">
       <h2>PAUSED</h2>
-      <button id="resume-btn" class="menu-btn">Resume Game</button>
-      <button id="pause-fullscreen-btn" class="menu-btn">Enter Fullscreen</button>
-      <button id="settings-btn" class="menu-btn">Settings</button>
-      <button id="main-menu-btn" class="menu-btn">Return to Main Menu</button>
+      <button id="resume-btn" class="menu-btn panel-btn panel-btn-primary" type="button">Resume Game</button>
+      <button id="pause-fullscreen-btn" class="menu-btn panel-btn" type="button">Enter Fullscreen</button>
+      <button id="settings-btn" class="menu-btn panel-btn" type="button">Settings</button>
+      <button id="main-menu-btn" class="menu-btn panel-btn" type="button">Return to Main Menu</button>
       <p class="pause-hint">Press ESC to resume</p>
     </div>
 

@@ -70,6 +70,7 @@ export class Renderer {
       this.centerX + camera.offset.x,
       this.centerY + camera.offset.y
     );
+    if (camera.rotation) this.ctx.rotate(camera.rotation);
     this.ctx.scale(zoom, zoom);
     this.ctx.translate(-camera.position.x, -camera.position.y);
     callback(this.ctx);
@@ -83,6 +84,7 @@ export class Renderer {
       this.centerX + camera.offset.x,
       this.centerY + camera.offset.y
     );
+    if (camera.rotation) this.ctx.rotate(camera.rotation);
     this.ctx.scale(zoom, zoom);
     callback(this.ctx);
     this.ctx.restore();
@@ -99,7 +101,7 @@ export class Renderer {
 
     ctx.save();
     ctx.translate(screen.x, screen.y);
-    ctx.rotate(ship.angle);
+    ctx.rotate(ship.angle + (camera.rotation || 0));
     ctx.scale(camera.effectiveZoom * visualScale, camera.effectiveZoom * visualScale);
 
     this._drawShipBody(ctx, ship, view);

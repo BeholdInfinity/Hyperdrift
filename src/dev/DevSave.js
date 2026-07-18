@@ -7,6 +7,7 @@ const ALLOWED = new Set([
   'src/ships/data/visualTuning.js',
   'src/ships/data/mountLayouts.js',
   'src/world/hangar-layout.js',
+  'src/ui/title-layout.js',
 ]);
 
 /**
@@ -63,4 +64,5 @@ export const SAVE_PATHS = {
   visualTuning: 'src/ships/data/visualTuning.js',
   mountLayouts: 'src/ships/data/mountLayouts.js',
   hangarLayout: 'src/world/hangar-layout.js',
+  titleLayout: 'src/ui/title-layout.js',
 };

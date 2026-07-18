@@ -10,6 +10,8 @@ export class CameraSystem {
     this.targetUserZoom = 1;
     this.speedZoom = 1;
     this.effectiveZoom = 1;
+    /** World→screen rotation (rad). Title vignette uses this; play/hangar stay 0. */
+    this.rotation = 0;
   }
 
   update(shipPosition, shipVelocity, deltaTime, viewportRadius, zoomWheelDelta = 0) {
@@ -126,16 +128,38 @@ export class CameraSystem {
   }
 
   worldToScreen(worldX, worldY, screenCenterX, screenCenterY) {
+    let dx = (worldX - this.position.x) * this.effectiveZoom;
+    let dy = (worldY - this.position.y) * this.effectiveZoom;
+    const r = this.rotation || 0;
+    if (r) {
+      const c = Math.cos(r);
+      const s = Math.sin(r);
+      const rx = dx * c - dy * s;
+      const ry = dx * s + dy * c;
+      dx = rx;
+      dy = ry;
+    }
     return {
-      x: (worldX - this.position.x) * this.effectiveZoom + screenCenterX + this.offset.x,
-      y: (worldY - this.position.y) * this.effectiveZoom + screenCenterY + this.offset.y,
+      x: dx + screenCenterX + this.offset.x,
+      y: dy + screenCenterY + this.offset.y,
     };
   }
 
   screenToWorld(screenX, screenY, screenCenterX, screenCenterY) {
+    let dx = screenX - screenCenterX - this.offset.x;
+    let dy = screenY - screenCenterY - this.offset.y;
+    const r = this.rotation || 0;
+    if (r) {
+      const c = Math.cos(-r);
+      const s = Math.sin(-r);
+      const rx = dx * c - dy * s;
+      const ry = dx * s + dy * c;
+      dx = rx;
+      dy = ry;
+    }
     return {
-      x: (screenX - screenCenterX - this.offset.x) / this.effectiveZoom + this.position.x,
-      y: (screenY - screenCenterY - this.offset.y) / this.effectiveZoom + this.position.y,
+      x: dx / this.effectiveZoom + this.position.x,
+      y: dy / this.effectiveZoom + this.position.y,
     };
   }
 

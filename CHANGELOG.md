@@ -25,6 +25,89 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.244] — 2026-07-18
+
+### Changed
+- Title: removed showcase-ship flyaway / afterburner exit cinematic — ENTER HANGAR / QUICK LAUNCH switch modes immediately
+
+---
+
+## [0.1.243] — 2026-07-18
+
+### Added
+- Dev Mode **Title Layout** panel (title screen): live sliders for sim camera look/zoom/rotation, wordmark scale (all + STRANGER / IN THE / GALAXY), showcase ship scale, menu button scale/offset, bokeh scale — Save bakes `src/ui/title-layout.js`; Reset restores last save
+
+---
+
+## [0.1.242] — 2026-07-18
+
+### Changed
+- Title backdrop: bokeh depth-of-field (blurred live Jennings sim + soft orbs); wordmark and showcase ship stay sharp
+- ENTER HANGAR / QUICK LAUNCH: centerpiece ship climbs out with full afterburner plumes from the real draw path, then enters hangar / space
+- Wordmark: twinkles on GALAXY (not STRANGER); softer metallic light sweep on STRANGER
+
+---
+
+## [0.1.241] — 2026-07-18
+
+### Changed
+- Title wordmark: removed shooting-star swoosh; dedicated 2.5D default player-ship render (north-facing, behind type, scaled so title barely spills past the hull edges) — not part of the live Jennings sim
+
+---
+
+## [0.1.240] — 2026-07-18
+
+### Changed
+- Title screen: live Jennings Station space sim as backdrop (ambient traffic, asteroids, hangar runway activity); camera zoomed out, rotated so hangar mouth is top-right / runway runs down-left, with gentle position+zoom bob
+- Title wordmark overlay only (STRANGER / IN THE / GALAXY + shooting star); removed procedural badge art plate
+- Shooting-star loop fades at wrap (no hard pop)
+
+---
+
+## [0.1.239] — 2026-07-18
+
+### Changed
+- Title badge fidelity iteration toward concept PNG: Alfa Slab STRANGER with brushed-steel grain + deep copper extrusion; denser station/god-rays/window seeds from PNG analysis (never drawn as image); painterly nebula clouds; thicker energy swoosh; jagged asteroid lighting; icy GALAXY crystal face — kept metallic sweep + comet; same `#title-art-spacer` screenspace
+
+---
+
+## [0.1.238] — 2026-07-18
+
+### Changed
+- Title badge fidelity pass: anchored to former PNG screenspace (`#title-art-spacer`); brushed-steel STRANGER (orange backlight/extrusion); denser station city lights; opaque circular badge plate; thicker orbital energy swoosh; kept metallic sweep + comet
+
+---
+
+## [0.1.237] — 2026-07-18
+
+### Changed
+- Title badge rebuilt as layered procedural Canvas art (`src/ui/TitleScreen.js`) — PNG reference only
+- Layers: nebula/stars, planet+moon, asteroids, station, ships, STRANGER / GALAXY type, orange swoosh + comet, starburst
+
+---
+
+## [0.1.236] — 2026-07-18
+
+### Changed
+- Reverted first procedural Canvas title attempt; restored PNG logo temporarily
+
+---
+
+## [0.1.235] — 2026-07-18
+
+### Changed
+- *(Superseded)* First procedural title experiment
+
+---
+
+## [0.1.234] — 2026-07-18
+
+### Changed
+- Title screen branding: *Stranger in the Galaxy* logo centerpiece (from InspirationImages); removed “Procedural Universe Prototype” / Hyperdrift wordmark
+- Title / pause / Back / Changelog chrome restyled — riveted steel plate buttons, pulp amber primary, Barlow Condensed (industrial/worn + pulp sci-fi)
+
+---
+
 ## [0.1.233] — 2026-07-18
 
 ### Changed

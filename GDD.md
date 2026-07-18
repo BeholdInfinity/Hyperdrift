@@ -70,7 +70,7 @@ The hangar bay is the prototype seed of **Home Base**: the place you start a new
 | B1–B3 captain service checklist; pilot door lights + status tickers; B1/B3 exit + elevator; B2 rerolls; empty-bay cargo sweep; elevator shafts | |
 | Jennings Station exterior + pad status lights (paint + two floating runway rows; green / red / spin-red depart / spin-yellow elevator; runway safe-speed lane = pulse-green reserved + hangar approach anim) + apron thirds + approach lights (yellow chase / green-safe / red-fast / full blink / exit reverse) + depth-flip safe ingress + green-lane auto-dock; hangar↔space ship bridge; hangar sim LOD by human distance (Quick Launch + after launch); space-view door fills land on the runway at hangar visitor cadence | Hangar **room / set-dressing editor** (designer places props, 8-dir rotate, linger/gossip; Done saves layout) — see `PROJECT.md` |
 
-Entered from the title screen (**ENTER HANGAR**). **QUICK LAUNCH** skips straight to space near the station.
+Entered from the title screen (**ENTER HANGAR** → elevator raise). **QUICK LAUNCH** skips straight to space near the station.
 
 ### Cargo hardpoints (3×6)
 
@@ -306,7 +306,7 @@ Sparse NPC ships in open space (modular catalog defs). Density falls off with di
 
 | Region | Purpose | Status |
 |--------|---------|--------|
-| Title screen | Fullscreen live starfield + nebula; ENTER HANGAR / QUICK LAUNCH / SETTINGS; build stamp + Changelog reader; soft vignette | Done |
+| Title screen | Bokeh-blurred live Jennings Station space sim backdrop (ambient traffic, asteroids; camera bob + runway framing); *Stranger in the Galaxy* wordmark over dedicated 2.5D default ship (GALAXY twinkles; soft STRANGER metal sweep); ENTER HANGAR / QUICK LAUNCH enter hangar / space immediately; SETTINGS / BLUEPRINT (industrial plate buttons); build stamp + Changelog; Dev **Title Layout** tunes camera/type/ship/menu/bokeh and bakes to disk | Done |
 | Home Base hangar (Jennings Station) | Docked bay + B2 launch/land; industrial set; danger lights; B1–B3 captain checklists | Done (B2 request queue later) |
 | Jennings Station (overworld) | Industrial exterior (~4× hull); approach lights + Enter / auto edge dock | Done |
 | Settings / controls | Ship-only sandbox viewport with live bindings | Done |

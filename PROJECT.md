@@ -8,7 +8,7 @@ Browser-based 2D spaceflight prototype. Top-down semi-Newtonian physics, procedu
 
 **Easiest:** double-click [`start-game.bat`](start-game.bat) in the project folder. It starts a local server, **waits until the page is actually ready**, then opens your browser.
 
-Uses `start-game.ps1` under the hood so Python is found reliably when launched from Explorer (not only from a dev terminal). Serves via `dev-server.py` with **no-cache** headers (plain `http.server` can leave browsers stuck on old JS modules). Title screen bottom-left shows **vX.Y.Z · Last edit:** from `/build-info.json` (version in `src/version.js`, newest project file mtime), plus an underlined **Changelog** link that opens `CHANGELOG.md` newest-first.
+Uses `start-game.ps1` under the hood so Python is found reliably when launched from Explorer (not only from a dev terminal). Serves via `dev-server.py` with **no-cache** headers (plain `http.server` can leave browsers stuck on old JS modules). Title runs the live Jennings Station space sim as a bokeh-blurred backdrop with a *Stranger in the Galaxy* wordmark + showcase ship overlay (`src/ui/TitleScreen.js`; logo PNG is concept art). Bottom-left shows **vX.Y.Z · Last edit:** from `/build-info.json` (version in `src/version.js`, newest project file mtime), plus an underlined **Changelog** link that opens `CHANGELOG.md` newest-first.
 
 **Manual:**
 
@@ -35,9 +35,15 @@ Note: `start-game.bat` waits for the server to respond before opening the browse
 
 ```
 index.html, styles.css, dev-server.py, start-game.bat / .ps1, stop-game.bat
+assets/branding/          Brand exports (logo PNG concept; title uses live sim + wordmark)
+InspirationImages/        Reference art (logo concept, hero shots)
 src/
   main.js                 Entry point, UI wiring
   version.js              Prototype semver (title stamp + build-info)
+  ui/
+    TitleScreen.js        Title wordmark + 2.5D starter ship
+    title-layout.js       Bakeable title framing (camera / type / ship / menu / bokeh)
+    TitleLayoutRuntime.js Live apply + reset helpers for Title Layout Dev panel
   core/
     GameEngine.js         Main loop, title/play modes, system orchestration
     Constants.js          Physics, camera, ship, world tuning
@@ -83,7 +89,7 @@ src/
 - **Plume flow** (`computePlumeFlow`) — leading cue/wash + crosswind lean from relative wind (`−velocity`); trailing stretch; ship-local particles on the player, world-space on visitors/ambient
 - **Modular ships** — `src/ships/`: swap groups, full section/item ID matrix (parametric), `createPlayerStarter()`, shared `ShipRenderer` (top-down + 16 angled views)
 - **Mk2+ vessel interiors** — Place graph + simBindings (hull/fuel/ammo); enter when player-manned (space/hangar/unseat); crew ticks logistics in background; interior hull heal clamps to scar ceiling; exterior pad restore clears scars. Walker TBD (`shipInterior` mode).
-- **Modes** — `title` (drifting backdrop), `playing` (flight), `hangar` (active Place hangar), `controls` (ship-only settings sandbox), `blueprint`
+- **Modes** — `title` (bokeh Jennings vignette + wordmark/ship), `playing` (flight), `hangar` (active Place hangar), `controls` (ship-only settings sandbox), `blueprint`
 - **Future modes (vision)** — `shipInterior` / `derelict` (shared 2.5D walker), `dialogue` (portrait overlay); see [`VISION.md`](VISION.md) Presentation Layers
 - **Future-ready** for multiple ships, AI, trading, mining, missions, Home Base launch/extract, narrative runtime, networking, save/load
 
@@ -101,14 +107,14 @@ src/
 | Ship-local exhaust particles; camera tracks post-physics pose | Done |
 | Dorsal 360° combat turret (LMB, 3/s) + nose mining laser (RMB) | Done |
 | Circular viewport + corner UI placeholders | Done |
-| Title screen (ENTER HANGAR / QUICK LAUNCH / SETTINGS; version stamp) | Done |
+| Title screen (bokeh-blurred Jennings sim + *Stranger* wordmark/ship; ENTER HANGAR / QUICK LAUNCH / SETTINGS / BLUEPRINT; version stamp) | Done |
 | Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Place-hydrated kit; random player bay; free-look pan; modular visitors; Dev Bay Options + **Place** composer; 2.5D elevator; title elevator raise; **ships draw in angled 2.5D** |
 | Place → Area → Feature registry (stations / capital / outpost / vessel) | Groundwork (v0.1.232); hangar first; other rooms stubbed; vessel interior contract + Dev tests |
 | Jennings Station overworld exterior + dock prompt (4× scale via `STATION.SCALE`) | Done |
 | Ambient space traffic (modular; cops always near station; off-screen spawn/despawn) | Done (v0.1.150–154); further tuning OK |
 | Settings controls sandbox (ship-only viewport) | Done |
 | Blueprint (player Upgrade UI + Dev Author) | Done — always available; Dev Mode adds mount drag / tuning Save |
-| Dev Mode drawer + hangar layout editor + bake-back | Done (v0.1.159); Bay Options panel (v0.1.160); bay unit spacing drag (v0.1.173); unified prop categories (v0.1.174) |
+| Dev Mode drawer + hangar layout editor + bake-back | Done (v0.1.159); Bay Options panel (v0.1.160); bay unit spacing drag (v0.1.173); unified prop categories (v0.1.174); **Title Layout** panel (v0.1.243) |
 | Procedural asteroids + nebulae | Done |
 | 7-layer starfield, 3-layer nebulae | Done |
 | Speed streaks (velocity-opposed, screen-space) | Done |
@@ -163,6 +169,16 @@ src/
 - Ambient miner asteroid damage (visual cue only today)
 
 ### Shipped recently (context)
+- **v0.1.244** Title: remove showcase-ship flyaway cinematic; ENTER HANGAR / QUICK LAUNCH enter immediately
+- **v0.1.243** Dev Title Layout panel — camera/type/ship/menu/bokeh sliders; Save → `title-layout.js`; Reset to last save
+- **v0.1.242** Title: bokeh DoF backdrop; centerpiece afterburner takeoff on hangar/quick launch; GALAXY twinkles; softer STRANGER sweep
+- **v0.1.241** Title wordmark: 2.5D default ship behind type (no swoosh); live Jennings sim backdrop unchanged
+- **v0.1.240** Title: live Jennings space sim backdrop + wordmark/shooting-star overlay (camera bob + runway framing)
+- **v0.1.239** Title badge fidelity iteration (brushed steel + copper STRANGER, denser station/nebula/swoosh toward PNG)
+- **v0.1.238** Title badge fidelity: PNG screenspace anchor, steel STRANGER, denser station, opaque badge plate
+- **v0.1.237** Title: procedural Canvas *Stranger* badge (PNG reference only)
+- **v0.1.236** Reverted first procedural title attempt
+- **v0.1.234** Title industrial/pulp plate menus (pause/changelog match)
 - **v0.1.233** Bay weld VFX: tip-aimed sparks; under-hull glow; over-layer plating wash on 2.5D ship bands
 - **v0.1.232** Place→Area→Feature groundwork; hangar from Place kit; vessel interior contract; crane-gated turrets; Dev Place panel
 - **v0.1.231** South high-speed approach no longer occludes under hangar roof
@@ -258,7 +274,7 @@ src/
 
 ## Dev Mode + Blueprint + Hangar editor
 
-**Dev Mode** (Settings toggle, default on): floating **DEV** drawer (` key) — sim speed, inspect, overlays, hangar-edit entry, **Bay Options** side menu (multi-bay Service/Door/Elev/Pad/Empty·Occupy/On·Off/Reset), **Place** composer (presets / crane toggle / vessel scar & interior tests). Bake via `POST /dev/save` (allowlisted paths) or clipboard Export.
+**Dev Mode** (Settings toggle, default on): floating **DEV** drawer (` key) — sim speed, inspect, overlays, **Title Layout** (camera / wordmark / ship / buttons / bokeh; Save → `src/ui/title-layout.js`), hangar-edit entry, **Bay Options** side menu (multi-bay Service/Door/Elev/Pad/Empty·Occupy/On·Off/Reset), **Place** composer (presets / crane toggle / vessel scar & interior tests). Bake via `POST /dev/save` (allowlisted paths) or clipboard Export.
 
 **Data files (machine-editable):**
 - `src/ships/data/visualTuning.js` — cup / plume / generic engine class scale

@@ -26,7 +26,7 @@
 | # | Question | Why it matters |
 |---|----------|----------------|
 | 1.1 | **Tone mix:** how much comedy (bot, hangar chaos) vs grit (debt, betrayal, abandonment)? | Audio, UI, death penalties, how funny failure is |
-| 1.2 | **Working title lock-in:** *Stranger in the Galaxy* forever, or rename later? Repo stays *Hyperdrift* for now? | Branding, repo, player expectations |
+| 1.2 | **Working title lock-in:** *Stranger in the Galaxy* forever, or rename later? Repo stays *Hyperdrift* for now? | Branding, repo, player expectations — **partial:** title wordmark + live Jennings backdrop ship *Stranger*; logo PNG is concept only; repo/folder still Hyperdrift |
 | 1.3 | **Target audience:** cozy builders, hardcore sandbox sim fans, story RPG players, or blend? | Difficulty, session length, onboarding |
 
 ---

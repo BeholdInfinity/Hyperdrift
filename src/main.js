@@ -3,6 +3,7 @@ import { Settings } from './core/Settings.js';
 import { DevTools } from './dev/DevTools.js';
 import { HangarLayoutEditor } from './dev/HangarLayoutEditor.js';
 import { resolveLingerBays } from './world/hangar-layout.js';
+import { applyTitleMenuCss } from './ui/TitleLayoutRuntime.js';
 import {
   placeRegistry,
   setPlayerCraneAuthority,
@@ -23,6 +24,7 @@ const hangarBlueprintBtn = document.getElementById('hangar-blueprint-btn');
 const hangarSimSpeedReadout = document.getElementById('dev-sim-speed-readout');
 const devBayPanel = document.getElementById('dev-bay-panel');
 const devPlacePanel = document.getElementById('dev-place-panel');
+const devTitlePanel = document.getElementById('dev-title-panel');
 const hangarHud = document.getElementById('hangar-hud');
 const controlsHud = document.getElementById('controls-hud');
 const blueprintHud = document.getElementById('blueprint-hud');
@@ -80,9 +82,11 @@ function syncDevModeUi() {
       DevTools.drawerOpen = false;
       DevTools.bayPanelOpen = false;
       DevTools.placePanelOpen = false;
+      DevTools.titlePanelOpen = false;
       devDrawer.classList.remove('open');
       if (devBayPanel) devBayPanel.classList.add('hidden');
       if (devPlacePanel) devPlacePanel.classList.add('hidden');
+      if (devTitlePanel) devTitlePanel.classList.add('hidden');
     }
   }
   document.querySelectorAll('.bp-dev-only').forEach((el) => {
@@ -97,6 +101,7 @@ function syncDevModeUi() {
   if (on) {
     syncSimSpeedUi();
     syncBayOptionsUi();
+    syncTitleLayoutUi();
   }
   syncBpAuthorSliders();
 }
@@ -507,13 +512,11 @@ function showBlueprintUi() {
 }
 
 function startGame() {
-  showPlayingUi();
-  engine.beginPlay();
+  engine.requestTitleExit('play');
 }
 
 function openHangar() {
-  engine.beginHangar({ fromMenu: true });
-  showHangarUi();
+  engine.requestTitleExit('hangar');
 }
 
 function leaveHangar() {
@@ -846,9 +849,11 @@ if (devDrawerToggle && devDrawer) {
     if (!DevTools.drawerOpen) {
       DevTools.bayPanelOpen = false;
       DevTools.placePanelOpen = false;
+      DevTools.titlePanelOpen = false;
     }
     syncBayOptionsUi();
     syncPlacePanelUi();
+    syncTitleLayoutUi();
   });
 }
 
@@ -1013,6 +1018,111 @@ function runBayAction(action) {
   syncBayOptionsUi();
 }
 
+/** @type {{ id: string, key: string, map?: (n:number)=>number, unmap?: (n:number)=>number, fmt?: (n:number)=>string }[]} */
+const TITLE_SLIDERS = [
+  { id: 'title-look-x', key: 'lookX', fmt: (n) => String(Math.round(n)) },
+  { id: 'title-look-y', key: 'lookY', fmt: (n) => String(Math.round(n)) },
+  { id: 'title-zoom', key: 'zoom', fmt: (n) => n.toFixed(2) },
+  {
+    id: 'title-rot',
+    key: 'rotation',
+    map: (deg) => (deg * Math.PI) / 180,
+    unmap: (rad) => (rad * 180) / Math.PI,
+    fmt: (n) => String(Math.round(n)),
+  },
+  { id: 'title-mark-scale', key: 'markScale', fmt: (n) => n.toFixed(2) },
+  { id: 'title-stranger', key: 'strangerScale', fmt: (n) => n.toFixed(2) },
+  { id: 'title-inthe', key: 'inTheScale', fmt: (n) => n.toFixed(2) },
+  { id: 'title-galaxy', key: 'galaxyScale', fmt: (n) => n.toFixed(2) },
+  { id: 'title-ship', key: 'shipScale', fmt: (n) => n.toFixed(2) },
+  { id: 'title-menu-scale', key: 'menuScale', fmt: (n) => n.toFixed(2) },
+  { id: 'title-menu-x', key: 'menuOffsetX', fmt: (n) => String(Math.round(n)) },
+  { id: 'title-menu-y', key: 'menuOffsetY', fmt: (n) => String(Math.round(n)) },
+  { id: 'title-bokeh', key: 'bokehScale', fmt: (n) => n.toFixed(2) },
+];
+
+function syncTitleLayoutUi() {
+  if (!devTitlePanel) return;
+  const open = !!(
+    Settings.isDevMode() &&
+    DevTools.titlePanelOpen &&
+    DevTools.drawerOpen
+  );
+  devTitlePanel.classList.toggle('hidden', !open);
+  if (!open) return;
+  const L = DevTools.getTitleLayout();
+  for (const s of TITLE_SLIDERS) {
+    const el = document.getElementById(s.id);
+    if (!el) continue;
+    const raw = L[s.key];
+    const shown = s.unmap ? s.unmap(raw) : raw;
+    el.value = String(shown);
+    const read = document.querySelector(`[data-for="${s.id}"]`);
+    if (read) read.textContent = (s.fmt || String)(shown);
+  }
+}
+
+function wireTitleSliders() {
+  for (const s of TITLE_SLIDERS) {
+    const el = document.getElementById(s.id);
+    if (!el) continue;
+    el.addEventListener('input', () => {
+      if (!Settings.isDevMode()) return;
+      const n = Number(el.value);
+      const value = s.map ? s.map(n) : n;
+      DevTools.applyTitleLayout({ [s.key]: value });
+      const read = document.querySelector(`[data-for="${s.id}"]`);
+      if (read) read.textContent = (s.fmt || String)(n);
+      setDevStatus(
+        DevTools.dirty.title ? `title ${s.key} (unsaved)` : `title ${s.key}`
+      );
+    });
+  }
+}
+
+wireTitleSliders();
+applyTitleMenuCss();
+
+document.getElementById('dev-title-layout-btn')?.addEventListener('click', () => {
+  if (!Settings.isDevMode()) return;
+  if (!DevTools.drawerOpen) {
+    DevTools.drawerOpen = true;
+    if (devDrawer) devDrawer.classList.add('open');
+  }
+  DevTools.bayPanelOpen = false;
+  DevTools.placePanelOpen = false;
+  DevTools.titlePanelOpen = !DevTools.titlePanelOpen;
+  if (DevTools.titlePanelOpen && engine.mode !== 'title') {
+    setDevStatus('Title Layout — switch to title screen to preview');
+  }
+  syncBayOptionsUi();
+  syncPlacePanelUi();
+  syncTitleLayoutUi();
+});
+document.getElementById('dev-title-close')?.addEventListener('click', () => {
+  DevTools.titlePanelOpen = false;
+  syncTitleLayoutUi();
+});
+document.getElementById('dev-title-save')?.addEventListener('click', async () => {
+  if (!Settings.isDevMode()) return;
+  const r = await DevTools.saveTitleLayout();
+  if (!r.ok) {
+    await DevTools.exportText('title');
+    setDevStatus(
+      `Disk save failed (${r.error || 'unknown'}) — copied JS to clipboard. Restart dev-server.py if path was just allowlisted.`
+    );
+  } else {
+    setDevStatus(DevTools.status);
+  }
+  syncTitleLayoutUi();
+});
+document.getElementById('dev-title-reset')?.addEventListener('click', () => {
+  if (!Settings.isDevMode()) return;
+  DevTools.resetTitleLayout();
+  setDevStatus(DevTools.status);
+  syncTitleLayoutUi();
+});
+
 function syncPlacePanelUi() {
   const open = !!(
     Settings.isDevMode() &&
@@ -1059,9 +1169,11 @@ document.getElementById('dev-bay-options-btn')?.addEventListener('click', () => 
     if (devDrawer) devDrawer.classList.add('open');
   }
   DevTools.placePanelOpen = false;
+  DevTools.titlePanelOpen = false;
   DevTools.bayPanelOpen = !DevTools.bayPanelOpen;
   syncBayOptionsUi();
   syncPlacePanelUi();
+  syncTitleLayoutUi();
 });
 document.getElementById('dev-bay-close')?.addEventListener('click', () => {
   DevTools.bayPanelOpen = false;
@@ -1074,9 +1186,11 @@ document.getElementById('dev-place-btn')?.addEventListener('click', () => {
     if (devDrawer) devDrawer.classList.add('open');
   }
   DevTools.bayPanelOpen = false;
+  DevTools.titlePanelOpen = false;
   DevTools.placePanelOpen = !DevTools.placePanelOpen;
   syncBayOptionsUi();
   syncPlacePanelUi();
+  syncTitleLayoutUi();
 });
 document.getElementById('dev-place-close')?.addEventListener('click', () => {
   DevTools.placePanelOpen = false;
@@ -1258,6 +1372,7 @@ setInterval(() => {
   syncDevInspect();
   if (DevTools.bayPanelOpen) syncBayOptionsUi();
   if (DevTools.placePanelOpen) syncPlacePanelUi();
+  if (DevTools.titlePanelOpen) syncTitleLayoutUi();
   if (HangarLayoutEditor.isActive()) syncHangarEditInspector();
   const st = document.getElementById('dev-drawer-status');
   if (st && DevTools.status) st.textContent = DevTools.status;
@@ -1305,9 +1420,11 @@ document.addEventListener('keydown', (e) => {
     if (!DevTools.drawerOpen) {
       DevTools.bayPanelOpen = false;
       DevTools.placePanelOpen = false;
+      DevTools.titlePanelOpen = false;
     }
     syncBayOptionsUi();
     syncPlacePanelUi();
+    syncTitleLayoutUi();
   }
   if (HangarLayoutEditor.isActive()) {
     if (e.key === 'Delete' || e.key === 'Backspace') {
