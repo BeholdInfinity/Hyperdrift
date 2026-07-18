@@ -25,6 +25,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.263] — 2026-07-18
+
+### Fixed
+- Nebula woven-grid dither: ambient clouds paint to a LO soft plate then upscale; blobs use baked hue sprites (not live low-alpha gradients)
+- Nebula plate blit used the full reused canvas (partial clear) — caused a rectangular seam cutting world nebulae in flight
+
+---
+
 ## [0.1.262] — 2026-07-18
 
 ### Fixed

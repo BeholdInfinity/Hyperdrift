@@ -169,6 +169,7 @@ src/
 - Ambient miner asteroid damage (visual cue only today)
 
 ### Shipped recently (context)
+- **v0.1.263** Nebula LO soft plate + baked sprites (kills woven dither)
 - **v0.1.262** Unified nebula paint (title/hangar/space); sparse recipe kills dither weave
 - **v0.1.261** Hangar door/window spacefield weave fix (peephole zoom sparsify)
 - **v0.1.260** Title Layout wordmark+ship Offset Y (`markOffsetY`)

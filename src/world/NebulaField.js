@@ -2,9 +2,13 @@
  * Ambient + world nebulae. One recipe for title / hangar peepholes / space —
  * no per-view generation forks (zoom only affects caller framing).
  *
- * Sparse stronger blobs: dense stacks of tiny-alpha gradients dither into a
- * “woven tapestry” on GPU/canvas.
+ * Soft baked sprites + LO plate blit: stacking live radial gradients at low
+ * alpha dither into a “woven tapestry” on GPU/canvas.
  */
+
+const PLATE_SCALE = 0.4;
+const SPRITE_SIZE = 96;
+const HUE_BUCKET = 12;
 
 export class NebulaField {
   constructor() {
@@ -15,6 +19,10 @@ export class NebulaField {
     ];
     /** Generation pad so glows exist before they enter the cover. */
     this._maxGlowPx = 1200;
+    this._plate = null;
+    this._plateCtx = null;
+    this._plateSide = 0;
+    this._spriteCache = new Map();
   }
 
   /**
@@ -22,7 +30,36 @@ export class NebulaField {
    * Used by title, hangar windows/doors, and flight.
    */
   paintAmbient(ctx, cameraX, cameraY, time, coverRadius, zoom = 1) {
-    this.renderProcedural(ctx, cameraX, cameraY, time, coverRadius, zoom);
+    const glowPad = Math.min(this._maxGlowPx * 0.25, Math.max(160, coverRadius * 0.25));
+    const worldSide = coverRadius * 2 + glowPad * 2;
+    const plateSide = Math.max(64, Math.ceil(worldSide * PLATE_SCALE));
+    this._ensurePlate(plateSide);
+
+    const pctx = this._plateCtx;
+    pctx.setTransform(1, 0, 0, 1, 0, 0);
+    // Clear the full backing store — reused larger plates must not leave stale pixels
+    pctx.clearRect(0, 0, this._plateSide, this._plateSide);
+    pctx.setTransform(PLATE_SCALE, 0, 0, PLATE_SCALE, plateSide / 2, plateSide / 2);
+
+    this.renderProcedural(pctx, cameraX, cameraY, time, coverRadius, zoom);
+
+    ctx.save();
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    const drawSide = plateSide / PLATE_SCALE;
+    // Source-rect = active plate only (not the whole reused canvas)
+    ctx.drawImage(
+      this._plate,
+      0,
+      0,
+      plateSide,
+      plateSide,
+      -drawSide / 2,
+      -drawSide / 2,
+      drawSide,
+      drawSide
+    );
+    ctx.restore();
   }
 
   render(ctx, nebulae, cameraX, cameraY, time) {
@@ -101,7 +138,7 @@ export class NebulaField {
           y: baseY,
           radius: nebRadius,
           hue,
-          alpha: 0.08 + rng() * 0.07,
+          alpha: 0.1 + rng() * 0.08,
           driftX: (rng() - 0.5) * 8,
           driftY: (rng() - 0.5) * 8,
           phase: rng() * Math.PI * 2,
@@ -109,7 +146,7 @@ export class NebulaField {
           blobs: Array.from({ length: blobCount }, () => ({
             offsetX: (rng() - 0.5) * nebRadius,
             offsetY: (rng() - 0.5) * nebRadius,
-            size: nebRadius * (0.3 + rng() * 0.5),
+            size: nebRadius * (0.35 + rng() * 0.5),
             hueOffset: (rng() - 0.5) * 50,
           })),
         });
@@ -141,18 +178,51 @@ export class NebulaField {
     }
   }
 
-  /** Shared blob paint for ambient + world nebulae. */
+  /** Shared blob paint for ambient + world nebulae (baked soft sprite). */
   _fillBlob(ctx, bx, by, size, hue, alpha) {
     if (size < 1 || alpha < 0.002) return;
-    const g = ctx.createRadialGradient(bx, by, 0, bx, by, size);
-    // Three stops (not four) — less micro-banding / dither weave
-    g.addColorStop(0, `hsla(${hue}, 72%, 52%, ${Math.min(0.55, alpha * 1.65)})`);
-    g.addColorStop(0.45, `hsla(${hue + 28}, 62%, 38%, ${alpha})`);
-    g.addColorStop(1, `hsla(${hue + 55}, 50%, 18%, 0)`);
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(bx, by, size, 0, Math.PI * 2);
-    ctx.fill();
+    const sprite = this._blobSprite(hue);
+    const a = Math.min(0.75, alpha * 1.55);
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(sprite, bx - size, by - size, size * 2, size * 2);
+    ctx.restore();
+  }
+
+  _blobSprite(hue) {
+    const key = Math.round(hue / HUE_BUCKET) * HUE_BUCKET;
+    let sprite = this._spriteCache.get(key);
+    if (sprite) return sprite;
+
+    sprite = document.createElement('canvas');
+    sprite.width = SPRITE_SIZE;
+    sprite.height = SPRITE_SIZE;
+    const sctx = sprite.getContext('2d');
+    const m = SPRITE_SIZE / 2;
+    const g = sctx.createRadialGradient(m, m, 0, m, m, m);
+    // Opaque-ish stops baked into pixels — modulate with globalAlpha at draw time
+    g.addColorStop(0, `hsla(${key}, 72%, 52%, 1)`);
+    g.addColorStop(0.4, `hsla(${key + 28}, 62%, 38%, 0.7)`);
+    g.addColorStop(0.75, `hsla(${key + 48}, 55%, 22%, 0.22)`);
+    g.addColorStop(1, `hsla(${key + 55}, 50%, 14%, 0)`);
+    sctx.fillStyle = g;
+    sctx.beginPath();
+    sctx.arc(m, m, m, 0, Math.PI * 2);
+    sctx.fill();
+
+    this._spriteCache.set(key, sprite);
+    return sprite;
+  }
+
+  _ensurePlate(side) {
+    if (this._plate && this._plateSide >= side) return;
+    const s = Math.ceil(side);
+    this._plate = document.createElement('canvas');
+    this._plate.width = s;
+    this._plate.height = s;
+    this._plateCtx = this._plate.getContext('2d', { alpha: true });
+    this._plateSide = s;
   }
 }
 
