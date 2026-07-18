@@ -39,7 +39,12 @@ import {
 import {
   createPlayerStarter,
 } from '../ships/ShipGenerator.js';
-import { hangarShipView } from '../ships/ShipViews.js';
+import {
+  hangarShipView,
+  headingIndexFromAngle,
+  angledLiftLocal,
+  angledDepthScale,
+} from '../ships/ShipViews.js';
 import { padMkForSwapGroup } from '../ships/ShipClasses.js';
 import { getItem } from '../ships/ItemCatalog.js';
 import { Settings } from '../core/Settings.js';
@@ -978,6 +983,8 @@ export class HangarBay {
     this.npcs = [];
     this._sparkle = [];
     this._debris = [];
+    /** Short-lived deck light stamps left by flying weld sparks */
+    this._weldEmberTrail = [];
     this._hazard = { maneuver: 0, engine: 0, weapons: 0 };
     this.sidePads = [];
     this.piles = [];
@@ -1509,6 +1516,7 @@ export class HangarBay {
     this.npcs = [];
     this._sparkle = [];
     this._debris = [];
+    this._weldEmberTrail = [];
     this.floorDrops = [];
     this._npcUid = 1;
     this._floorDropSeq = 1;
@@ -2713,6 +2721,7 @@ export class HangarBay {
   _abortMechanicForOps(npc) {
     if (npc.state === 'workWeld' || npc.state === 'workShip') {
       npc.hullTarget = null;
+      npc._weldGlow = null;
     }
     if (npc.cargo) this._dropFloorCargo(npc);
     this._clearTaskClaim(npc);
@@ -2766,6 +2775,7 @@ export class HangarBay {
     } else if (hullWork) {
       // Elevator (etc.): cancel hull work without dropping cargo; re-pick after clear
       npc.hullTarget = null;
+      npc._weldGlow = null;
       npc.resumeState = null;
       npc._opsResumeJob = null;
       if (npc.job === 'weld') {
@@ -6490,16 +6500,67 @@ export class HangarBay {
         r: rand(1, 2.5),
       });
     }
+    if (!this._weldEmberTrail) this._weldEmberTrail = [];
     for (const s of this._sparkle) {
       s.life -= deltaTime;
-      if (s.dust) {
+      if (s.dust || s.weld) {
+        const ox = s.x;
+        const oy = s.y;
         s.x += (s.vx || 0) * deltaTime;
         s.y += (s.vy || 0) * deltaTime;
-        s.vx = (s.vx || 0) * 0.92;
-        s.vy = (s.vy || 0) * 0.9 + 4 * deltaTime;
+        s.vx = (s.vx || 0) * (s.weld ? 0.94 : 0.92);
+        s.vy = (s.vy || 0) * (s.weld ? 0.93 : 0.9) + (s.weld ? 28 : 4) * deltaTime;
+        // Leave brief ember stamps as sparks travel — underglow trails the slag
+        if (s.weld && !s.core) {
+          const spd = Math.hypot(s.vx || 0, s.vy || 0);
+          const step = Math.hypot(s.x - ox, s.y - oy);
+          s._emberAcc = (s._emberAcc || 0) + step;
+          if (s._emberAcc > 2.8 || (spd > 40 && Math.random() < deltaTime * 18)) {
+            s._emberAcc = 0;
+            const lifeA = Math.max(0.15, s.life / (s.max || 0.3));
+            this._weldEmberTrail.push({
+              x: ox + (s.x - ox) * 0.5,
+              y: oy + (s.y - oy) * 0.5,
+              life: rand(0.08, 0.16) * lifeA,
+              max: 0.16,
+              r: (s.r || 1) * 0.85,
+              warm: !!s.warm,
+              core: false,
+              layer: s.layer,
+              padX: s.padX,
+              padY: s.padY,
+              padAngle: s.padAngle,
+              bay: s.bay,
+            });
+          }
+        }
       }
     }
     this._sparkle = this._sparkle.filter((s) => s.life > 0);
+    for (const e of this._weldEmberTrail) {
+      e.life -= deltaTime;
+    }
+    this._weldEmberTrail = this._weldEmberTrail.filter((e) => e.life > 0);
+    // Cap trail so busy multi-bay welds stay cheap
+    if (this._weldEmberTrail.length > 80) {
+      this._weldEmberTrail.splice(0, this._weldEmberTrail.length - 80);
+    }
+    // Under-hull weld glow: mid decay + softer flash stutter between emits
+    for (const npc of this.npcs) {
+      const g = npc._weldGlow;
+      if (!g) continue;
+      g.intensity = Math.max(0, (g.intensity || 0) - deltaTime * 2.4);
+      g.flash = Math.max(0, (g.flash || 0) - deltaTime * 4.5);
+      g.surfaceKiss = Math.max(0, (g.surfaceKiss || 0) - deltaTime * 2.2);
+      if (g.intensity > 0.15 && Math.random() < deltaTime * 2.25) {
+        g.flash = Math.min(0.85, (g.flash || 0) + rand(0.25, 0.55));
+        if (Math.random() < 0.35) g.amber = true;
+        g.speckleSeed = Math.random();
+      }
+      if (g.intensity < 0.03 && (g.flash || 0) < 0.03) {
+        g.amber = false;
+      }
+    }
     for (const d of this._debris) {
       d.life -= deltaTime;
       d.x += d.vx * deltaTime;
@@ -10072,6 +10133,184 @@ export class HangarBay {
   }
 
   /**
+   * Torch tip (+ hand / aim dir) for weld emit and mechanic draw.
+   * Aims at hullTarget.workX/Y when present.
+   */
+  _weldTorchTip(npc, opts = {}) {
+    const scale = opts.scale ?? 1;
+    const bob = opts.bob ?? 0;
+    const duck = opts.duck ?? 0;
+    const hand = this._mechHandLocal(null);
+    const face = npc.facing >= 0 ? 1 : -1;
+    const hx = npc.x + face * hand.x * scale;
+    const hy = npc.y + (hand.y + bob - duck * 0.3) * scale;
+    const workX = npc.hullTarget?.workX;
+    const workY = npc.hullTarget?.workY;
+    let ax;
+    let ay;
+    if (workX != null && workY != null) {
+      const dx = workX - hx;
+      const dy = workY - hy;
+      const len = Math.hypot(dx, dy) || 1;
+      ax = dx / len;
+      ay = dy / len;
+    } else {
+      const oct = this._crewVisOctant(npc);
+      const heading = oct * CREW_VIS_OCT;
+      ax = Math.cos(heading);
+      ay = Math.sin(heading);
+    }
+    const reach = 6.2 * scale;
+    return {
+      x: hx + ax * reach,
+      y: hy + ay * reach - 1.5 * scale,
+      handX: hx,
+      handY: hy,
+      ax,
+      ay,
+    };
+  }
+
+  /**
+   * Tip→seam weld burst. Repair always under-ship; install/strip rolls layer per burst.
+   * Also pumps under-hull sparky glow at the contact point.
+   */
+  _emitWeldArc(npc) {
+    const tip = this._weldTorchTip(npc);
+    const workX = npc.hullTarget?.workX ?? npc.x;
+    const workY = npc.hullTarget?.workY ?? npc.y;
+    const hardpoint =
+      npc.job === 'installUpgrade' || npc.job === 'removeUpgrade';
+    const layer = hardpoint
+      ? Math.random() < 0.5
+        ? 'under'
+        : 'over'
+      : 'under';
+
+    const pad = npc.targetPad;
+    const padX = pad?.x ?? npc.x;
+    const padY = pad?.y ?? 0;
+    // Nudge wash under the hull footprint toward pad center
+    const gx = workX + (padX - workX) * 0.28;
+    const gy = workY + (padY - workY) * 0.28;
+    const warmBurst = Math.random() < 0.38;
+    const bay =
+      npc.bay ??
+      (typeof pad?.bayIndex === 'number' ? pad.bayIndex : bayIndexFromX(padX));
+    const padAngle = this._padAngleForBay(bay);
+    const g = npc._weldGlow || (npc._weldGlow = {});
+    // Midway punch: readable under hull without the full bright pass
+    g.intensity = Math.min(1.18, (g.intensity || 0) + rand(0.58, 0.78));
+    g.flash = Math.min(0.85, (g.flash || 0) + rand(0.35, 0.75));
+    g.x = gx;
+    g.y = gy;
+    g.amber = warmBurst;
+    g.speckleSeed = Math.random();
+    g.padX = padX;
+    g.padY = padY;
+    g.padAngle = padAngle;
+    g.bay = bay;
+    // Over-layer bursts also kiss the plating (drawn after ships)
+    if (layer === 'over') {
+      g.surfaceKiss = Math.min(1, (g.surfaceKiss || 0) + 0.85);
+    }
+
+    const dx = workX - tip.x;
+    const dy = workY - tip.y;
+    const len = Math.hypot(dx, dy) || 1;
+    const nx = dx / len;
+    const ny = dy / len;
+    const padTag = { padX, padY, padAngle, bay };
+
+    // Arc core at tip
+    this._sparkle.push({
+      x: tip.x,
+      y: tip.y,
+      life: rand(0.07, 0.16),
+      max: 0.16,
+      r: rand(1.4, 2.6),
+      weld: true,
+      layer,
+      core: true,
+      vx: nx * rand(8, 20),
+      vy: ny * rand(8, 20),
+      ...padTag,
+    });
+
+    const count = 2 + ((Math.random() * 3) | 0);
+    for (let i = 0; i < count; i++) {
+      const speed = rand(45, 95);
+      const warm = warmBurst || Math.random() < 0.22;
+      this._sparkle.push({
+        x: tip.x + rand(-1.2, 1.2),
+        y: tip.y + rand(-1.2, 1.2),
+        life: rand(0.14, 0.38),
+        max: 0.38,
+        r: rand(0.65, 1.7),
+        weld: true,
+        layer,
+        warm,
+        vx: nx * speed + rand(-38, 38),
+        vy: ny * speed + rand(-28, 28),
+        ...padTag,
+      });
+    }
+
+    if (Math.random() < 0.28) {
+      this._sparkle.push({
+        x: workX + rand(-2.5, 2.5),
+        y: workY + rand(-2, 2),
+        life: rand(0.28, 0.5),
+        max: 0.5,
+        r: rand(1.8, 3.2),
+        dust: true,
+        layer: 'under',
+        vx: rand(-10, 10),
+        vy: rand(-18, -4),
+        ...padTag,
+      });
+    }
+  }
+
+  /** Pad facing for hull projection / clips. */
+  _padAngleForBay(bay) {
+    if (this.isPlayerBay(bay)) return this.playerPadAngle ?? SHIP.SPAWN_ANGLE;
+    const pad = this._servicePad(bay);
+    return pad?.padAngle ?? FACE_NORTH;
+  }
+
+  /**
+   * Project a world point onto the pad ship's elliptical footprint.
+   * @returns {{ x, y, inside, outside }} outside = normalized distance past the rim (0 if inside)
+   */
+  _projectOntoShipHull(padX, padY, angle, wx, wy) {
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    const dx = wx - padX;
+    const dy = wy - padY;
+    const lx = dx * cos + dy * sin;
+    const ly = -dx * sin + dy * cos;
+    const hx = SHIP_EXTENT.LENGTH * 0.48;
+    const hy = SHIP_EXTENT.BEAM * 0.48;
+    const nx = lx / hx;
+    const ny = ly / hy;
+    const d = Math.hypot(nx, ny) || 0;
+    let plx = lx;
+    let ply = ly;
+    if (d > 1) {
+      plx = (nx / d) * hx;
+      ply = (ny / d) * hy;
+    }
+    const w = this._shipLocalToWorld(padX, padY, plx, ply, angle);
+    return {
+      x: w.x,
+      y: w.y,
+      inside: d <= 1,
+      outside: Math.max(0, d - 1),
+    };
+  }
+
+  /**
    * Stand just outside a specific ship hardpoint (install / uninstall weld spot).
    */
   _shipHardpointApproach(pad, hardpointKey) {
@@ -10179,11 +10418,13 @@ export class HangarBay {
     const dx = onHull.x - pad.x;
     const dy = onHull.y - padY;
     const len = Math.hypot(dx, dy) || 1;
-    // Stand just outside the skin
+    // Stand just outside the skin; work point is on the hull contact
     const standR = len + 2.5;
     return {
       x: pad.x + (dx / len) * standR,
       y: padY + (dy / len) * standR,
+      workX: onHull.x,
+      workY: onHull.y,
     };
   }
 
@@ -11215,21 +11456,16 @@ export class HangarBay {
       case 'workWeld': {
         if (!this._padWorkable(npc.targetPad)) {
           npc.hullTarget = null;
+          npc._weldGlow = null;
           this._clearBoardProgress(npc);
           this._beginNextMechanicTrip(npc);
           break;
         }
-        this._tickBoardProgress(npc);
-        if (Math.random() < 0.55) {
-          this._sparkle.push({
-            x: npc.x + rand(-4, 4),
-            y: npc.y + rand(-5, 2),
-            life: rand(0.12, 0.35),
-            max: 0.35,
-            r: rand(0.8, 2.2),
-            weld: true,
-          });
+        if (npc.hullTarget?.workX != null) {
+          npc.facing = npc.hullTarget.workX >= npc.x ? 1 : -1;
         }
+        this._tickBoardProgress(npc);
+        if (Math.random() < 0.55) this._emitWeldArc(npc);
         if (npc.stateT > 0) break;
         const weldBay = npc.bay ?? bayIndexFromX(npc.targetPad?.x ?? npc.x);
         const pad = this._servicePad(weldBay);
@@ -11239,6 +11475,7 @@ export class HangarBay {
         this._clearBoardProgress(npc);
         this._syncRepairHullMeter(pad);
         npc.hullTarget = null;
+        npc._weldGlow = null;
 
         if (npc.tripsLeft <= 0 || weldBay !== npc.homeBay) {
           // Last spot of this Hull pip — mark done only now (hull already at pip end)
@@ -11266,26 +11503,21 @@ export class HangarBay {
       case 'workShip': {
         if (!this._padWorkable(npc.targetPad)) {
           npc.hullTarget = null;
+          npc._weldGlow = null;
           this._clearBoardProgress(npc);
           this._beginNextMechanicTrip(npc);
           break;
         }
-        this._tickBoardProgress(npc);
         const upgrading =
           npc.job === 'installUpgrade' || npc.job === 'removeUpgrade';
+        if (upgrading && npc.hullTarget?.workX != null) {
+          npc.facing = npc.hullTarget.workX >= npc.x ? 1 : -1;
+        }
+        this._tickBoardProgress(npc);
         const freightJob =
           npc.job === 'loadShip' || npc.job === 'unloadShip';
         if (upgrading && Math.random() < 0.6) {
-          const wx = npc.hullTarget?.workX ?? npc.x;
-          const wy = npc.hullTarget?.workY ?? npc.y;
-          this._sparkle.push({
-            x: wx + rand(-3, 3),
-            y: wy + rand(-3, 3),
-            life: rand(0.12, 0.35),
-            max: 0.35,
-            r: rand(0.8, 2.2),
-            weld: true,
-          });
+          this._emitWeldArc(npc);
         } else if (freightJob && Math.random() < 0.4) {
           // Soft dust puff while seating / pulling hold freight
           const wx = npc.hullTarget?.workX ?? npc.x;
@@ -11335,6 +11567,7 @@ export class HangarBay {
           npc.cargo = null;
           npc.tripsLeft -= 1;
           npc.hullTarget = null;
+          npc._weldGlow = null;
           // Walking away from the pad settles the pip green
           this._settleActiveServicePip(npc);
           if (npc.tripsLeft <= 0) {
@@ -11408,10 +11641,13 @@ export class HangarBay {
           npc.cargo = stripped;
           npc.targetPile = dest;
           npc.targetSlot = null;
+          npc.hullTarget = null;
+          npc._weldGlow = null;
           this._applyTaskClaim(npc, 'removeUpgrade', npc.targetPile, bay);
           npc.state = 'toPile';
         } else {
           this._clearBoardProgress(npc);
+          npc._weldGlow = null;
           this._beginNextMechanicTrip(npc);
         }
         break;
@@ -11565,9 +11801,19 @@ export class HangarBay {
   render(ctx, space = null) {
     this.renderDeck(ctx, space);
     this.renderCrew(ctx);
+    this.renderWeldUnder(ctx);
     this.renderElevatorTransits(ctx);
     this.renderVisitors(ctx);
     this.renderOverhead(ctx);
+  }
+
+  /**
+   * Pre-ship weld FX: under-layer sparks + under-hull sparky glow.
+   * Ships drawn after this occlude repair / under-burst sparks.
+   */
+  renderWeldUnder(ctx) {
+    this._drawWeldUnderGlow(ctx);
+    this._drawSparkles(ctx, 'under');
   }
 
   /** Pads, cargo, floor — below crew and ships. */
@@ -12056,7 +12302,10 @@ export class HangarBay {
   /** Overhead gantry + FX above deck actors. */
   renderOverhead(ctx) {
     this._drawOverhead(ctx);
-    this._drawSparkles(ctx);
+    // Plating wash under over-layer sparks (after ships, before spark streaks)
+    this._drawWeldHullWashes(ctx);
+    this._drawSparkles(ctx, 'overhead');
+    this._drawSparkles(ctx, 'over');
     this._drawDebris(ctx);
     this._drawHazardWash(ctx);
   }
@@ -16409,14 +16658,22 @@ export class HangarBay {
       npc.theme ||
       MECH_BAY_THEMES[npc.homeBay ?? 0] ||
       MECH_BAY_THEMES[0];
+    const weldingWork =
+      npc.state === 'workWeld' ||
+      (npc.state === 'workShip' &&
+        (npc.job === 'installUpgrade' || npc.job === 'removeUpgrade'));
     const bob =
       npc.state === 'flinch' || npc.state === 'clearHot'
         ? Math.sin(npc.phase * 3) * 1.5
-        : Math.sin(npc.phase) * 0.8;
+        : weldingWork
+          ? Math.sin(npc.phase) * 0.25
+          : Math.sin(npc.phase) * 0.8;
     const duck =
       npc.state === 'flinch' || npc.state === 'flee' || npc.state === 'clearHot'
         ? 2
-        : 0;
+        : weldingWork
+          ? 1.35
+          : 0;
     const walking = [
       'toPile',
       'toShip',
@@ -16647,25 +16904,22 @@ export class HangarBay {
       ctx.arc(arm.hand.x, arm.hand.y, 1.5 * scale, 0, Math.PI * 2);
       ctx.fill();
       if (isToolArm && welding && !cargo) {
+        const torch = this._weldTorchTip(npc, { scale, bob, duck });
         ctx.strokeStyle = theme.tool;
         ctx.lineWidth = 1.35 * scale;
         ctx.beginPath();
         ctx.moveTo(arm.hand.x, arm.hand.y);
-        ctx.lineTo(
-          arm.hand.x + fx * 5.5 * scale,
-          arm.hand.y + fy * 5.5 * scale - 2.5 * scale
-        );
+        ctx.lineTo(torch.x, torch.y);
         ctx.stroke();
-        if (
-          npc.state === 'workWeld' ||
-          (npc.state === 'workShip' &&
-            (npc.job === 'installUpgrade' || npc.job === 'removeUpgrade'))
-        ) {
-          const tipX = arm.hand.x + fx * 6.2 * scale;
-          const tipY = arm.hand.y + fy * 6.2 * scale - 3 * scale;
-          ctx.fillStyle = `rgba(160, 220, 255, ${0.5 + 0.5 * Math.sin(npc.phase * 4)})`;
+        if (weldingWork) {
+          const pulse = 0.5 + 0.5 * Math.sin(npc.phase * 4);
+          ctx.fillStyle = `rgba(160, 220, 255, ${pulse})`;
           ctx.beginPath();
-          ctx.arc(tipX, tipY, 2.2 * scale, 0, Math.PI * 2);
+          ctx.arc(torch.x, torch.y, 2.2 * scale, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = `rgba(220, 245, 255, ${pulse * 0.55})`;
+          ctx.beginPath();
+          ctx.arc(torch.x, torch.y, 1.1 * scale, 0, Math.PI * 2);
           ctx.fill();
         }
       } else if (isToolArm && !cargo && !welding) {
@@ -17080,11 +17334,29 @@ export class HangarBay {
     for (const w of nearWheels) drawWheel(w);
   }
 
-  _drawSparkles(ctx) {
+  /**
+   * Sparkle draw filtered by layer pass:
+   * - `under` — weld (layer under) + contact smoke
+   * - `over` — weld (layer over) hardpoint bursts
+   * - `overhead` — engine / freight dust (non-weld)
+   */
+  _drawSparkles(ctx, mode = 'overhead') {
     for (const s of this._sparkle) {
+      if (mode === 'under') {
+        if (!(s.weld && s.layer === 'under') && !(s.dust && s.layer === 'under')) {
+          continue;
+        }
+      } else if (mode === 'over') {
+        if (!(s.weld && s.layer === 'over')) continue;
+      } else {
+        // Overhead: non-weld, and dust not tagged as under-weld smoke
+        if (s.weld) continue;
+        if (s.dust && s.layer === 'under') continue;
+      }
+
       const a = Math.max(0, s.life / s.max);
       if (s.dust) {
-        // Soft hold-dust puffs (load / unload) — not weld arcs
+        // Soft hold-dust puffs (load / unload) + weld contact smoke
         const r = s.r * (0.85 + (1 - a) * 0.7);
         ctx.fillStyle = `rgba(120, 105, 80, ${a * 0.28})`;
         ctx.beginPath();
@@ -17097,14 +17369,361 @@ export class HangarBay {
         continue;
       }
       if (s.weld) {
-        ctx.fillStyle = `rgba(180, 230, 255, ${a * 0.95})`;
+        const spd = Math.hypot(s.vx || 0, s.vy || 0);
+        if (s.core) {
+          ctx.fillStyle = `rgba(220, 245, 255, ${a * 0.95})`;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r * a, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.fillStyle = `rgba(160, 220, 255, ${a * 0.45})`;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r * a * 1.85, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (spd > 12) {
+          const ang = Math.atan2(s.vy || 0, s.vx || 0);
+          const len = Math.min(5.5, 1.2 + spd * 0.035) * a;
+          const hw = Math.max(0.45, s.r * 0.45) * a;
+          ctx.save();
+          ctx.translate(s.x, s.y);
+          ctx.rotate(ang);
+          ctx.fillStyle = s.warm
+            ? `rgba(255, 190, 90, ${a * 0.9})`
+            : `rgba(180, 230, 255, ${a * 0.92})`;
+          ctx.beginPath();
+          ctx.ellipse(-len * 0.15, 0, len, hw, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        } else {
+          ctx.fillStyle = s.warm
+            ? `rgba(255, 180, 80, ${a * 0.85})`
+            : `rgba(180, 230, 255, ${a * 0.95})`;
+          ctx.beginPath();
+          ctx.arc(s.x, s.y, s.r * a, 0, Math.PI * 2);
+          ctx.fill();
+        }
       } else {
         ctx.fillStyle = `rgba(255, 180, 80, ${a * 0.7})`;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r * a, 0, Math.PI * 2);
+        ctx.fill();
       }
-      ctx.beginPath();
-      ctx.arc(s.x, s.y, s.r * a, 0, Math.PI * 2);
-      ctx.fill();
     }
+  }
+
+  /**
+   * Deck-hugging sparky wash under the hull — long-range cue when the mech is occluded.
+   * Contact glow from `_emitWeldArc`; satellite glows track live weld sparks + brief ember trails.
+   */
+  _drawWeldUnderGlow(ctx) {
+    for (const npc of this.npcs) {
+      const g = npc._weldGlow;
+      const base = g?.intensity || 0;
+      const flash = g?.flash || 0;
+      if (!g || (base < 0.04 && flash < 0.04)) continue;
+      // Halfway between first underglow and the bright punch pass
+      const a = Math.min(1.2, base * 0.92 + flash * 0.5);
+      const pulse = 0.82 + 0.28 * Math.min(1, flash);
+      const x = g.x;
+      const y = g.y;
+      const seed = g.speckleSeed || 0;
+      const t = this.time;
+
+      // Contact wash jitter both ways around the tuned mid (radius + brightness)
+      const sizeJ =
+        1 +
+        Math.sin(t * 31 + seed * 7) * 0.1 +
+        Math.sin(t * 67 + seed * 13) * 0.07 +
+        Math.sin(t * 103 + seed * 3) * 0.04;
+      const brightJ =
+        1 +
+        Math.sin(t * 39 + seed * 5) * 0.12 +
+        Math.sin(t * 81 + seed * 17) * 0.08 +
+        Math.sin(t * 127 + seed * 9) * 0.05;
+      // Slight axis stretch so the blob breathes, not just scales uniformly
+      const stretchX = 1 + Math.sin(t * 47 + seed * 11) * 0.06;
+      const stretchY = 1 + Math.cos(t * 53 + seed * 19) * 0.06;
+
+      const rx = (19 + a * 11) * (0.96 + pulse * 0.06) * sizeJ * stretchX;
+      const ry = (10.5 + a * 6.5) * (0.96 + pulse * 0.06) * sizeJ * stretchY;
+      const ba = pulse * brightJ;
+      const wash = ctx.createRadialGradient(x, y, 0, x, y, rx);
+      wash.addColorStop(0, `rgba(200, 240, 255, ${Math.min(0.52, a * 0.34 * ba)})`);
+      wash.addColorStop(0.38, `rgba(125, 208, 255, ${Math.min(0.3, a * 0.19 * ba)})`);
+      wash.addColorStop(0.72, `rgba(90, 180, 240, ${Math.min(0.12, a * 0.06 * ba)})`);
+      wash.addColorStop(1, 'rgba(80, 160, 220, 0)');
+      ctx.fillStyle = wash;
+      ctx.beginPath();
+      ctx.ellipse(x, y, rx, ry, 0.08 + Math.sin(t * 19 + seed) * 0.05, 0, Math.PI * 2);
+      ctx.fill();
+
+      const jx = x + Math.sin(t * 42 + seed * 11) * 2.1 * a;
+      const jy = y + Math.cos(t * 37 + seed * 9) * 1.55 * a;
+      const crx = (6.75 + a * 4.75) * pulse * sizeJ;
+      const cry = (3.85 + a * 2.85) * pulse * sizeJ;
+      const core = ctx.createRadialGradient(jx, jy, 0, jx, jy, crx);
+      core.addColorStop(0, `rgba(248, 252, 255, ${Math.min(0.8, a * 0.7 * ba)})`);
+      core.addColorStop(0.3, `rgba(180, 230, 255, ${Math.min(0.55, a * 0.42 * ba)})`);
+      core.addColorStop(0.6, `rgba(140, 210, 255, ${Math.min(0.25, a * 0.16 * ba)})`);
+      core.addColorStop(1, 'rgba(100, 180, 240, 0)');
+      ctx.fillStyle = core;
+      ctx.beginPath();
+      ctx.ellipse(jx, jy, crx, cry, -0.15, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (g.amber || flash > 0.5) {
+        const aa = Math.min(0.42, a * 0.32 * ba);
+        ctx.fillStyle = `rgba(255, 155, 58, ${aa})`;
+        ctx.beginPath();
+        ctx.ellipse(
+          jx + Math.sin(t * 55) * 1.4,
+          jy + 0.8,
+          (5.75 + a * 2.75) * sizeJ,
+          (2.95 + a * 1.4) * sizeJ,
+          0.3,
+          0,
+          Math.PI * 2
+        );
+        ctx.fill();
+      }
+
+      const n = 2 + ((seed * 3.5) | 0) % 3;
+      for (let i = 0; i < n; i++) {
+        const sx =
+          jx + Math.sin(t * 68 + i * 2.3 + seed * 17) * (3 + a * 2.5);
+        const sy =
+          jy + Math.cos(t * 61 + i * 1.7 + seed * 13) * (1.9 + a * 1.7);
+        const sa = Math.min(
+          0.85,
+          a * pulse * (0.4 + 0.5 * Math.abs(Math.sin(t * 100 + i * 3 + flash * 6)))
+        );
+        ctx.fillStyle = `rgba(235, 248, 255, ${sa})`;
+        ctx.beginPath();
+        ctx.arc(sx, sy, 0.65 + a * 0.45 * pulse, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Each flying weld spark casts its own small deck wash — composite reads as lively slag light
+    this._drawWeldSparkUnderglows(ctx);
+  }
+
+  /**
+   * Per-spark under-hull lights + short ember trails. Keeps contact wash size/brightness;
+   * adds motion by lighting wherever slag currently is (and just was).
+   */
+  _drawWeldSparkUnderglows(ctx) {
+    for (const s of this._sparkle) {
+      if (!s.weld) continue;
+      const lifeA = Math.max(0, s.life / (s.max || 0.3));
+      if (lifeA < 0.06) continue;
+      this._paintSparkDeckGlow(ctx, s.x, s.y, lifeA, s);
+    }
+    if (!this._weldEmberTrail?.length) return;
+    for (const e of this._weldEmberTrail) {
+      const lifeA = Math.max(0, e.life / e.max);
+      if (lifeA < 0.05) continue;
+      this._paintSparkDeckGlow(ctx, e.x, e.y, lifeA * 0.7, e);
+    }
+  }
+
+  /**
+   * Over-layer / beside-hull sparks kiss the plating. Clipped to each pad's ship ellipse
+   * so wash sits on hull, not the apron. Drawn after ships, before overhead sparks.
+   */
+  _drawWeldHullWashes(ctx) {
+    /** @type {Map<number, { padX: number, padY: number, padAngle: number, paints: Array }>} */
+    const groups = new Map();
+    const enqueue = (padX, padY, padAngle, bay, paint) => {
+      if (padX == null || bay == null) return;
+      let g = groups.get(bay);
+      if (!g) {
+        g = { padX, padY, padAngle, paints: [] };
+        groups.set(bay, g);
+      }
+      g.paints.push(paint);
+    };
+
+    for (const s of this._sparkle) {
+      if (!s.weld || s.padX == null) continue;
+      const lifeA = Math.max(0, s.life / (s.max || 0.3));
+      if (lifeA < 0.06) continue;
+      const proj = this._projectOntoShipHull(
+        s.padX,
+        s.padY ?? 0,
+        s.padAngle ?? FACE_NORTH,
+        s.x,
+        s.y
+      );
+      const over = s.layer === 'over';
+      // Over sparks always light plating; under sparks only when they fly past the rim
+      if (!over && proj.inside) continue;
+      if (!over && proj.outside > 1.1) continue;
+      const rimFall =
+        proj.outside <= 0
+          ? 1
+          : Math.max(0, 1 - proj.outside / (over ? 1.15 : 0.95));
+      if (rimFall < 0.08) continue;
+      const strength = (over ? 0.92 : 0.55) * rimFall;
+      enqueue(s.padX, s.padY ?? 0, s.padAngle ?? FACE_NORTH, s.bay, {
+        x: proj.x,
+        y: proj.y,
+        lifeA,
+        src: s,
+        strength,
+      });
+    }
+
+    for (const e of this._weldEmberTrail || []) {
+      if (e.padX == null || e.layer !== 'over') continue;
+      const lifeA = Math.max(0, e.life / e.max);
+      if (lifeA < 0.05) continue;
+      const proj = this._projectOntoShipHull(
+        e.padX,
+        e.padY ?? 0,
+        e.padAngle ?? FACE_NORTH,
+        e.x,
+        e.y
+      );
+      const rimFall =
+        proj.outside <= 0 ? 1 : Math.max(0, 1 - proj.outside / 1.15);
+      if (rimFall < 0.08) continue;
+      enqueue(e.padX, e.padY ?? 0, e.padAngle ?? FACE_NORTH, e.bay, {
+        x: proj.x,
+        y: proj.y,
+        lifeA: lifeA * 0.65,
+        src: e,
+        strength: 0.7 * rimFall,
+      });
+    }
+
+    // Contact heat on plating after over-layer bursts
+    for (const npc of this.npcs) {
+      const g = npc._weldGlow;
+      if (!g || (g.surfaceKiss || 0) < 0.05 || g.padX == null) continue;
+      const a = Math.min(1, (g.intensity || 0) * 0.7 + (g.flash || 0) * 0.4);
+      if (a < 0.05) continue;
+      enqueue(g.padX, g.padY ?? 0, g.padAngle ?? FACE_NORTH, g.bay, {
+        x: g.x,
+        y: g.y,
+        lifeA: a,
+        src: { warm: !!g.amber, core: true, r: 2.2, _glowSeed: g.speckleSeed || 1 },
+        strength: 0.75 * g.surfaceKiss,
+        contact: true,
+      });
+    }
+
+    if (!groups.size) return;
+
+    // Hangar ships are 2.5D (base + side walls + raised deck). Paint the same
+    // wash on each extrude band so light hits side peeks as well as the top face.
+    for (const g of groups.values()) {
+      this._paintWeldHullWashLayers(ctx, g);
+    }
+  }
+
+  /**
+   * Clip + paint weld washes across angled extrude bands (base / mid walls / deck).
+   * Matches hangarShipView lift direction so side views get plating light too.
+   */
+  _paintWeldHullWashLayers(ctx, g) {
+    const heading = headingIndexFromAngle(g.padAngle);
+    // Typical hull extrude liftH ≈ h*0.45 with h≈4.5–5.5 → ~2.2 on the deck
+    const deckH = 2.35;
+    const midH = deckH * 0.48;
+    const deckLift = angledLiftLocal(heading, deckH);
+    const midLift = angledLiftLocal(heading, midH);
+    const depthY = angledDepthScale(heading);
+
+    const layers = [
+      { lx: 0, ly: 0, strength: 0.5, label: 'base' },
+      { lx: midLift.x, ly: midLift.y, strength: 0.78, label: 'sides' },
+      { lx: deckLift.x, ly: deckLift.y, strength: 1, label: 'deck' },
+    ];
+
+    for (const layer of layers) {
+      // Lift is ship-local (same space as extrude); convert to world offset
+      const liftW = this._shipLocalToWorld(0, 0, layer.lx, layer.ly, g.padAngle);
+      const ox = g.padX + liftW.x;
+      const oy = g.padY + liftW.y;
+
+      ctx.save();
+      ctx.translate(ox, oy);
+      ctx.rotate(g.padAngle);
+      ctx.scale(1, depthY);
+      ctx.beginPath();
+      ctx.ellipse(
+        0,
+        0,
+        SHIP_EXTENT.LENGTH * 0.52,
+        SHIP_EXTENT.BEAM * 0.52,
+        0,
+        0,
+        Math.PI * 2
+      );
+      ctx.clip();
+      ctx.scale(1, 1 / depthY);
+      ctx.rotate(-g.padAngle);
+      ctx.translate(-ox, -oy);
+
+      for (const p of g.paints) {
+        this._paintSparkDeckGlow(
+          ctx,
+          p.x + liftW.x,
+          p.y + liftW.y,
+          p.lifeA * p.strength * layer.strength,
+          p.src
+        );
+      }
+      ctx.restore();
+    }
+  }
+
+  /** Soft elliptical deck kiss for one spark / ember (drawn under ships). */
+  _paintSparkDeckGlow(ctx, x, y, lifeA, src) {
+    const warm = !!src.warm;
+    const core = !!src.core;
+    const r = src.r || 1.2;
+    const t = this.time;
+    // Per-spark phase so neighbors don't breathe in lockstep
+    const seed = (src._glowSeed ??= Math.random() * 20) + x * 0.17 + y * 0.13;
+    const sizeJ =
+      1 +
+      Math.sin(t * 31 + seed * 7) * 0.1 +
+      Math.sin(t * 67 + seed * 13) * 0.07 +
+      Math.sin(t * 103 + seed * 3) * 0.04;
+    const brightJ =
+      1 +
+      Math.sin(t * 39 + seed * 5) * 0.12 +
+      Math.sin(t * 81 + seed * 17) * 0.08 +
+      Math.sin(t * 127 + seed * 9) * 0.05;
+    const stretchX = 1 + Math.sin(t * 47 + seed * 11) * 0.06;
+    const stretchY = 1 + Math.cos(t * 53 + seed * 19) * 0.06;
+    // Modest alphas so many sparks dance without blowing out the main wash
+    const peak = core ? 0.38 : warm ? 0.3 : 0.24;
+    const a = Math.min(peak, lifeA * peak * (0.55 + 0.45 * lifeA) * brightJ);
+    const rx = ((core ? 6.2 : 4.6) + r * 2.1) * sizeJ * stretchX;
+    const ry = rx * 0.52 * stretchY;
+    const grad = ctx.createRadialGradient(x, y, 0, x, y, rx);
+    if (warm) {
+      grad.addColorStop(0, `rgba(255, 210, 140, ${a})`);
+      grad.addColorStop(0.4, `rgba(255, 160, 70, ${a * 0.45})`);
+      grad.addColorStop(1, 'rgba(255, 120, 40, 0)');
+    } else {
+      grad.addColorStop(0, `rgba(230, 248, 255, ${a})`);
+      grad.addColorStop(0.4, `rgba(150, 220, 255, ${a * 0.42})`);
+      grad.addColorStop(1, 'rgba(100, 180, 240, 0)');
+    }
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.ellipse(x, y, rx, ry, 0.1 + Math.sin(t * 19 + seed) * 0.05, 0, Math.PI * 2);
+    ctx.fill();
+    // Tiny hot pin so individual sparks read under the belly
+    ctx.fillStyle = warm
+      ? `rgba(255, 200, 120, ${a * 0.85})`
+      : `rgba(245, 252, 255, ${a * 0.9})`;
+    ctx.beginPath();
+    ctx.arc(x, y, (core ? 1.3 : 0.85) * lifeA * sizeJ, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   _drawDebris(ctx) {

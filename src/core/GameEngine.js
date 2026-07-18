@@ -3030,6 +3030,7 @@ export class GameEngine {
     this.renderer.renderWorldLayer((worldCtx) => {
       this.hangarBay.renderDeck(worldCtx, space);
       this.hangarBay.renderCrew(worldCtx);
+      this.hangarBay.renderWeldUnder(worldCtx);
       const playerView = this.ship
         ? hangarShipView(this.ship.angle)
         : null;

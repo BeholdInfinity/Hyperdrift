@@ -25,6 +25,15 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.233] — 2026-07-18
+
+### Changed
+- Bay weld feel: torch aims at hull/mount contact; tip sparks use velocity streaks
+- Hull **repair** sparks stay under the ship with a synced under-hull sparky deck glow (contact wash + per-spark kisses/ember trails, radius/brightness jitter)
+- Hardpoint install/strip sparks randomly layer above or below per burst; over-layer / beside-hull sparks cast a clipped plating wash across 2.5D extrude bands (base, side walls, raised deck)
+
+---
+
 ## [0.1.232] — 2026-07-17
 
 ### Added

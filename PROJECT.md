@@ -163,6 +163,7 @@ src/
 - Ambient miner asteroid damage (visual cue only today)
 
 ### Shipped recently (context)
+- **v0.1.233** Bay weld VFX: tip-aimed sparks; under-hull glow; over-layer plating wash on 2.5D ship bands
 - **v0.1.232** Place→Area→Feature groundwork; hangar from Place kit; vessel interior contract; crane-gated turrets; Dev Place panel
 - **v0.1.231** South high-speed approach no longer occludes under hangar roof
 - **v0.1.230** Launch lift keeps 8-thruster hover burst through pad rise
