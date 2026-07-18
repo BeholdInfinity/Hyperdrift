@@ -25,6 +25,27 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.266] — 2026-07-18
+
+### Fixed
+- Mechanics turn smoothly toward travel before striding (pivot on big facing changes) — no more instant snaps or moonwalking across the apron; job facing locks only near pile/hull
+
+---
+
+## [0.1.265] — 2026-07-18
+
+### Changed
+- Bay mechs diversify job types when several are doable (one welds while the other loads, etc.); double-team only when a single type remains (strip-before-install still hard-wins)
+
+---
+
+## [0.1.264] — 2026-07-18
+
+### Fixed
+- Welder stand-off uses torch tip length: tip kisses hull/mount contact; grip stays outboard (was standing on the handle)
+
+---
+
 ## [0.1.263] — 2026-07-18
 
 ### Fixed

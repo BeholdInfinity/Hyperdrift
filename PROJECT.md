@@ -169,6 +169,9 @@ src/
 - Ambient miner asteroid damage (visual cue only today)
 
 ### Shipped recently (context)
+- **v0.1.266** Mech travel facing: smooth turn-then-walk (no moonwalk / instant snaps)
+- **v0.1.265** Bay mechs diversify job types; double-team only when one type left
+- **v0.1.264** Welder stand-off: torch tip on hull/mount (not the grip)
 - **v0.1.263** Nebula LO soft plate + baked sprites (kills woven dither)
 - **v0.1.262** Unified nebula paint (title/hangar/space); sparse recipe kills dither weave
 - **v0.1.261** Hangar door/window spacefield weave fix (peephole zoom sparsify)

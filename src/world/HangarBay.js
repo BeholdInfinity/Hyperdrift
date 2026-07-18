@@ -201,6 +201,9 @@ function weldSpotsForPip() {
 /** Turn rate for draw heading (rad/s); locks snap faster during pile / weld work */
 const CREW_VIS_TURN = 7;
 const CREW_VIS_TURN_LOCK = 14;
+/** Mech stride vs facing error: full speed inside ALIGN, pivot-only past STOP (rad) */
+const MECH_TURN_ALIGN = 0.75;
+const MECH_TURN_STOP = 2.15;
 /**
  * Per-bay mechanic suit themes (both mechs on a bay share one).
  * B1 rust/hazard · B2 station teal · B3 olive utility.
@@ -346,6 +349,8 @@ const MECH_CREEP_IN = 6;
 const MECH_HAND_REACH_X = 5;
 const MECH_HAND_GRIP_Y = -2;
 const MECH_HANDOFF_SPEED = 4.2;
+/** Empty-hand torch length hand→tip (matches `_weldTorchTip` / `_drawMechanic`) */
+const WELD_TORCH_REACH = 6.2;
 
 const CARGO_MIN = 8;
 const CARGO_MAX = 28;
@@ -5744,6 +5749,7 @@ export class HangarBay {
     npc.weldSpotsTotal = null;
     npc.weldSpotIndex = null;
     npc.directFromSouth = false;
+    npc._lockFacing = false;
   }
 
   /** Service / cargo claim tags held by other crew (parallel load/unload). */
@@ -5969,6 +5975,46 @@ export class HangarBay {
       if (r <= 0) return t;
     }
     return tasks[0];
+  }
+
+  /** Job types a bay-mate mechanic is already working (for diversify-vs-double-team). */
+  _bayMateActiveJobs(npc, homeBay) {
+    const jobs = new Set();
+    for (const n of this.npcs) {
+      if (!n.alive || n === npc || n.kind !== 'mechanic') continue;
+      if ((n.homeBay ?? n.bay) !== homeBay) continue;
+      if (
+        n.job === 'weld' ||
+        n.job === 'loadShip' ||
+        n.job === 'unloadShip' ||
+        n.job === 'installUpgrade' ||
+        n.job === 'removeUpgrade' ||
+        n.job === 'stageFerry'
+      ) {
+        jobs.add(n.job);
+      }
+    }
+    return jobs;
+  }
+
+  /**
+   * Soft priority among doable mech tasks (after strip-hard and type-diversity filters).
+   * Service welds → clearing full piles → load/install/unload → other → anything.
+   */
+  _softPriorityMechPool(doable) {
+    let pool = doable.filter((t) => t.job === 'weld' && t.service);
+    if (!pool.length) pool = doable.filter((t) => t.clears);
+    if (!pool.length) {
+      pool = doable.filter(
+        (t) =>
+          t.job === 'loadShip' ||
+          t.job === 'installUpgrade' ||
+          t.job === 'unloadShip'
+      );
+    }
+    if (!pool.length) pool = doable.filter((t) => t.job !== 'weld');
+    if (!pool.length) pool = doable;
+    return pool;
   }
 
   /** Trolley pose used when scoring the next crane job (home if not yet spawned). */
@@ -7690,15 +7736,18 @@ export class HangarBay {
 
     // Strip-before-install must beat install attempts (otherwise weld-loop on full sockets)
     let pool = doable.filter((t) => t.job === 'removeUpgrade');
-    if (!pool.length) pool = doable.filter((t) => t.job === 'weld' && t.service);
-    if (!pool.length) pool = doable.filter((t) => t.clears);
     if (!pool.length) {
-      pool = doable.filter(
-        (t) => t.job === 'loadShip' || t.job === 'installUpgrade' || t.job === 'unloadShip'
-      );
+      // Prefer a job type no bay-mate is on when several types are doable;
+      // if only one type remains (or mate already covers the rest), double-team.
+      let candidates = doable;
+      const mateJobs = this._bayMateActiveJobs(npc, homeBay);
+      const typesPresent = new Set(doable.map((t) => t.job));
+      if (typesPresent.size > 1 && mateJobs.size > 0) {
+        const other = doable.filter((t) => !mateJobs.has(t.job));
+        if (other.length) candidates = other;
+      }
+      pool = this._softPriorityMechPool(candidates);
     }
-    if (!pool.length) pool = doable.filter((t) => t.job !== 'weld');
-    if (!pool.length) pool = doable;
 
     const chosen = this._pickWeighted(pool);
     if (chosen) {
@@ -9270,6 +9319,7 @@ export class HangarBay {
     npc.targetSlot = null;
     npc._mechLift = null;
     npc.mechHandT = 0;
+    npc._lockFacing = false;
     const loading = npc.job === 'loadShip' || npc.job === 'installUpgrade';
     const unloading = npc.job === 'unloadShip' || npc.job === 'removeUpgrade';
     if (npc.job === 'stageFerry') {
@@ -9513,20 +9563,28 @@ export class HangarBay {
       npc.y = ty;
       return true;
     }
-    const step = speed * dt;
+    let step = speed * dt;
+    if (npc.kind === 'mechanic' && !this._mechFacingLocked(npc)) {
+      // Turn toward travel first; cut stride when facing the wrong way (no moonwalk)
+      const travelAng = Math.atan2(dy, dx);
+      this._crewSteerVisHeading(npc, travelAng, dt);
+      npc.facing = Math.cos(npc.visHeading ?? travelAng) >= 0 ? 1 : -1;
+      npc._mechSteeredVis = true;
+      const align = this._crewFacingAlign(npc.visHeading, travelAng);
+      step *= align;
+      if (align < 0.2) return false; // pivot in place
+    }
     if (step >= dist) {
       npc.x = tx;
       npc.y = ty;
       return true;
     }
-    npc.x += (dx / dist) * step;
-    npc.y += (dy / dist) * step;
+    if (step > 0) {
+      npc.x += (dx / dist) * step;
+      npc.y += (dy / dist) * step;
+    }
     const lockFacing =
-      npc.forkPhase ||
-      npc.mechPhase ||
-      npc._lockFacing ||
-      (npc.kind === 'mechanic' &&
-        (npc.state === 'toPile' || npc.state === 'workPile' || npc.state === 'linger'));
+      npc.forkPhase || npc.mechPhase || npc._lockFacing || npc.kind === 'mechanic';
     if (!lockFacing) {
       // Face along clearly horizontal travel only — tiny X corrections while
       // driving N/S were flipping the truck and causing moonwalks.
@@ -9536,6 +9594,66 @@ export class HangarBay {
       }
     }
     return false;
+  }
+
+  /** True while pile creep / weld / approach lock owns facing (not free travel). */
+  _mechFacingLocked(npc) {
+    return !!(
+      npc.mechPhase ||
+      npc._lockFacing ||
+      npc.state === 'workPile' ||
+      npc.state === 'workShip' ||
+      npc.state === 'workWeld'
+    );
+  }
+
+  /** 1 = facing travel, 0 = need to pivot (≥ ~MECH_TURN_STOP rad off). */
+  _crewFacingAlign(heading, travelAng) {
+    let cur = heading;
+    if (cur == null || Number.isNaN(cur)) return 1;
+    let diff = travelAng - cur;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    const abs = Math.abs(diff);
+    if (abs <= MECH_TURN_ALIGN) return 1;
+    if (abs >= MECH_TURN_STOP) return 0;
+    return 1 - (abs - MECH_TURN_ALIGN) / (MECH_TURN_STOP - MECH_TURN_ALIGN);
+  }
+
+  /**
+   * Lock into slot-facing only when close and on the correct side
+   * (same idea as forklift approach — avoids moonwalking across the apron).
+   */
+  _mechSetApproachFacing(npc, ap) {
+    if (!ap) {
+      npc._lockFacing = false;
+      return;
+    }
+    const dist = Math.hypot(npc.x - ap.x, npc.y - ap.y);
+    const correctSide =
+      ap.facing > 0 ? npc.x <= ap.x + 4 : npc.x >= ap.x - 4;
+    if (dist < 12 && correctSide) {
+      npc.facing = ap.facing;
+      npc._lockFacing = true;
+    } else {
+      npc._lockFacing = false;
+    }
+  }
+
+  /** Near hull stand: face the work point; far away, travel facing owns the body. */
+  _mechSetHullFacing(npc) {
+    const ht = npc.hullTarget;
+    if (!ht || ht.workX == null) {
+      npc._lockFacing = false;
+      return;
+    }
+    const dist = Math.hypot(npc.x - (ht.x ?? npc.x), npc.y - (ht.y ?? npc.y));
+    if (dist < 14) {
+      npc.facing = ht.workX >= npc.x ? 1 : -1;
+      npc._lockFacing = true;
+    } else {
+      npc._lockFacing = false;
+    }
   }
 
   /**
@@ -10042,23 +10160,22 @@ export class HangarBay {
 
   /**
    * Mechanic draw yaw — same 8-dir system; locks during pile / hull work.
-   * Does not change npc.facing (hand / cargo math).
+   * Free travel steers in `_moveToward` (turn-then-walk); this covers idle / locked.
    */
   _mechUpdateVisHeading(npc, moveX, moveY, dt) {
+    if (npc._mechSteeredVis) {
+      npc._mechSteeredVis = false;
+      return;
+    }
     const moveDist = Math.hypot(moveX, moveY);
     const faceAng = npc.facing >= 0 ? 0 : Math.PI;
     let target = npc.visHeading ?? faceAng;
-    const locked = !!(
-      npc.mechPhase ||
-      npc._lockFacing ||
-      npc.state === 'workPile' ||
-      npc.state === 'workShip' ||
-      npc.state === 'workWeld'
-    );
+    const locked = this._mechFacingLocked(npc);
     if (locked) {
       target = faceAng;
     } else if (moveDist > 0.2) {
       target = Math.atan2(moveY, moveX);
+      npc.facing = Math.cos(target) >= 0 ? 1 : -1;
     } else {
       target = faceAng;
     }
@@ -10133,8 +10250,19 @@ export class HangarBay {
   }
 
   /**
+   * Stand so the torch tip (not the grip) lands on a hull/mount work point.
+   * `outNx/outNy` = unit direction from the contact outward onto the apron.
+   */
+  _mechStandForWeldTip(workX, workY, outNx, outNy) {
+    const handX = workX + outNx * WELD_TORCH_REACH;
+    const handY = workY + outNy * WELD_TORCH_REACH;
+    const facing = workX >= handX ? 1 : -1;
+    return this._mechPosForCargoCenter(handX, handY, facing, null);
+  }
+
+  /**
    * Torch tip (+ hand / aim dir) for weld emit and mechanic draw.
-   * Aims at hullTarget.workX/Y when present.
+   * Aims at hullTarget.workX/Y when present; tip stops on the contact (no overshoot).
    */
   _weldTorchTip(npc, opts = {}) {
     const scale = opts.scale ?? 1;
@@ -10148,22 +10276,30 @@ export class HangarBay {
     const workY = npc.hullTarget?.workY;
     let ax;
     let ay;
+    let tipX;
+    let tipY;
+    const reach = WELD_TORCH_REACH * scale;
     if (workX != null && workY != null) {
       const dx = workX - hx;
       const dy = workY - hy;
       const len = Math.hypot(dx, dy) || 1;
       ax = dx / len;
       ay = dy / len;
+      // Tip kisses the work point — never punches past the hull/mount
+      const use = Math.min(reach, len);
+      tipX = hx + ax * use;
+      tipY = hy + ay * use;
     } else {
       const oct = this._crewVisOctant(npc);
       const heading = oct * CREW_VIS_OCT;
       ax = Math.cos(heading);
       ay = Math.sin(heading);
+      tipX = hx + ax * reach;
+      tipY = hy + ay * reach - 1.5 * scale;
     }
-    const reach = 6.2 * scale;
     return {
-      x: hx + ax * reach,
-      y: hy + ay * reach - 1.5 * scale,
+      x: tipX,
+      y: tipY,
       handX: hx,
       handY: hy,
       ax,
@@ -10334,12 +10470,21 @@ export class HangarBay {
     // Center / near-center mounts (dorsal turret): approach from a beam flank
     if (len < 5) {
       const side = Math.random() < 0.5 ? -1 : 1;
-      const stand = this._shipLocalToWorld(
+      const flank = this._shipLocalToWorld(
         pad.x,
         padY,
         socket.x * 0.35 + 2,
         side * (SHIP_EXTENT.BEAM * 0.48),
         angle
+      );
+      const fdx = flank.x - onHull.x;
+      const fdy = flank.y - onHull.y;
+      const fl = Math.hypot(fdx, fdy) || 1;
+      const stand = this._mechStandForWeldTip(
+        onHull.x,
+        onHull.y,
+        fdx / fl,
+        fdy / fl
       );
       return {
         x: stand.x,
@@ -10350,10 +10495,15 @@ export class HangarBay {
       };
     }
 
-    const standR = len + 3.2;
+    const stand = this._mechStandForWeldTip(
+      onHull.x,
+      onHull.y,
+      dx / len,
+      dy / len
+    );
     return {
-      x: pad.x + (dx / len) * standR,
-      y: padY + (dy / len) * standR,
+      x: stand.x,
+      y: stand.y,
       hardpointKey,
       workX: onHull.x,
       workY: onHull.y,
@@ -10418,7 +10568,21 @@ export class HangarBay {
     const dx = onHull.x - pad.x;
     const dy = onHull.y - padY;
     const len = Math.hypot(dx, dy) || 1;
-    // Stand just outside the skin; work point is on the hull contact
+    // Cargo: stand just outside the skin. Weld/upgrade: tip on contact, grip outboard.
+    if (mode === 'weld' || mode === 'upgrade') {
+      const stand = this._mechStandForWeldTip(
+        onHull.x,
+        onHull.y,
+        dx / len,
+        dy / len
+      );
+      return {
+        x: stand.x,
+        y: stand.y,
+        workX: onHull.x,
+        workY: onHull.y,
+      };
+    }
     const standR = len + 2.5;
     return {
       x: pad.x + (dx / len) * standR,
@@ -11303,9 +11467,11 @@ export class HangarBay {
         }
         const slot = npc.targetSlot;
         const ap = this._mechApproachForSlot(p, slot);
-        npc.facing = ap.facing;
+        this._mechSetApproachFacing(npc, ap);
         if (this._mechMove(npc, ap.x, ap.y, walk, dt)) {
           npc.targetSlot = slot;
+          npc.facing = ap.facing;
+          npc._lockFacing = true;
           npc.mechPhase = 'creepIn';
           npc.mechHandT = 0;
           npc._mechLift = null;
@@ -11320,7 +11486,7 @@ export class HangarBay {
         const ap = p ? this._mechApproachForSlot(p, slot >= 0 ? slot : 0) : null;
         const tx = ap ? ap.x : npc.x;
         const ty = ap ? ap.y : npc.y;
-        if (ap?.facing) npc.facing = ap.facing;
+        this._mechSetApproachFacing(npc, ap);
         this._mechMove(npc, tx, ty, walk * 0.7, dt);
         npc.x += Math.sin(npc.phase) * 0.15;
         if (npc.stateT > 0) break;
@@ -11434,11 +11600,13 @@ export class HangarBay {
             npc.hullTarget = this._shipHullApproach(pad, mode);
           }
         }
-        // Face the hardpoint / hull work spot while approaching
-        if (npc.hullTarget?.workX != null) {
-          npc.facing = npc.hullTarget.workX >= npc.x ? 1 : -1;
-        }
+        // Face the work spot only when close; travel facing owns the walk-up
+        this._mechSetHullFacing(npc);
         if (this._mechMove(npc, npc.hullTarget.x, npc.hullTarget.y, walk, dt)) {
+          if (npc.hullTarget?.workX != null) {
+            npc.facing = npc.hullTarget.workX >= npc.x ? 1 : -1;
+          }
+          npc._lockFacing = true;
           if (npc.job === 'weld') {
             npc.state = 'workWeld';
             npc.stateT = rand(1.1, 1.9);
@@ -11457,12 +11625,14 @@ export class HangarBay {
         if (!this._padWorkable(npc.targetPad)) {
           npc.hullTarget = null;
           npc._weldGlow = null;
+          npc._lockFacing = false;
           this._clearBoardProgress(npc);
           this._beginNextMechanicTrip(npc);
           break;
         }
         if (npc.hullTarget?.workX != null) {
           npc.facing = npc.hullTarget.workX >= npc.x ? 1 : -1;
+          npc._lockFacing = true;
         }
         this._tickBoardProgress(npc);
         if (Math.random() < 0.55) this._emitWeldArc(npc);
@@ -11496,6 +11666,7 @@ export class HangarBay {
           this._beginIdleFluff(npc);
         } else {
           // Walk to next hull station — board % holds until sparks resume
+          npc._lockFacing = false;
           npc.state = 'toShip';
         }
         break;
@@ -11512,6 +11683,7 @@ export class HangarBay {
           npc.job === 'installUpgrade' || npc.job === 'removeUpgrade';
         if (upgrading && npc.hullTarget?.workX != null) {
           npc.facing = npc.hullTarget.workX >= npc.x ? 1 : -1;
+          npc._lockFacing = true;
         }
         this._tickBoardProgress(npc);
         const freightJob =
