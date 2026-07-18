@@ -17,6 +17,7 @@ export const TITLE_LAYOUT = {
   "markScale": 1.24,
   "markOffsetY": 28,
   "strangerScale": 0.94,
+  "strangerArchAmp": 28,
   "inTheScale": 1.48,
   "galaxyScale": 1.24,
   "shipScale": 1,

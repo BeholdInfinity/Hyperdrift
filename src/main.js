@@ -1070,6 +1070,7 @@ const TITLE_SLIDERS = [
   { id: 'title-mark-scale', key: 'markScale', fmt: (n) => n.toFixed(2) },
   { id: 'title-mark-y', key: 'markOffsetY', fmt: (n) => String(Math.round(n)) },
   { id: 'title-stranger', key: 'strangerScale', fmt: (n) => n.toFixed(2) },
+  { id: 'title-stranger-arch', key: 'strangerArchAmp', fmt: (n) => n.toFixed(1) },
   { id: 'title-inthe', key: 'inTheScale', fmt: (n) => n.toFixed(2) },
   { id: 'title-galaxy', key: 'galaxyScale', fmt: (n) => n.toFixed(2) },
   { id: 'title-ship', key: 'shipScale', fmt: (n) => n.toFixed(2) },

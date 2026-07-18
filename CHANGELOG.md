@@ -25,6 +25,22 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.267] — 2026-07-18
+
+### Changed
+- Title wordmark locked (no float/breath); STRANGER uses a subtle static smile arch (S/R low, AN high)
+
+### Added
+- Title Layout Dev slider: Stranger curve (`strangerArchAmp`)
+
+### Changed
+- Title STRANGER outline keeps prior dual-pass weight; inner pass is solid black (was white→steel)
+- Title STRANGER: letter faces are windows into one brushed bronze plate (top-bright gradient + letter-masked metal kiss); plate draw lives in `src/textures/strangerBronzePlate.js`
+- Title GALAXY: Y tail removed; G/Y modest shared descender; first A + X half that drop (L / second A default)
+- Title GALAXY letter fill: seamless looping nebula (no hard-edge wash / wrap pop); denser stars + occasional shooting stars; cross twinkles in nebula (not over type)
+
+---
+
 ## [0.1.266] — 2026-07-18
 
 ### Fixed

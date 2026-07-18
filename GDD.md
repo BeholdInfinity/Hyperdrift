@@ -306,7 +306,7 @@ Sparse NPC ships in open space (modular catalog defs). Density falls off with di
 
 | Region | Purpose | Status |
 |--------|---------|--------|
-| Title screen | Bokeh-blurred live Jennings Station space sim backdrop (ambient traffic, asteroids; camera bob + runway framing); *Stranger in the Galaxy* wordmark over dedicated 2.5D default ship (GALAXY twinkles; soft STRANGER metal sweep); ENTER HANGAR / QUICK LAUNCH enter hangar / space immediately; SETTINGS / BLUEPRINT (industrial plate buttons); build stamp + Changelog; Dev **Title Layout** tunes camera/type/ship/menu/bokeh and bakes to disk | Done |
+| Title screen | Bokeh-blurred live Jennings Station space sim backdrop (ambient traffic, asteroids; camera bob + runway framing); *Stranger in the Galaxy* wordmark over dedicated 2.5D default ship (GALAXY nebula windows; STRANGER bronze plate windows via `src/textures/strangerBronzePlate.js` + letter-masked metal kiss); ENTER HANGAR / QUICK LAUNCH enter hangar / space immediately; SETTINGS / BLUEPRINT (industrial plate buttons); build stamp + Changelog; Dev **Title Layout** tunes camera/type/ship/menu/bokeh and bakes to disk | Done |
 | Home Base hangar (Jennings Station) | Docked bay + B2 launch/land; industrial set; danger lights; B1–B3 captain checklists | Done (B2 request queue later) |
 | Jennings Station (overworld) | Industrial exterior (~4× hull); approach lights + Enter / auto edge dock | Done |
 | Settings / controls | Ship-only sandbox viewport with live bindings | Done |

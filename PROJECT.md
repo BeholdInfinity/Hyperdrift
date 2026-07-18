@@ -36,10 +36,13 @@ Note: `start-game.bat` waits for the server to respond before opening the browse
 ```
 index.html, styles.css, dev-server.py, start-game.bat / .ps1, stop-game.bat
 assets/branding/          Brand exports (logo PNG concept; title uses live sim + wordmark)
+assets/textures/          Procedural texture previews (e.g. STRANGER bronze plate HTML)
 InspirationImages/        Reference art (logo concept, hero shots)
 src/
   main.js                 Entry point, UI wiring
   version.js              Prototype semver (title stamp + build-info)
+  textures/
+    strangerBronzePlate.js  Procedural STRANGER bronze plate paint (title letter windows)
   ui/
     TitleScreen.js        Title wordmark + 2.5D starter ship
     title-layout.js       Bakeable title framing (camera / type / ship / menu / bokeh)
@@ -169,6 +172,7 @@ src/
 - Ambient miner asteroid damage (visual cue only today)
 
 ### Shipped recently (context)
+- **v0.1.267** Title wordmark: locked pose; STRANGER bronze plate windows + smile arch; GALAXY nebula windows
 - **v0.1.266** Mech travel facing: smooth turn-then-walk (no moonwalk / instant snaps)
 - **v0.1.265** Bay mechs diversify job types; double-team only when one type left
 - **v0.1.264** Welder stand-off: torch tip on hull/mount (not the grip)
