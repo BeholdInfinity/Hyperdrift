@@ -50,6 +50,16 @@ import {
   resolveLingerBays,
   lingerAllowsBay,
 } from './hangar-layout.js';
+import {
+  placeRegistry,
+  resolveHangarSkin,
+  hasModule,
+  isTurretMountCategory,
+  canPerformTurretCraneStage,
+  canPlayerStartTurretSwap,
+  applyHullHeal,
+  ensureVesselSimState,
+} from './place/index.js';
 
 const FACE_SOUTH = Math.PI / 2;
 const FACE_NORTH = SHIP.SPAWN_ANGLE;
@@ -980,6 +990,12 @@ export class HangarBay {
     /** Live player Ship entity (set each hangar update) — owns shipDef loadout */
     this._playerShip = null;
     this._shipAngle = SHIP.SPAWN_ANGLE;
+    /** Place → hangar area runtime config (from placeRegistry) */
+    this.placeId = 'place.jennings';
+    this.areaId = 'area.hangar-main';
+    this.hangarConfig = placeRegistry.getHangarRuntimeConfig();
+    /** Resolved look skin for active hangar area */
+    this.skin = null;
     this.crane = null;
     this._pressure = 0; // <0 need more cargo, >0 need less
     /** Per-bay door beacons — computed each frame by `_syncDoorBeacons` */
@@ -1479,12 +1495,15 @@ export class HangarBay {
 
   /**
    * @param {object|null} [playerShip] — current player Ship (shipDef already applied); used to size visitor peers
-   * @param {{ playerBayIndex?: number }} [opts]
+   * @param {{ playerBayIndex?: number, placeId?: string, areaId?: string }} [opts]
    */
   reset(playerShip = null, opts = {}) {
     if (playerShip) this._playerShip = playerShip;
     syncHangarSidePadFromLayout(null);
-    const bayIndex = ((opts.playerBayIndex ?? this.playerBayIndex ?? 1) | 0) % 3;
+    this._hydrateFromPlace(opts);
+    const bayCount = Math.max(1, this.hangarConfig?.bayCount || 3);
+    const bayIndex =
+      ((opts.playerBayIndex ?? this.playerBayIndex ?? 1) | 0) % bayCount;
     this.playerBayIndex = bayIndex;
     this.time = 0;
     this.npcs = [];
@@ -1495,13 +1514,15 @@ export class HangarBay {
     this._floorDropSeq = 1;
     this._hazard = { maneuver: 0, engine: 0, weapons: 0 };
     this._weaponWash = { x: 0, y: 0 };
-    this.bayBeacons = ['off', 'off', 'off'];
-    this.bayLaneMode = ['idle', 'idle', 'idle'];
-    this.doorOpen = [0, 0, 0];
+    const n = Math.max(1, this.hangarConfig?.bayCount || 3);
+    this.bayBeacons = Array(n).fill('off');
+    this.bayLaneMode = Array(n).fill('idle');
+    this.doorOpen = Array(n).fill(0);
     this._opsBays = new Set();
-    this.bayClearing = [false, false, false];
-    this.padRimMode = ['off', 'off', 'off'];
-    this.bayOffline = [false, false, false];
+    this.bayClearing = Array(n).fill(false);
+    this.padRimMode = Array(n).fill('off');
+    this.bayOffline = (this.hangarConfig?.bayOffline || Array(n).fill(false)).slice();
+    while (this.bayOffline.length < n) this.bayOffline.push(false);
     this.playerPadAngle = SHIP.SPAWN_ANGLE;
     this.playerPadDrop = 0;
     this.playerArrivalPending = false;
@@ -1514,26 +1535,39 @@ export class HangarBay {
       shipVy: 0,
       shipAngle: null,
     };
-    this.bayTicker = [[], [], []];
+    this.bayTicker = Array.from({ length: n }, () => []);
     this.pendingSpaceEgress = [];
-    this._spaceApproach = [null, null, null];
+    this._spaceApproach = Array(n).fill(null);
     this.preferExternalDoorTraffic = false;
-    this.spaceTrafficActive = true;
-    const labels = bayLabels();
+    this.spaceTrafficActive = !!this.hangarConfig?.visitorTraffic;
+    const labels = this._bayLabels();
+    const playerPadMk = this._configuredPadMk(bayIndex) || 2;
     this.playerBay = {
       x: hangarPadX(bayIndex),
       bayId: labels[bayIndex],
       bayIndex,
-      padMk: 2,
+      padMk: playerPadMk,
       visitorId: 'player',
       shipState: null,
       service: null,
       seq: null,
     };
     const peerPadMk = this._playerPadMk();
-    this.sidePads = [0, 1, 2]
+    const bayIndices = Array.from({ length: n }, (_, i) => i);
+    this.sidePads = bayIndices
       .filter((i) => i !== bayIndex)
-      .map((i) => rollSidePad(hangarPadX(i), labels[i], i, peerPadMk));
+      .map((i) => {
+        const pad = rollSidePad(
+          hangarPadX(i),
+          labels[i],
+          i,
+          this._configuredPadMk(i) || peerPadMk
+        );
+        // Prefer configured pad Mk when present (military / mixed yards)
+        const cfgMk = this._configuredPadMk(i);
+        if (cfgMk) pad.padMk = cfgMk;
+        return pad;
+      });
     this.piles = buildPileHardpoints();
     this._seedCargo();
     this._resetCrane();
@@ -1541,6 +1575,62 @@ export class HangarBay {
       if (pad.visitorId) this._beginCaptainService(pad);
     }
     this._initStationCrew();
+  }
+
+  /**
+   * Load hangar kit + skin from Place registry (Jennings default).
+   * @param {{ placeId?: string, areaId?: string }} [opts]
+   */
+  _hydrateFromPlace(opts = {}) {
+    if (opts.placeId) {
+      placeRegistry.setActive(opts.placeId, opts.areaId || null);
+    }
+    this.placeId = placeRegistry.activePlaceId;
+    const place = placeRegistry.getActive();
+    const hangarArea =
+      placeRegistry.getActiveHangarArea() ||
+      place?.areas?.[place?.defaultHangarAreaId];
+    this.areaId = hangarArea?.id || placeRegistry.activeAreaId;
+    this.hangarConfig = placeRegistry.getHangarRuntimeConfig(
+      this.placeId,
+      this.areaId
+    );
+    this.skin = resolveHangarSkin(place, hangarArea, null);
+  }
+
+  _bayLabels() {
+    const n = Math.max(1, this.hangarConfig?.bayCount || 3);
+    const ids = this.hangarConfig?.bayIds || [];
+    return Array.from({ length: n }, (_, i) => {
+      const f = ids[i];
+      if (this.hangarConfig && placeRegistry.get(this.placeId)?.areas?.[this.areaId]?.features?.[f]?.label) {
+        return placeRegistry.get(this.placeId).areas[this.areaId].features[f].label;
+      }
+      return bayLabels()[i] || `B${i + 1}`;
+    });
+  }
+
+  _configuredPadMk(bayIndex) {
+    const mk = this.hangarConfig?.padMk?.[bayIndex];
+    return mk != null ? mk | 0 : null;
+  }
+
+  _bayHasModule(bayIndex, moduleId) {
+    const mods = this.hangarConfig?.bayModules?.[bayIndex];
+    return hasModule(mods, moduleId);
+  }
+
+  hasCrane() {
+    return !!this.hangarConfig?.hasCrane;
+  }
+
+  playerMayManCrane() {
+    return !!(this.hasCrane() && this.hangarConfig?.playerCraneAuthority);
+  }
+
+  /** Crane-gated turret swap — false when bay has no crane. */
+  canTurretSwap() {
+    return canPlayerStartTurretSwap(this.hangarConfig);
   }
 
   /**
@@ -3661,6 +3751,7 @@ export class HangarBay {
 
   /**
    * Install catalog freight onto its target hardpoint (or an empty matching socket).
+   * Turret mounts require a crane (locked choreography — no craneless hand-swap).
    * @returns {boolean} false if target socket still occupied (caller should strip first)
    */
   _installCatalogPart(bay, cargo) {
@@ -3672,6 +3763,12 @@ export class HangarBay {
       categoryFromFreightLabel(cargo.label) ||
       getItem(itemId)?.category;
     if (!cat) return true;
+    if (
+      isTurretMountCategory(cat, cargo.shape) &&
+      !canPerformTurretCraneStage(this.hangarConfig)
+    ) {
+      return true; // block swap — leave freight staged
+    }
 
     const mounts = def.resolveMounts();
     const targetKey = cargo.targetHardpointKey;
@@ -3778,11 +3875,30 @@ export class HangarBay {
     const cat = keyHint ? null : this._stripCategoryForBay(bay, preferCategory);
     const key = pickStripKey(def, cat, keyHint);
     if (!key) return null;
+    const mounts = def.resolveMounts?.() || {};
+    const socketCat = mounts[key]?.socket?.category || mounts[key]?.item?.category;
+    const itemPeek = getItem(mounts[key]?.item?.id || mounts[key]?.item);
+    if (
+      isTurretMountCategory(socketCat || itemPeek?.category, itemPeek?.shape) &&
+      !canPerformTurretCraneStage(this.hangarConfig)
+    ) {
+      return null;
+    }
     const itemId = unequipHardpoint(def, key);
     if (!itemId) return null;
     const cargo = makeCatalogUpgradeCargo(itemId);
     cargo.strippedFromKey = key;
     return cargo;
+  }
+
+  /**
+   * Exterior pad hull restore — clears scar ceiling (crew or player; tools assumed).
+   * @param {object} [ship]
+   */
+  exteriorHullRestore(ship = this._playerShip) {
+    if (!ship) return null;
+    ensureVesselSimState(ship);
+    return applyHullHeal(ship, 1, 'exterior');
   }
 
   /** Roll need meters + captain checklist (visitors + interim B2 ambient). */
@@ -4453,6 +4569,10 @@ export class HangarBay {
     }
 
     st.hull = Math.min(1, start + healed);
+    // Exterior hangar repair clears scar ceiling when fully restored
+    if (st.hull >= 0.999 && this.isPlayerBay(pad.bayIndex) && this._playerShip) {
+      applyHullHeal(this._playerShip, 1, 'exterior');
+    }
   }
 
   /** Drive board meters toward completion while work animates. */
@@ -6179,6 +6299,10 @@ export class HangarBay {
   }
 
   _resetCrane() {
+    if (!this.hasCrane()) {
+      this.crane = null;
+      return;
+    }
     const job = this._pickCraneJob();
     const home = this._craneHomeXY();
     const start = job.mode === 'idle' || !job.pickup
@@ -7724,20 +7848,27 @@ export class HangarBay {
     return this._bayWorkPiles(padX, 'in', ROW.M);
   }
 
-  /** Fixed station roster: 6 bay mechs + forklifts (always on stage). */
+  /** Station roster from hangar Place config (Jennings = 6 mechs + 4 forklifts). */
   _initStationCrew() {
     this.npcs = [];
-    const labels = ['B1', 'B2', 'B3'];
-    for (let bay = 0; bay < 3; bay++) {
-      for (let slot = 1; slot <= 2; slot++) {
+    const labels = this._bayLabels();
+    const n = Math.max(1, this.hangarConfig?.bayCount || 3);
+    const mechsPerBay = this.hangarConfig?.mechsPerBay || [2, 2, 2];
+    for (let bay = 0; bay < n; bay++) {
+      const count = Math.max(0, mechsPerBay[bay] | 0);
+      for (let slot = 1; slot <= count; slot++) {
         this._createMechanic(`${labels[bay]}Mechanic${slot}`, bay, slot);
       }
     }
-    // Spread initial claims across the widened hub
-    const step = Math.max(1, Math.floor(FORKLIFT_PARK_COUNT / FORKLIFT_ACTIVE));
-    for (let i = 0; i < FORKLIFT_ACTIVE; i++) {
-      const parkIndex = Math.min(i * step, FORKLIFT_PARK_COUNT - 1);
-      this._createForklift(`forklift${i + 1}`, parkIndex);
+    const forkliftCount = this.hangarConfig?.hasForkliftHub
+      ? Math.max(0, this.hangarConfig?.forkliftCount | 0)
+      : 0;
+    if (forkliftCount > 0) {
+      const step = Math.max(1, Math.floor(FORKLIFT_PARK_COUNT / forkliftCount));
+      for (let i = 0; i < forkliftCount; i++) {
+        const parkIndex = Math.min(i * step, FORKLIFT_PARK_COUNT - 1);
+        this._createForklift(`forklift${i + 1}`, parkIndex);
+      }
     }
   }
 

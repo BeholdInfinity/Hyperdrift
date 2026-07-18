@@ -296,6 +296,40 @@ html, body {
   font-size: 0.58rem;
 }
 
+.dev-place-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 0.55rem;
+  letter-spacing: 1px;
+  color: rgba(200, 180, 160, 0.85);
+}
+
+.dev-place-select {
+  width: 100%;
+  padding: 6px 8px;
+  font-size: 0.65rem;
+  background: rgba(20, 26, 34, 0.95);
+  border: 1px solid rgba(255, 140, 80, 0.35);
+  color: #e8e0d4;
+}
+
+.dev-place-info {
+  max-height: 160px;
+  overflow: auto;
+  font-size: 0.58rem;
+}
+
+.dev-num-input {
+  width: 3rem;
+  margin-left: 6px;
+  padding: 2px 4px;
+  font-size: 0.65rem;
+  background: rgba(20, 26, 34, 0.95);
+  border: 1px solid rgba(255, 140, 80, 0.35);
+  color: #e8e0d4;
+}
+
 .hangar-edit-panel {
   position: absolute;
   right: 18px;

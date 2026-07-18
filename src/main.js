@@ -3,6 +3,13 @@ import { Settings } from './core/Settings.js';
 import { DevTools } from './dev/DevTools.js';
 import { HangarLayoutEditor } from './dev/HangarLayoutEditor.js';
 import { resolveLingerBays } from './world/hangar-layout.js';
+import {
+  placeRegistry,
+  setPlayerCraneAuthority,
+  installSharedModule,
+  uninstallSharedModule,
+  ensureVesselSimState,
+} from './world/place/index.js';
 
 const canvas = document.getElementById('game-canvas');
 const startScreen = document.getElementById('start-screen');
@@ -15,6 +22,7 @@ const hangarLaunchBtn = document.getElementById('hangar-launch-btn');
 const hangarBlueprintBtn = document.getElementById('hangar-blueprint-btn');
 const hangarSimSpeedReadout = document.getElementById('dev-sim-speed-readout');
 const devBayPanel = document.getElementById('dev-bay-panel');
+const devPlacePanel = document.getElementById('dev-place-panel');
 const hangarHud = document.getElementById('hangar-hud');
 const controlsHud = document.getElementById('controls-hud');
 const blueprintHud = document.getElementById('blueprint-hud');
@@ -71,8 +79,10 @@ function syncDevModeUi() {
     if (!on) {
       DevTools.drawerOpen = false;
       DevTools.bayPanelOpen = false;
+      DevTools.placePanelOpen = false;
       devDrawer.classList.remove('open');
       if (devBayPanel) devBayPanel.classList.add('hidden');
+      if (devPlacePanel) devPlacePanel.classList.add('hidden');
     }
   }
   document.querySelectorAll('.bp-dev-only').forEach((el) => {
@@ -833,8 +843,12 @@ if (devDrawerToggle && devDrawer) {
     if (!Settings.isDevMode()) return;
     DevTools.drawerOpen = !DevTools.drawerOpen;
     devDrawer.classList.toggle('open', DevTools.drawerOpen);
-    if (!DevTools.drawerOpen) DevTools.bayPanelOpen = false;
+    if (!DevTools.drawerOpen) {
+      DevTools.bayPanelOpen = false;
+      DevTools.placePanelOpen = false;
+    }
     syncBayOptionsUi();
+    syncPlacePanelUi();
   });
 }
 
@@ -999,6 +1013,44 @@ function runBayAction(action) {
   syncBayOptionsUi();
 }
 
+function syncPlacePanelUi() {
+  const open = !!(
+    Settings.isDevMode() &&
+    DevTools.placePanelOpen &&
+    DevTools.drawerOpen
+  );
+  if (devPlacePanel) devPlacePanel.classList.toggle('hidden', !open);
+  if (!open) return;
+  const info = document.getElementById('dev-place-info');
+  const desc = placeRegistry.describeActive();
+  const ship = engine.ship;
+  ensureVesselSimState(ship);
+  if (info) {
+    info.textContent = [
+      `${desc.placeKind}: ${desc.placeLabel}`,
+      `area: ${desc.areaLabel || desc.areaId} (${desc.areaType})`,
+      `bays: ${desc.bayCount}`,
+      ...(desc.bays || []).map(
+        (b) =>
+          `  ${b.label}: Mk${b.padMk} mechs=${b.mechs} [${(b.modules || []).join(',')}]`
+      ),
+      `shared: crane=${!!desc.shared?.modules?.includes('crane')} forks=${desc.shared?.forkliftCount ?? 0}`,
+      ship
+        ? `ship hull=${(ship.hull ?? 1).toFixed(2)} ceil=${(ship.hullInteriorCeiling ?? 1).toFixed(2)} crew=${ship.crewCount ?? 0}`
+        : 'ship: —',
+      engine.interiorActive ? 'INTERIOR ACTIVE' : '',
+    ]
+      .filter(Boolean)
+      .join('\n');
+  }
+  const preset = document.getElementById('dev-place-preset');
+  if (preset && desc.placeId) preset.value = desc.placeId;
+  const auth = document.getElementById('dev-crane-authority');
+  if (auth) auth.checked = !!desc.shared?.playerCraneAuthority;
+  const crewEl = document.getElementById('dev-crew-count');
+  if (crewEl && ship) crewEl.value = String(ship.crewCount ?? 0);
+}
+
 document.getElementById('dev-hangar-edit-btn')?.addEventListener('click', enterHangarEdit);
 document.getElementById('dev-bay-options-btn')?.addEventListener('click', () => {
   if (!Settings.isDevMode()) return;
@@ -1006,12 +1058,108 @@ document.getElementById('dev-bay-options-btn')?.addEventListener('click', () => 
     DevTools.drawerOpen = true;
     if (devDrawer) devDrawer.classList.add('open');
   }
+  DevTools.placePanelOpen = false;
   DevTools.bayPanelOpen = !DevTools.bayPanelOpen;
   syncBayOptionsUi();
+  syncPlacePanelUi();
 });
 document.getElementById('dev-bay-close')?.addEventListener('click', () => {
   DevTools.bayPanelOpen = false;
   syncBayOptionsUi();
+});
+document.getElementById('dev-place-btn')?.addEventListener('click', () => {
+  if (!Settings.isDevMode()) return;
+  if (!DevTools.drawerOpen) {
+    DevTools.drawerOpen = true;
+    if (devDrawer) devDrawer.classList.add('open');
+  }
+  DevTools.bayPanelOpen = false;
+  DevTools.placePanelOpen = !DevTools.placePanelOpen;
+  syncBayOptionsUi();
+  syncPlacePanelUi();
+});
+document.getElementById('dev-place-close')?.addEventListener('click', () => {
+  DevTools.placePanelOpen = false;
+  syncPlacePanelUi();
+});
+document.getElementById('dev-place-apply')?.addEventListener('click', () => {
+  if (!Settings.isDevMode()) return;
+  const id = document.getElementById('dev-place-preset')?.value;
+  if (id) engine.applyPlacePreset(id);
+  setDevStatus(DevTools.status);
+  syncPlacePanelUi();
+});
+document.getElementById('dev-crane-authority')?.addEventListener('change', (e) => {
+  if (!Settings.isDevMode()) return;
+  const place = placeRegistry.getActive();
+  const areaId = placeRegistry.activeAreaId;
+  if (place) {
+    setPlayerCraneAuthority(place, areaId, !!e.target.checked);
+    engine.hangarBay.hangarConfig =
+      placeRegistry.getHangarRuntimeConfig(place.id, areaId);
+  }
+  syncPlacePanelUi();
+});
+document.getElementById('dev-toggle-crane')?.addEventListener('click', () => {
+  if (!Settings.isDevMode()) return;
+  const place = placeRegistry.getActive();
+  const areaId = placeRegistry.activeAreaId;
+  if (!place?.areas?.[areaId]) return;
+  const mods = place.areas[areaId].shared?.modules || [];
+  if (mods.includes('crane')) uninstallSharedModule(place, areaId, 'crane');
+  else installSharedModule(place, areaId, 'crane');
+  engine.hangarBay.reset(engine.ship, {
+    playerBayIndex: engine.playerBayIndex,
+    placeId: place.id,
+    areaId,
+  });
+  setDevStatus(mods.includes('crane') ? 'Crane removed' : 'Crane installed');
+  syncPlacePanelUi();
+});
+document.getElementById('dev-enter-interior')?.addEventListener('click', () => {
+  if (!Settings.isDevMode()) return;
+  const ok = engine.enterPlayerInterior();
+  setDevStatus(ok ? DevTools.status : 'Cannot enter interior (Mk1 or unmanned)');
+  syncPlacePanelUi();
+});
+document.getElementById('dev-exit-interior')?.addEventListener('click', () => {
+  if (!Settings.isDevMode()) return;
+  engine.exitPlayerInterior();
+  setDevStatus('Exited interior');
+  syncPlacePanelUi();
+});
+document.getElementById('dev-scar-hull')?.addEventListener('click', () => {
+  if (!Settings.isDevMode()) return;
+  engine.scarPlayerHull();
+  setDevStatus(
+    `Hull ceiling → ${(engine.ship?.hullInteriorCeiling ?? 1).toFixed(2)}`
+  );
+  syncPlacePanelUi();
+});
+document.getElementById('dev-heal-hull-bench')?.addEventListener('click', () => {
+  if (!Settings.isDevMode()) return;
+  const r = engine.interactVesselFeature('area.engineering', 'feature.hull-bench', {
+    ignoreStock: true,
+  });
+  setDevStatus(
+    r.ok
+      ? `Hull bench → ${(engine.ship?.hull ?? 0).toFixed(2)} (ceil ${(engine.ship?.hullInteriorCeiling ?? 1).toFixed(2)})`
+      : `Hull bench failed: ${r.reason}`
+  );
+  syncPlacePanelUi();
+});
+document.getElementById('dev-exterior-hull')?.addEventListener('click', () => {
+  if (!Settings.isDevMode()) return;
+  engine.hangarBay.exteriorHullRestore(engine.ship);
+  setDevStatus('Exterior hull restore 100% + ceiling reset');
+  syncPlacePanelUi();
+});
+document.getElementById('dev-crew-count')?.addEventListener('change', (e) => {
+  if (!Settings.isDevMode() || !engine.ship) return;
+  ensureVesselSimState(engine.ship);
+  engine.ship.crewCount = Math.max(0, Number(e.target.value) | 0);
+  setDevStatus(`Crew count → ${engine.ship.crewCount}`);
+  syncPlacePanelUi();
 });
 document.querySelectorAll('[data-bay-sel]').forEach((btn) => {
   btn.addEventListener('click', () => {
@@ -1109,6 +1257,7 @@ setInterval(() => {
   if (!Settings.isDevMode()) return;
   syncDevInspect();
   if (DevTools.bayPanelOpen) syncBayOptionsUi();
+  if (DevTools.placePanelOpen) syncPlacePanelUi();
   if (HangarLayoutEditor.isActive()) syncHangarEditInspector();
   const st = document.getElementById('dev-drawer-status');
   if (st && DevTools.status) st.textContent = DevTools.status;
@@ -1153,8 +1302,12 @@ document.addEventListener('keydown', (e) => {
     e.preventDefault();
     DevTools.drawerOpen = !DevTools.drawerOpen;
     if (devDrawer) devDrawer.classList.toggle('open', DevTools.drawerOpen);
-    if (!DevTools.drawerOpen) DevTools.bayPanelOpen = false;
+    if (!DevTools.drawerOpen) {
+      DevTools.bayPanelOpen = false;
+      DevTools.placePanelOpen = false;
+    }
     syncBayOptionsUi();
+    syncPlacePanelUi();
   }
   if (HangarLayoutEditor.isActive()) {
     if (e.key === 'Delete' || e.key === 'Backspace') {

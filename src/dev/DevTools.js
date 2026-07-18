@@ -65,6 +65,8 @@ export const DevTools = {
   drawerOpen: false,
   /** Bay Options side panel open */
   bayPanelOpen: false,
+  /** Place composer side panel open */
+  placePanelOpen: false,
   /** Selected bay indices for Bay Options actions */
   baySel: [true, true, true],
   status: '',

@@ -61,10 +61,11 @@ src/
     DevTools.js, DevSave.js, DevOverlay.js, BlueprintAuthoring.js, HangarLayoutEditor.js
   world/
     hangar-layout.js      Flavor props / linger / gossip (Dev bake target)
+    place/                Place → Area → Feature registry (stations, ships, outposts, vessels)
     Starfield.js          7 parallax star layers (screen-fixed size, tiled when zoomed out)
     NebulaField.js        3 depth layers + ambient procedural nebulae
     SpeedStreaks.js       Velocity-opposed foreground streaks (screen-space)
-    HangarBay.js          Home Base hangar (fixed crew, boards, door tickers, logistics)
+    HangarBay.js          Hangar sim hydrated from active Place hangar area
     HangarVisitorShips.js Modular hangar visitors (generateVisitor + ShipRenderer; locked shipDef)
     AmbientTrafficSystem.js Near-station traffic + always-on cops; off-screen spawn/despawn
     Station.js            Jennings Station overworld exterior + dock zones
@@ -75,12 +76,14 @@ src/
 ## Architecture principles
 
 - **Modular systems** wired by `GameEngine` — extend via new systems/entities, not monolith edits
+- **Place → Area → Feature** — top-level hosts are Places (`station` | `capitalShip` | `outpost` | `vessel`), not “the hangar” singleton. Hangars are `areaType: 'hangar'` with bay Features; shops/bars/farms/decks are stub area types. Stable string IDs; look shells inherit place → area → feature (condition, tech, theme). See `src/world/place/`.
 - **Chunk-based world** — deterministic seeds, load radius 3, unload radius 5 (`WORLD` in Constants)
 - **Hangar sim LOD (space)** — Quick Launch and hangar→space both keep the hangar live; ticks by distance to the **closest human pilot** (`STATION.HANGAR_LOD_FULL_DIST` → full, lerp to `HANGAR_LOD_PAUSE_DIST` → pause). NPCs do not wake it. Hangar mode always full-rate. In space, empty-bay door fills request ambient runway approaches so mouth land/leave cadence matches hangar-side traffic. Multiplayer: extend `_humanPilotPositions()`.
 - **Thruster visuals driven by modular mounts** — equipped `mainEngine` / `maneuverThruster` items only (`PlumeDraw.js`); same path for player, hangar visitors, and ambient traffic; intensity from physics thruster bag
 - **Plume flow** (`computePlumeFlow`) — leading cue/wash + crosswind lean from relative wind (`−velocity`); trailing stretch; ship-local particles on the player, world-space on visitors/ambient
 - **Modular ships** — `src/ships/`: swap groups, full section/item ID matrix (parametric), `createPlayerStarter()`, shared `ShipRenderer` (top-down + 16 angled views)
-- **Modes** — `title` (drifting backdrop), `playing` (flight), `hangar` (Jennings Station / Home Base), `controls` (ship-only settings sandbox), `blueprint`
+- **Mk2+ vessel interiors** — Place graph + simBindings (hull/fuel/ammo); enter when player-manned (space/hangar/unseat); crew ticks logistics in background; interior hull heal clamps to scar ceiling; exterior pad restore clears scars. Walker TBD (`shipInterior` mode).
+- **Modes** — `title` (drifting backdrop), `playing` (flight), `hangar` (active Place hangar), `controls` (ship-only settings sandbox), `blueprint`
 - **Future modes (vision)** — `shipInterior` / `derelict` (shared 2.5D walker), `dialogue` (portrait overlay); see [`VISION.md`](VISION.md) Presentation Layers
 - **Future-ready** for multiple ships, AI, trading, mining, missions, Home Base launch/extract, narrative runtime, networking, save/load
 
@@ -99,7 +102,8 @@ src/
 | Dorsal 360° combat turret (LMB, 3/s) + nose mining laser (RMB) | Done |
 | Circular viewport + corner UI placeholders | Done |
 | Title screen (ENTER HANGAR / QUICK LAUNCH / SETTINGS; version stamp) | Done |
-| Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Random player bay; free-look pan camera; modular visitors on the other two; Dev Bay Options; 2.5D elevator shaft; title elevator raise; **ships draw in angled 2.5D** |
+| Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Place-hydrated kit; random player bay; free-look pan; modular visitors; Dev Bay Options + **Place** composer; 2.5D elevator; title elevator raise; **ships draw in angled 2.5D** |
+| Place → Area → Feature registry (stations / capital / outpost / vessel) | Groundwork (v0.1.232); hangar first; other rooms stubbed; vessel interior contract + Dev tests |
 | Jennings Station overworld exterior + dock prompt (4× scale via `STATION.SCALE`) | Done |
 | Ambient space traffic (modular; cops always near station; off-screen spawn/despawn) | Done (v0.1.150–154); further tuning OK |
 | Settings controls sandbox (ship-only viewport) | Done |
@@ -159,6 +163,7 @@ src/
 - Ambient miner asteroid damage (visual cue only today)
 
 ### Shipped recently (context)
+- **v0.1.232** Place→Area→Feature groundwork; hangar from Place kit; vessel interior contract; crane-gated turrets; Dev Place panel
 - **v0.1.231** South high-speed approach no longer occludes under hangar roof
 - **v0.1.230** Launch lift keeps 8-thruster hover burst through pad rise
 - **v0.1.229** Direct-load skips hold cargo when ship bay is full
@@ -252,7 +257,7 @@ src/
 
 ## Dev Mode + Blueprint + Hangar editor
 
-**Dev Mode** (Settings toggle, default on): floating **DEV** drawer (` key) — sim speed, inspect, overlays, hangar-edit entry, **Bay Options** side menu (multi-bay Service/Door/Elev/Pad/Empty·Occupy/On·Off/Reset). Bake via `POST /dev/save` (allowlisted paths) or clipboard Export.
+**Dev Mode** (Settings toggle, default on): floating **DEV** drawer (` key) — sim speed, inspect, overlays, hangar-edit entry, **Bay Options** side menu (multi-bay Service/Door/Elev/Pad/Empty·Occupy/On·Off/Reset), **Place** composer (presets / crane toggle / vessel scar & interior tests). Bake via `POST /dev/save` (allowlisted paths) or clipboard Export.
 
 **Data files (machine-editable):**
 - `src/ships/data/visualTuning.js` — cup / plume / generic engine class scale

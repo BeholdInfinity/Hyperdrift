@@ -44,6 +44,16 @@ import { DevTools } from '../dev/DevTools.js';
 import { drawDevOverlays } from '../dev/DevOverlay.js';
 import { HangarLayoutEditor } from '../dev/HangarLayoutEditor.js';
 import { blueprintAuthoring } from '../dev/BlueprintAuthoring.js';
+import {
+  placeRegistry,
+  ensureVesselSimState,
+  shipHasInterior,
+  canEnterInterior,
+  unseatCaptainRoute,
+  tickVesselInteriorCrew,
+  applyHullScar,
+  interactFeature,
+} from '../world/place/index.js';
 
 /** Slow title-screen drift (world units / sec) */
 const TITLE_DRIFT_SPEED = 52;
@@ -91,6 +101,11 @@ export class GameEngine {
     this.hangarBay = new HangarBay();
     this.station = new Station();
     this.ambientTraffic = new AmbientTrafficSystem();
+    /** Place → Area → Feature registry (Jennings default hangar) */
+    this.placeRegistry = placeRegistry;
+    /** Stub: player entered vessel interior graph (walker TBD) */
+    this.interiorActive = false;
+    this.interiorPlaceId = null;
 
     this.ship = null;
     this._sandboxShip = null;
@@ -254,7 +269,11 @@ export class GameEngine {
     // Live hangar behind the station (LOD by distance) so visitors land/leave in space
     syncHangarSidePadFromLayout(null);
     this.playerBayIndex = (Math.random() * 3) | 0;
-    this.hangarBay.reset(this.ship, { playerBayIndex: this.playerBayIndex });
+    this._bindPlayerVessel(this.ship);
+    this.hangarBay.reset(this.ship, {
+      playerBayIndex: this.playerBayIndex,
+      placeId: placeRegistry.activePlaceId,
+    });
     this.hangarBay.warmStartHeadless();
     this.hangarBay.clearControlledPadAfterLaunch();
     this.hangarBay.preferExternalDoorTraffic = true;
@@ -319,7 +338,11 @@ export class GameEngine {
       this.ship = new Ship(this._dockPos.x, this._dockPos.y);
       if (carriedDef) this.ship.shipDef = carriedDef;
       else this._applyPendingBlueprint(this.ship);
-      this.hangarBay.reset(this.ship, { playerBayIndex: this.playerBayIndex });
+      this._bindPlayerVessel(this.ship);
+      this.hangarBay.reset(this.ship, {
+        playerBayIndex: this.playerBayIndex,
+        placeId: placeRegistry.activePlaceId,
+      });
       this.hangarBay.warmStartHeadless();
       this._hangarLive = true;
     } else {
@@ -330,6 +353,7 @@ export class GameEngine {
         carried ||
         new Ship(hangarPadX(prefer), 0);
       if (carriedDef && this.ship) this.ship.shipDef = carriedDef;
+      this._bindPlayerVessel(this.ship);
       const seated = this.hangarBay.claimEmptyBayForControlled(
         prefer,
         this.ship
@@ -554,10 +578,97 @@ export class GameEngine {
     const def = cloneShipDef(this._sandboxShip.shipDef);
     if (this.ship) {
       this.ship.shipDef = def;
+      this._bindPlayerVessel(this.ship);
       return true;
     }
     // Cache for next hangar / play session
     this._pendingBlueprintDef = def;
+    return true;
+  }
+
+  /**
+   * Attach vessel sim state + interior Place graph (Mk2+).
+   * @param {import('../entities/Ship.js').Ship|null} ship
+   */
+  _bindPlayerVessel(ship) {
+    if (!ship) return;
+    ship.isPlayerManned = true;
+    ensureVesselSimState(ship);
+    if (shipHasInterior(ship.shipDef, ship)) {
+      const vp = placeRegistry.ensureVesselPlace('player');
+      this.interiorPlaceId = vp.id;
+      ship.interiorPlaceId = vp.id;
+    } else {
+      ship.interiorPlaceId = null;
+    }
+  }
+
+  canEnterPlayerInterior() {
+    return canEnterInterior(this.ship, { isPlayerManned: true });
+  }
+
+  /**
+   * Enter Mk2+ vessel interior from space, hangar, or unseat (walker stub).
+   * @returns {boolean}
+   */
+  enterPlayerInterior(opts = {}) {
+    if (!this.canEnterPlayerInterior()) return false;
+    const place = placeRegistry.ensureVesselPlace('player');
+    this.interiorActive = true;
+    this.interiorPlaceId = place.id;
+    placeRegistry.interiorMode = 'shipInterior';
+    placeRegistry.setActive(place.id, opts.areaId || 'area.bridge-access');
+    DevTools.status = `Interior: ${place.label} (${opts.areaId || 'bridge'})`;
+    return true;
+  }
+
+  exitPlayerInterior() {
+    this.interiorActive = false;
+    placeRegistry.interiorMode = 'none';
+    // Restore hangar/station place focus when leaving vessel interior
+    if (this.mode === 'hangar' || this._hangarLive) {
+      placeRegistry.setActive(
+        this.hangarBay.placeId || 'place.jennings',
+        this.hangarBay.areaId || null
+      );
+    }
+    return true;
+  }
+
+  /** Unseat captain — Mk2+ → interior; Mk1 → exterior stub. */
+  unseatCaptain() {
+    const route = unseatCaptainRoute(this.ship, { isPlayerManned: true });
+    if (route === 'shipInterior') return this.enterPlayerInterior();
+    DevTools.status = 'Unseat → exterior (Mk1 / no interior)';
+    return false;
+  }
+
+  /**
+   * Dev / future walker: interact with a vessel feature (hull/fuel/ammo bindings).
+   */
+  interactVesselFeature(areaId, featureId, opts = {}) {
+    const place = placeRegistry.ensureVesselPlace('player');
+    return interactFeature(place, areaId, featureId, this.ship, opts);
+  }
+
+  /** Record a space hull scar (interior heal ceiling drops). */
+  scarPlayerHull() {
+    if (!this.ship) return;
+    applyHullScar(this.ship);
+  }
+
+  /** Switch active Place preset and rebuild hangar if live. */
+  applyPlacePreset(placeId) {
+    const place = placeRegistry.applyPreset(placeId);
+    if (!place) return false;
+    if (this.mode === 'hangar' || this._hangarLive) {
+      this.hangarBay.reset(this.ship, {
+        playerBayIndex: this.playerBayIndex,
+        placeId: place.id,
+      });
+      if (this.mode === 'hangar') this.hangarBay.warmStartHeadless();
+    }
+    DevTools.status = `Place: ${place.label}`;
     return true;
   }
 
@@ -2250,6 +2361,12 @@ export class GameEngine {
       deltaTime
     );
     this.weaponSystem.checkCollisions(asteroids);
+
+    // Crew-driven vessel interior sim (background while flying)
+    if (this.ship?.interiorPlaceId) {
+      const vPlace = placeRegistry.get(this.ship.interiorPlaceId);
+      if (vPlace) tickVesselInteriorCrew(this.ship, vPlace, deltaTime);
+    }
 
     this.entityManager.update(deltaTime);
     this.particleSystem.update(deltaTime);

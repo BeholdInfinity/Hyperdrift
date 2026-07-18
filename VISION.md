@@ -174,8 +174,8 @@ Thin stack — not a full visual-novel engine on day one:
 |------|------------------|--------|
 | `playing` | Top-down ship | Prototype |
 | `hangar` | 2.5D pan/zoom | Prototype |
-| `shipInterior` | 2.5D walk / seat | Not begun |
-| `derelict` | 2.5D walk / explore | Not begun — shared interior core + ruin layout pack |
+| `shipInterior` | 2.5D walk / seat | Data + enter/crew/simBinding groundwork (walker not begun) |
+| `derelict` | 2.5D walk / explore | Not begun — shared interior core + ruin layout pack; Place stubs exist |
 | `dialogue` | Overlay on any mode | Not begun |
 | Later: station map / economy UI | Menus + live hangar | Not begun |
 
@@ -186,11 +186,12 @@ Prefer one shared **interior exploration** core (movement, interactables, ambien
 | Subsystem | Status | Notes |
 |-----------|--------|-------|
 | Space flight + world | Started | Physics, weapons, asteroids, nebulae, ambient traffic, Jennings exterior |
-| Hangar bay sim | Strong | Crew, crane, checklists, visitors — seed of Act 1 / player station |
+| Hangar bay sim | Strong | Place-hydrated kits; crew, crane, checklists, visitors — seed of Act 1 / player station |
 | Modular ships | Started | Catalog, Blueprint, hardpoints, plumes |
-| Ship interior | Not begun | Mode + layout + on-foot / seat |
-| Derelict explore | Not begun | Same 2.5D walker; salvage/restore; darker set |
-| Station builder / economy | Not begun | Beyond hangar theater |
+| Place → Area → Feature | Groundwork | Stations, capital/outpost stubs, Mk2+ vessel graphs; mixed restore |
+| Ship interior | Contracted | Enter when manned; crew logistics + scar ceiling; walker next |
+| Derelict explore | Stub Places | Same 2.5D walker later; salvage/restore; darker set |
+| Station builder / economy | Not begun | Beyond hangar theater — restore-by-ID is the intended path |
 | Narrative runtime | Not begun | Flags, acts, dialogue, portraits, ambient lines |
 | Bot companion AI | Not begun | Depends on interior + narrative |
 | Fleet / endgame | Far | Needs economy + ships + combat |

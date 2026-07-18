@@ -41,17 +41,31 @@ This prototype de-risks systems that *Stranger in the Galaxy* will need (flight,
 
 ---
 
+## Places (stations, ships, outposts)
+
+Long-term identity spine (prototype groundwork in `src/world/place/`):
+
+| Layer | Examples |
+|-------|----------|
+| **Place** | `station` (Jennings, derelict home), `capitalShip` (roaming trader / flag stub), `outpost` (planet site stub), `vessel` (Mk2+ flyable interior) |
+| **Area** | Hangar, bar, shop, farm, factory, deck, engineering, … |
+| **Feature** | Hangar **bay**, hull bench, fuel-input, gun-input, … |
+
+Look shells (condition broke→pristine, tech `broken`→`elite`, theme/colorway) inherit Place → Area → Feature so mixed restore is possible (e.g. Bay 1 working while Bay 2–3 and the bar stay ruin).
+
+**Mk2+ vessel interiors:** enter whenever the ship is player-manned (space / hangar / unseat). Mk1 has no interior (unseat → outside). Interiors keep simming in the background: **0 crew = no auto heal/fuel/ammo**; crew jobs apply `simBinding`s. Interior hull repair clamps to a scar ceiling (steps down after space damage, e.g. 99% / 98%); only **exterior pad restore** (hangar crew **or** player on an empty pad — tools assumed for now) restores 100% and clears the ceiling.
+
 ## Home Base (hangar)
 
-The hangar bay is the prototype seed of **Home Base**: the place you start a new game from, and the hub between missions for future extraction / rogue-lite loops (outfit, stash cargo, depart, return).
+The hangar bay is the prototype seed of **Home Base**: the place you start a new game from, and the hub between missions for future extraction / rogue-lite loops (outfit, stash cargo, depart, return). Default Place is `place.jennings` (rich commercial kit); Dev **Place** panel can apply derelict / poor shed / stubs.
 
 | Now | Not yet |
 |-----|---------|
 | Full-frame docked bay (B1 · B2 · B3 equal pads; land on the green lane you fly into); free-look hangar camera (drag pan / scroll zoom); 2.5D industrial set dressing (prop categories: desk/shelf/storage/tool/yard/decor — `decor` wall art is higher-fi engine-drawn posters); three-column pad status boards; danger-lane floor lights | Persistent inventory / loadout across sessions; personal hangar fleet pick |
 | Live thrusters / engine / weapons (position + heading locked to pad until launch) | Mission board, shop UI, between-run meta |
 | 3×6 cargo grid (2 cols/bay: left=in, right=out), manned crane, bulkheads; forklift hub south wall | Player-request job queue for **B2 only** (see below) |
-| Fixed station crew (4 forklifts + 6 bay mechs + crane); checklist-driven logistics | |
-| Distinct upgrade parts from ItemCatalog; install/uninstall mutates ship hardpoint loadout (strip before install) | Player Ship Upgrade UI (economy / gated install) — Dev **Blueprint** sandbox is the prototype surface |
+| Place-driven crew (Jennings = 4 forklifts + 6 bay mechs + crane); checklist-driven logistics; player may self-serve pad jobs when crew absent | Full player on-foot pad / crane control feel |
+| Distinct upgrade parts from ItemCatalog; install/uninstall mutates ship hardpoint loadout; **turret swaps require a crane** | Player Ship Upgrade UI (economy / gated install) — Dev **Blueprint** sandbox is the prototype surface |
 | B2 **LAUNCH** / dock landing (lift burst, pad turntable, doors, thrust) | |
 | B1–B3 captain service checklist; pilot door lights + status tickers; B1/B3 exit + elevator; B2 rerolls; empty-bay cargo sweep; elevator shafts | |
 | Jennings Station exterior + pad status lights (paint + two floating runway rows; green / red / spin-red depart / spin-yellow elevator; runway safe-speed lane = pulse-green reserved + hangar approach anim) + apron thirds + approach lights (yellow chase / green-safe / red-fast / full blink / exit reverse) + depth-flip safe ingress + green-lane auto-dock; hangar↔space ship bridge; hangar sim LOD by human distance (Quick Launch + after launch); space-view door fills land on the runway at hangar visitor cadence | Hangar **room / set-dressing editor** (designer places props, 8-dir rotate, linger/gossip; Done saves layout) — see `PROJECT.md` |
@@ -70,20 +84,18 @@ Each bay owns **two columns** flanking its pad: **left = inbound (load)**, **rig
 
 Vertical flow (example upgrade install): forklift → south-left → crane → top-left → mechanic installs; old mount → top-right → crane → south-right → forklift off-screen (sim vanish today; later crew stash/sell).
 
-**Wanted — turret / hardpoint swap choreography (not shipped):** today’s install is strip-then-weld at the mount with freight already at north-in. Preferred beat so the swap reads physically:
+**Turret / hardpoint swap (locked design — crane required):** no craneless hand-carry onto/off the hardpoint. Bays without a `crane` module cannot swap turrets. Player may do weld stages; crane stages need a crane (NPC operator, or **player-manned crane** when the bay grants crane authority).
 
-1. Mechanic sparks a **detach weld** on the old turret / mount (part becomes freestanding on the hull).
-2. Crane comes over, **picks up the detached part**, and moves it to outbound staging (north-out → south-out pipeline as today).
-3. Crane picks up the **new turret** from inbound staging and **places it onto the empty hardpoint**.
-4. Mechanic **welds the new turret** into place (second spark pass).
+**Uninstall:** attached → mechanic/player **detach weld** → crane lifts off to staging → hardpoint empty.  
+**Install:** empty hardpoint → crane mounts from staging → mechanic/player **seat weld** → installed.
 
-Until this ships, keep the current checklist / strip / install jobs; do not invent parallel mount paths in sim.
+Interim strip-at-mount without a crane is **retired** for turrets (gated in sim). Full animated weld→crane→weld beat is still polish TBD; non-turret mounts may keep simpler paths until unified.
 
 Each hardpoint holds up to **4** items in a 2×2 slot grid. Freight is drawn as worn industrial **2.5D** with **8-direction** facing (follows forklift / mechanic carry; rests on piles). Service crates match the request: open-top **fuel cells**, brown **7.62 belt-ammo cans** (linked tip-up rows), olive **40mm shell cans** (3×2 fat rounds); load/unload uses **six** generic container color schemes; install/uninstall are distinct sci-fi ship parts (laser, turret, armor, thruster, engine, sensor dish). Actors skip full destinations, linger on blocked jobs until space opens, and prioritize clearing blockages they can help with.
 
-### Station crew (fixed roster)
+### Station crew (Place-driven roster)
 
-**11 crew always loaded** while in hangar: `forklift1–4`, `B1Mechanic1/2`, `B2Mechanic1/2`, `B3Mechanic1/2`, plus the crane operator.
+**Jennings default:** 11 crew — `forklift1–4`, `B1Mechanic1/2`, `B2Mechanic1/2`, `B3Mechanic1/2`, plus the crane operator. Other Place presets change mech/forklift/crane counts (e.g. derelict Bay 1 with one mech and no crane).
 
 - **Mechanics** — bay-scoped: only their bay’s checklist / reclaim / clear work. Always on stage (no stair hatches). Job claims are always **per checklist unit or cargo item / pile quadrant** (never the whole pile) so both mechs — and the crane on other crates — can work the same pad in parallel. When idle **and the crane is busy elsewhere**, they may help with staging: **fuel / ammo / hold cargo** from south-in goes **straight onto the ship** when it will fit (hold cargo mid-stages instead if the bay is full or unloads are still pending); upgrades and other moves still ferry S↔N/M like the crane. Never other bays. When idle with no staging help needed, linger near their bay computer (multiple stand points) or in the wings / gossip groups; bias shifts from near-bay to far linger with time since their last bay task (~60s). Path around service boards via dual wall-hug corridors; **walk freely over dock pads** (boards stay solid). At mid/north piles they use **four slot approach lanes** (west/east per 2×2 quadrant), step into the slot, and hand off cargo smoothly. Draw: worn industrial 2.5D welders / loaders with **8-direction visual heading**; **one suit color theme per bay** shared by that bay’s two mechs (B1 rust/hazard, B2 teal, B3 olive) — pathing and hand/cargo math still use facing ±1 only.
 - **Forklifts** — any bay. Idle at the **forklift hub** (south wall center; apron is half the bottom-wall width with truck-sized stalls in logic only — painted as one dashed-yellow lot matching the roadway borders, with faded parking stencils). Drivers claim the closest empty unassigned stall before pathing home and release it when they leave for work. Leaving a stall, they take a short diagonal (~1 truck length) onto the east–west roadway, then proceed to the job. **Inbound** and **outbound** south pads both allow multiple trucks at once (per checklist unit / per 2×2 quadrant). Exit the screen only to fake offscreen cargo pop-in / pop-out: **left bulkhead** for ship-bound inbound, **right bulkhead** for ship-origin outbound. If the drop pad is busy they queue at the destination, not the hub. Each pile’s 2×2 slots use **four approach lanes** (west/east standoff per row); trucks lower forks, creep into the slot, then raise with smooth cargo pickup. The driver returns. Draw: worn industrial 2.5D station trucks with **8-direction visual heading** (smoothed from movement; snaps to job L/R facing during pile work) — pathing / approach math still use facing ±1; carried crates sit on the drawn fork tips so turnarounds don’t snap cargo.

@@ -9,7 +9,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 ### Planned
 
 - Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
-- Hangar turret/hardpoint install beat: mech weld-detach → crane removes old → crane installs new from staging → mech weld-seat (`GDD.md`)
+- Full player crane trolley control feel + on-foot weld loop for turret swap
+- Shared 2.5D interior walker (`shipInterior`) on vessel Place graphs
 - Unique silhouette polish per catalog variant
 - Hand-art polish for hero variants (bell-quality)
 - Asteroid fragmentation on destroy
@@ -21,6 +22,18 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 - Ambient NPC mining HP drain
 - Blueprint per-hardpoint item **category** swap
 - More hangar `decor` wall-art variants
+
+---
+
+## [0.1.232] — 2026-07-17
+
+### Added
+- **Place → Area → Feature** groundwork (`src/world/place/`): stations, capital-ship stubs, outpost stubs, Mk2+ vessel interiors share one identity spine
+- Hangar kits hydrate from Place data (Jennings / derelict / poor shed presets); crew counts, forklifts, and crane presence come from the active hangar area
+- Look shells: condition, tech level (`broken`→`elite`), theme/colorway + `resolveHangarSkin`
+- Vessel interior contract: enter from space/hangar when player-manned; crew-driven background logistics; `hullInteriorCeiling` scar (interior heal clamps; exterior pad restore → 100%)
+- Dock rules: player may self-serve pad jobs; **turret install/uninstall is crane-gated** (no craneless strip)
+- Dev drawer **Place** panel + vessel test buttons (scar / hull bench / exterior 100% / crew count)
 
 ---
 

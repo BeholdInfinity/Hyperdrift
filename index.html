@@ -116,9 +116,42 @@
             <span class="dev-drawer-label">HANGAR</span>
             <button type="button" class="hangar-dev-btn" id="dev-hangar-edit-btn">Edit layout</button>
             <button type="button" class="hangar-dev-btn" id="dev-bay-options-btn">Bay Options</button>
+            <button type="button" class="hangar-dev-btn" id="dev-place-btn">Place</button>
+          </div>
+          <div class="dev-drawer-section">
+            <span class="dev-drawer-label">VESSEL</span>
+            <button type="button" class="hangar-dev-btn" id="dev-enter-interior">Enter interior</button>
+            <button type="button" class="hangar-dev-btn" id="dev-exit-interior">Exit interior</button>
+            <button type="button" class="hangar-dev-btn" id="dev-scar-hull" title="Drop interior heal ceiling">Scar hull</button>
+            <button type="button" class="hangar-dev-btn" id="dev-heal-hull-bench" title="Trigger hull-bench binding">Hull bench</button>
+            <button type="button" class="hangar-dev-btn" id="dev-exterior-hull" title="Full exterior restore">Exterior 100%</button>
+            <label class="dev-check">Crew <input type="number" id="dev-crew-count" min="0" max="12" value="0" class="dev-num-input" /></label>
           </div>
           <p id="dev-drawer-status" class="dev-drawer-status"></p>
         </div>
+      </div>
+      <div id="dev-place-panel" class="dev-bay-panel hidden">
+        <div class="dev-bay-panel-head">
+          <span>PLACE</span>
+          <button type="button" class="dev-bay-close" id="dev-place-close" title="Close">×</button>
+        </div>
+        <label class="dev-place-field">
+          <span>Preset</span>
+          <select id="dev-place-preset" class="dev-place-select">
+            <option value="place.jennings">Jennings Station</option>
+            <option value="place.derelict-home">Derelict Home</option>
+            <option value="place.poor-shed">Backwater Shed</option>
+            <option value="place.trader-stub">Trader (stub)</option>
+            <option value="place.flag-cruiser-stub">Flag Cruiser (stub)</option>
+            <option value="place.outpost-dust">Dust Outpost (stub)</option>
+          </select>
+        </label>
+        <button type="button" class="hangar-dev-btn" id="dev-place-apply">Apply place</button>
+        <pre id="dev-place-info" class="dev-inspect dev-place-info">—</pre>
+        <label class="dev-check">
+          <input type="checkbox" id="dev-crane-authority" checked /> Player crane authority
+        </label>
+        <button type="button" class="hangar-dev-btn" id="dev-toggle-crane" title="Install/remove shared crane module">Toggle crane</button>
       </div>
       <div id="dev-bay-panel" class="dev-bay-panel hidden">
         <div class="dev-bay-panel-head">
