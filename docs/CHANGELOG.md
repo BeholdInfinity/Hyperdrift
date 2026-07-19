@@ -6,6 +6,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Added
+- **Cockpit MODES corner** — the bottom-right corner (formerly the static **PREC** readout) is now a stack of clickable two-position switches titled **MODES**:
+  - **PREC** — a switch mirroring the Caps Lock precision request. The off side reads `OFF`; the on side swaps between `STBY` (armed, waiting for speed to drop below the engage threshold) and `ON` (engaged), with an amber→green color shift. Precision desire is decoupled from the raw Caps Lock key state so the switch and the key stay in sync without fighting each other (`GameEngine.precisionDesired` / `togglePrecision`).
+  - **VIEW** — a pilot view-lock switch (`WLD` / `SHIP`). **WLD** keeps the world fixed while the ship rotates inside it (the original behavior); **SHIP** locks the hull pointing screen-up and rotates the world (and scanner ring) around it. The velocity lead offset and speed streaks rotate with the view so motion still reads correctly. Camera counter-rotation reuses the existing `camera.rotation` path already honored by world/ship/scanner rendering and screen↔world conversion (`GameEngine.viewMode` / `toggleViewMode`). The scanner now caches each contact's **rotation-free world bearing** and applies the live camera rotation at plot time, so blips track the rotating view immediately instead of lagging until the next radar sweep ping.
+
+### Tooling
+- `StartStopGame` launchers open in **one shared Windows Terminal window** with named tabs (**Hyperdrift Server** / **Hyperdrift Stop**) instead of a new window per launch. The `.bat` files call `wt.exe` by full path (`%LOCALAPPDATA%\Microsoft\WindowsApps\wt.exe`) since it's often not on PATH, route via `wt -w hyperdrift`, and fall back to the classic console when Windows Terminal is absent. Stop logic moved into `stop-game.ps1`.
+
 ### Planned
 
 - Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)

@@ -171,7 +171,11 @@ export class ScannerSystem {
       const dy = c.y - py;
       const dist = Math.hypot(dx, dy);
       if (dist < 1e-3) continue;
-      const trueBearing = Math.atan2(dy, dx) + rot;
+      // World bearing is cached rotation-free; camera rotation is applied live
+      // at plot time so blips track view rotation (ship-lock mode) immediately
+      // instead of lagging until the next sweep ping.
+      const worldBearing = Math.atan2(dy, dx);
+      const screenBearing = worldBearing + rot;
 
       let state;
       if (dist <= visualR) state = 'visual';
@@ -182,20 +186,21 @@ export class ScannerSystem {
       // Radar-stepped refresh: snap the displayed position to truth only when
       // the sweep arc has crossed the contact's bearing since last frame.
       const prev = this._display.get(c.id);
-      const refresh = state === 'visual' || !prev || this._sweepCrossed(trueBearing);
+      const refresh = state === 'visual' || !prev || this._sweepCrossed(screenBearing);
       const t = Math.min(1, dist / (this.range || 1));
       const wantR = state === 'visual' ? ctx.innerR : innerPlot + (outerPlot - innerPlot) * t;
       let dispR = wantR;
-      let dispBearing = trueBearing;
+      let dispWorldBearing = worldBearing;
       if (!refresh && prev) {
         dispR = prev.r;
-        dispBearing = prev.bearing;
+        dispWorldBearing = prev.worldBearing;
       }
-      this._display.set(c.id, { r: dispR, bearing: dispBearing });
+      this._display.set(c.id, { r: dispR, worldBearing: dispWorldBearing });
 
+      const dispBearing = dispWorldBearing + rot;
       c.dist = dist;
       c.bearing = dispBearing;
-      c.trueBearing = trueBearing;
+      c.trueBearing = screenBearing;
       c.state = state;
       c.plotR = dispR;
       c.screenX = ctx.centerX + Math.cos(dispBearing) * dispR;

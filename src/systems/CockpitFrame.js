@@ -51,7 +51,7 @@ const PANEL_LABELS = {
   left: ['CONTACT', 'CONTACTS', 'COMMS'],
   right: ['DESTINATION', 'SECTOR MAP', 'POWER'],
 };
-const CORNER_LABELS = ['SPD', 'POS', 'ZOOM', 'PREC'];
+const CORNER_LABELS = ['SPD', 'POS', 'ZOOM', 'MODES'];
 
 export class CockpitFrame {
   constructor() {

@@ -144,6 +144,19 @@ export class GameEngine {
     this._blueprintReturn = 'title';
     this._pendingBlueprintDef = null;
     this.precisionActive = false;
+    /**
+     * Precision *desire* (the engage request). Driven by Caps Lock or the
+     * cockpit MODES switch; `precisionActive` follows it once slow enough.
+     * Decoupled from the raw Caps Lock LED so a click toggle can own it too.
+     */
+    this.precisionDesired = false;
+    this._prevCapsLED = false;
+    /**
+     * Pilot view lock: 'world' keeps the world fixed and rotates the ship
+     * inside it (default); 'ship' locks the ship pointing up and rotates the
+     * world around it. Toggled from the cockpit MODES switch.
+     */
+    this.viewMode = 'world';
     this.gameTime = 0;
     /** Dev sim clock scale: 0=pause, 0.5=slow, 1=normal, 2=fast, 4=fast2x */
     this.simSpeed = 1;
@@ -2596,7 +2609,13 @@ export class GameEngine {
     this.asteroidSystem.update(this.ship.position.x, this.ship.position.y);
 
     const speed = this.ship.velocity.length();
-    const capsDesired = this.input.capsLockDesired;
+    // Caps Lock LED edge sets the desire; the MODES switch can also flip it.
+    const capsLED = this.input.capsLockDesired;
+    if (capsLED !== this._prevCapsLED) {
+      this.precisionDesired = capsLED;
+      this._prevCapsLED = capsLED;
+    }
+    const capsDesired = this.precisionDesired;
     if (!capsDesired) {
       this.precisionActive = false;
     } else if (this.precisionActive) {
@@ -2671,6 +2690,7 @@ export class GameEngine {
     this.entityManager.update(deltaTime);
     this.particleSystem.update(deltaTime);
 
+    this._applyViewRotation();
     this.camera.update(
       this.ship.position,
       this.ship.velocity,
@@ -3049,6 +3069,7 @@ export class GameEngine {
       this.renderer.centerX + this.camera.offset.x,
       this.renderer.centerY + this.camera.offset.y
     );
+    if (this.camera.rotation) this.renderer.ctx.rotate(this.camera.rotation);
     this.speedStreaks.render(this.renderer.ctx);
     this.renderer.ctx.restore();
 
@@ -3178,10 +3199,7 @@ export class GameEngine {
     const speed = Math.round(
       Math.hypot(this.ship.velocity.x, this.ship.velocity.y)
     );
-    const capsDesired = this.input?.capsLockDesired;
-    let prec = { text: 'OFF', color: 'rgba(150, 180, 205, 0.5)' };
-    if (this.precisionActive) prec = { text: 'ON', color: 'rgba(120, 240, 170, 0.95)' };
-    else if (capsDesired) prec = { text: 'STBY', color: 'rgba(230, 190, 110, 0.9)' };
+    // PREC corner is now the MODES switch stack, drawn by CockpitPanels.
     this.cockpitFrame.drawCorners(this.renderer.ctx, {
       SPD: { text: `${speed}` },
       POS: {
@@ -3190,8 +3208,31 @@ export class GameEngine {
         )}`,
       },
       ZOOM: { text: `${this.camera.effectiveZoom.toFixed(2)}x` },
-      PREC: prec,
     });
+  }
+
+  /** Flip the pilot view lock between world-locked and ship-locked. */
+  toggleViewMode() {
+    this.viewMode = this.viewMode === 'ship' ? 'world' : 'ship';
+  }
+
+  /** Request/cancel Precision from the cockpit switch (mirrors Caps Lock). */
+  togglePrecision() {
+    this.precisionDesired = !this.precisionDesired;
+    if (!this.precisionDesired) this.precisionActive = false;
+  }
+
+  /**
+   * Apply the pilot view lock to the camera. World-locked keeps rotation at 0
+   * (ship spins inside a fixed world); ship-locked counter-rotates the world so
+   * the hull always points screen-up, matching the spawn pose.
+   */
+  _applyViewRotation() {
+    if (this.viewMode === 'ship' && this.ship) {
+      this.camera.rotation = -Math.PI / 2 - this.ship.angle;
+    } else {
+      this.camera.rotation = 0;
+    }
   }
 
   /** Scaffold the ship-status shape read by the HUD status tab + alert overlay. */

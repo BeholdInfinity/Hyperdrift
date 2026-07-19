@@ -1,22 +1,16 @@
 @echo off
-set PORT=8080
-set FOUND=0
+cd /d "%~dp0"
 
-echo.
-echo  Stopping Hyperdrift server on port %PORT%...
-echo.
-
-for /f "tokens=5" %%a in ('netstat -aon ^| findstr ":%PORT% " ^| findstr LISTENING') do (
-  taskkill /F /PID %%a >nul 2>&1
-  if not errorlevel 1 (
-    echo  Stopped process %%a
-    set FOUND=1
-  )
+rem Windows Terminal's wt.exe often isn't on PATH, so call it by full path.
+rem Route into the same named window ("hyperdrift") as start-game.bat,
+rem as a separate named tab.
+set "WT=%LOCALAPPDATA%\Microsoft\WindowsApps\wt.exe"
+if exist "%WT%" (
+    "%WT%" -w hyperdrift new-tab --title "Hyperdrift Stop" --suppressApplicationTitle powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop-game.ps1"
+    exit /b
 )
 
-if "%FOUND%"=="0" (
-  echo  No server found listening on port %PORT%.
-)
-
-echo.
-pause
+rem Fallback: no Windows Terminal available, use the classic console.
+title Hyperdrift Stop
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0stop-game.ps1"
+if errorlevel 1 pause

@@ -8,7 +8,7 @@ Browser-based 2D spaceflight prototype. Top-down semi-Newtonian physics, procedu
 
 **Easiest:** double-click [`StartStopGame/start-game.bat`](../StartStopGame/start-game.bat). It starts a local server, **waits until the page is actually ready**, then opens your browser.
 
-Uses `StartStopGame/start-game.ps1` under the hood so Python is found reliably when launched from Explorer (not only from a dev terminal); the script serves from the repo root (one level up from `StartStopGame/`). Serves via `dev-server.py` with **no-cache** headers (plain `http.server` can leave browsers stuck on old JS modules). Title runs the live Jennings Station space sim as a bokeh-blurred backdrop with a *Stranger in the Galaxy* wordmark + showcase ship overlay (`src/ui/TitleScreen.js`; logo PNG is concept art). Bottom-left shows **vX.Y.Z · Last edit:** from `/build-info.json` (version in `src/version.js`, newest project file mtime), plus an underlined **Changelog** link that opens `CHANGELOG.md` newest-first.
+Uses `StartStopGame/start-game.ps1` under the hood so Python is found reliably when launched from Explorer (not only from a dev terminal); the script serves from the repo root (one level up from `StartStopGame/`). When Windows Terminal is present, the `.bat` launchers call `wt.exe` by full path (it's often not on PATH) and route into one shared window named `hyperdrift` with named tabs (**Hyperdrift Server** / **Hyperdrift Stop**) instead of a new window each time; they fall back to the classic console if Windows Terminal is missing. Stop logic lives in `StartStopGame/stop-game.ps1`. Serves via `dev-server.py` with **no-cache** headers (plain `http.server` can leave browsers stuck on old JS modules). Title runs the live Jennings Station space sim as a bokeh-blurred backdrop with a *Stranger in the Galaxy* wordmark + showcase ship overlay (`src/ui/TitleScreen.js`; logo PNG is concept art). Bottom-left shows **vX.Y.Z · Last edit:** from `/build-info.json` (version in `src/version.js`, newest project file mtime), plus an underlined **Changelog** link that opens `CHANGELOG.md` newest-first.
 
 **Manual:**
 
@@ -37,7 +37,7 @@ Note: `start-game.bat` waits for the server to respond before opening the browse
 index.html, styles.css, dev-server.py
 README.md                 Top-level entry point + doc map
 docs/                     Handoff docs: PROJECT.md, CHANGELOG.md, GDD.md, VISION.md, OPEN_QUESTIONS.md
-StartStopGame/            Launchers: start-game.bat / .ps1, stop-game.bat (serve from repo root)
+StartStopGame/            Launchers: start-game.bat/.ps1, stop-game.bat/.ps1 (shared wt tabs; serve from repo root)
 assets/branding/          Brand exports (logo PNG concept; title uses live sim + wordmark)
 InspirationImages/        Reference art (logo concept, hero shots)
 src/

@@ -39,10 +39,20 @@ export class CameraSystem {
     } else {
       const velDir = shipVelocity.clone().normalize();
       const maxOffset = viewportRadius * CAMERA.MAX_OFFSET_RATIO;
-      this.targetOffset.set(
-        -velDir.x * maxOffset * speedRatio,
-        -velDir.y * maxOffset * speedRatio
-      );
+      let ox = -velDir.x * maxOffset * speedRatio;
+      let oy = -velDir.y * maxOffset * speedRatio;
+      // The lead offset is applied in screen space, but is derived from the
+      // world velocity. When the view is rotated (ship-locked mode), rotate it
+      // so it still trails the ship's on-screen travel direction.
+      const rot = this.rotation || 0;
+      if (rot) {
+        const c = Math.cos(rot);
+        const s = Math.sin(rot);
+        const rx = ox * c - oy * s;
+        oy = ox * s + oy * c;
+        ox = rx;
+      }
+      this.targetOffset.set(ox, oy);
     }
 
     const t = 1 - Math.exp(-CAMERA.OFFSET_SMOOTHING * deltaTime);

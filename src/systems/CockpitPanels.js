@@ -36,7 +36,116 @@ export class CockpitPanels {
     this._destination(ctx, this._content(p[3]), engine);
     this._sectorMap(ctx, this._content(p[4]), engine);
     this._power(ctx, this._content(p[5]), engine);
+    this._modeSwitches(ctx, engine);
     this._alertOverlay(ctx, engine);
+  }
+
+  // ---- MODES switch stack (bottom-right corner) --------------------------
+  /**
+   * A tidy stack of two-position mode switches filling the bottom-right corner
+   * (baked title "MODES"). Each row is a labelled slide switch; the list is
+   * built to leave headroom for future toggles. Rows register click regions
+   * routed through handleClick.
+   */
+  _modeSwitches(ctx, engine) {
+    const corner = engine.cockpitFrame?.layout?.corners?.[3];
+    if (!corner) return;
+
+    const pad = Math.max(6, Math.min(corner.w, corner.h) * 0.09);
+    const ix = corner.x + pad;
+    const iw = corner.w - pad * 2;
+    // Rows fill the area below the baked "MODES" title (top ~40%).
+    const top = corner.y + corner.h * 0.42;
+    const bottom = corner.y + corner.h - pad;
+    const rowH = Math.max(20, Math.min(30, (bottom - top) / 4));
+
+    // PREC is desire-based (OFF → STBY → ON): it's a two-position switch that
+    // reflects the desire (OFF vs. armed), with the ON-side label swapping
+    // between STBY (armed, waiting for slow enough speed) and ON (engaged).
+    const precColor = engine.precisionActive
+      ? { fill: 'rgba(95, 224, 138, 0.30)', line: IFF.green }
+      : engine.precisionDesired
+        ? { fill: 'rgba(230, 190, 110, 0.28)', line: 'rgba(230, 190, 110, 0.95)' }
+        : { fill: 'rgba(90, 110, 130, 0.20)', line: 'rgba(150, 178, 202, 0.6)' };
+    const accent = { fill: 'rgba(120, 200, 255, 0.28)', line: ACCENT };
+
+    // Extend this list to add future mode switches; the stack self-lays out.
+    const rows = [
+      {
+        cap: 'PREC',
+        off: 'OFF',
+        on: engine.precisionActive ? 'ON' : 'STBY',
+        active: engine.precisionDesired,
+        color: precColor,
+        click: (e) => e.togglePrecision(),
+      },
+      {
+        cap: 'VIEW',
+        off: 'WLD',
+        on: 'SHIP',
+        active: engine.viewMode === 'ship',
+        color: accent,
+        click: (e) => e.toggleViewMode(),
+      },
+    ];
+
+    rows.forEach((row, i) => this._modeSwitchRow(ctx, ix, top + i * rowH, iw, rowH, row));
+  }
+
+  _modeSwitchRow(ctx, x, y, w, h, row) {
+    const capW = Math.min(w * 0.42, 42);
+    this._text(ctx, row.cap, x, y + h / 2 + 4, { size: 10, color: COPPER, weight: 700 });
+    const sh = Math.min(16, h - 6);
+    const sw = w - capW - 2;
+    const sx = x + capW + 2;
+    const sy = y + (h - sh) / 2;
+    this._modeSwitch(ctx, sx, sy, sw, sh, row.off, row.on, row.active, row.color);
+    this._region(sx, sy, sw, sh, row.click);
+  }
+
+  /** One slide switch: track + lit half on the active side + segment labels. */
+  _modeSwitch(ctx, x, y, w, h, leftLabel, rightLabel, rightActive, color) {
+    const r = h / 2;
+    this._roundRect(ctx, x, y, w, h, r);
+    ctx.fillStyle = 'rgba(16, 28, 40, 0.92)';
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(120, 200, 255, 0.28)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    const half = w / 2;
+    const knobX = rightActive ? x + half : x;
+    this._roundRect(ctx, knobX + 1, y + 1, half - 2, h - 2, Math.max(1, r - 1));
+    ctx.fillStyle = color.fill;
+    ctx.fill();
+    ctx.strokeStyle = color.line;
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    const ty = y + h - Math.max(4, h * 0.28);
+    this._text(ctx, leftLabel, x + half / 2, ty, {
+      size: 9,
+      align: 'center',
+      color: rightActive ? DIM : color.line,
+      weight: 700,
+    });
+    this._text(ctx, rightLabel, x + half + half / 2, ty, {
+      size: 9,
+      align: 'center',
+      color: rightActive ? color.line : DIM,
+      weight: 700,
+    });
+  }
+
+  _roundRect(ctx, x, y, w, h, r) {
+    const rr = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + rr, y);
+    ctx.arcTo(x + w, y, x + w, y + h, rr);
+    ctx.arcTo(x + w, y + h, x, y + h, rr);
+    ctx.arcTo(x, y + h, x, y, rr);
+    ctx.arcTo(x, y, x + w, y, rr);
+    ctx.closePath();
   }
 
   /** Inner content box of a panel screen (below its baked title header). */
