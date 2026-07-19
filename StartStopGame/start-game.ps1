@@ -1,7 +1,8 @@
 # Hyperdrift local dev server — double-click via start-game.bat
 $ErrorActionPreference = 'Stop'
 $Port = 8080
-$Root = $PSScriptRoot
+# Scripts live in StartStopGame/; the game (dev-server.py, index.html) is one level up.
+$Root = Split-Path $PSScriptRoot -Parent
 Set-Location $Root
 
 Write-Host ''

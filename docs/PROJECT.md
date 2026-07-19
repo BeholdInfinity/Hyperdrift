@@ -6,9 +6,9 @@ Browser-based 2D spaceflight prototype. Top-down semi-Newtonian physics, procedu
 
 ## Run
 
-**Easiest:** double-click [`start-game.bat`](start-game.bat) in the project folder. It starts a local server, **waits until the page is actually ready**, then opens your browser.
+**Easiest:** double-click [`StartStopGame/start-game.bat`](../StartStopGame/start-game.bat). It starts a local server, **waits until the page is actually ready**, then opens your browser.
 
-Uses `start-game.ps1` under the hood so Python is found reliably when launched from Explorer (not only from a dev terminal). Serves via `dev-server.py` with **no-cache** headers (plain `http.server` can leave browsers stuck on old JS modules). Title runs the live Jennings Station space sim as a bokeh-blurred backdrop with a *Stranger in the Galaxy* wordmark + showcase ship overlay (`src/ui/TitleScreen.js`; logo PNG is concept art). Bottom-left shows **vX.Y.Z · Last edit:** from `/build-info.json` (version in `src/version.js`, newest project file mtime), plus an underlined **Changelog** link that opens `CHANGELOG.md` newest-first.
+Uses `StartStopGame/start-game.ps1` under the hood so Python is found reliably when launched from Explorer (not only from a dev terminal); the script serves from the repo root (one level up from `StartStopGame/`). Serves via `dev-server.py` with **no-cache** headers (plain `http.server` can leave browsers stuck on old JS modules). Title runs the live Jennings Station space sim as a bokeh-blurred backdrop with a *Stranger in the Galaxy* wordmark + showcase ship overlay (`src/ui/TitleScreen.js`; logo PNG is concept art). Bottom-left shows **vX.Y.Z · Last edit:** from `/build-info.json` (version in `src/version.js`, newest project file mtime), plus an underlined **Changelog** link that opens `CHANGELOG.md` newest-first.
 
 **Manual:**
 
@@ -21,7 +21,7 @@ python dev-server.py 8080
 
 Open http://localhost:8080 → click **LAUNCH**.
 
-**Stop the server:** close the black command window, press **Ctrl+C** in it, or double-click [`stop-game.bat`](stop-game.bat).
+**Stop the server:** close the black command window, press **Ctrl+C** in it, or double-click [`StartStopGame/stop-game.bat`](../StartStopGame/stop-game.bat).
 
 Note: `start-game.bat` waits for the server to respond before opening the browser. If port 8080 has a stuck process, it clears only **unresponsive** listeners.
 
@@ -34,9 +34,11 @@ Note: `start-game.bat` waits for the server to respond before opening the browse
 ## Repository layout
 
 ```
-index.html, styles.css, dev-server.py, start-game.bat / .ps1, stop-game.bat
+index.html, styles.css, dev-server.py
+README.md                 Top-level entry point + doc map
+docs/                     Handoff docs: PROJECT.md, CHANGELOG.md, GDD.md, VISION.md, OPEN_QUESTIONS.md
+StartStopGame/            Launchers: start-game.bat / .ps1, stop-game.bat (serve from repo root)
 assets/branding/          Brand exports (logo PNG concept; title uses live sim + wordmark)
-assets/textures/          Procedural texture previews (e.g. STRANGER bronze plate HTML)
 InspirationImages/        Reference art (logo concept, hero shots)
 src/
   main.js                 Entry point, UI wiring
@@ -178,6 +180,29 @@ src/
 - **Hardpoint / plume mounts** — author in Blueprint + Dev Mode; bake to `mountLayouts.js`
 - **Hangar visitor size polish** — peer-Mk spawn exists; verify same-group visitors ≈ player size
 - Ambient miner asteroid damage (visual cue only today)
+
+### Scanner → Cockpit HUD follow-ups (v0.1.283 slice)
+The Scanner → Pilot Cockpit HUD vertical slice shipped and runs clean, but several plan items were only scaffolded or partially done. **Design decision:** blip encoding is **color = IFF, shape = contact type** (we intentionally dropped the plan's "IFF is color AND shape" accessibility rule — ship contacts share the ship silhouette and differ only by IFF color).
+
+Quick wins first:
+- **Thicken sensor-ring inner border** so visual contacts ride a thicker border matching the outer POI rim (today dots sit on the thin `viewportRadius` edge) — `src/systems/Scanner.js` `_drawBand`, maybe `src/systems/Renderer.js`
+- **In-world highlight of the selected contact** — selection highlights only the scanner blip; the in-world ship isn't highlighted, and the highlight should hand off blip ↔ ship as the contact crosses visual range — `src/core/GameEngine.js` render path + `AmbientTrafficSystem.render`
+- **Selected-POI distance in the viewport** — a selected POI's distance shows only in the Destination panel; draw it in-viewport like contacts — `src/systems/Scanner.js` `_drawSelection` (POI variant) or `GameEngine._renderScanner`
+- **Tier-based icon shrink** — blips shrink with distance only; also shrink per tier so more range bands fit — `src/systems/ScannerSystem.js` (fold tier factor into `c.size`)
+
+Scaffolds that are API-only / stubs:
+- **Highlight-sync API** (pilot/science/weapons) — not built; selection is local (`ScannerSystem.selectedId`), no broadcast/subscribe hook for future officer/multiplayer screens
+- **Comms panel** — HAIL/DOCK/TRADE/END buttons are no-ops (no call/receive/deny/hang-up); plan tags comms future, low priority — `src/systems/CockpitPanels.js` `_comms`
+- **POI discovery channels** — only **proximity** auto-fires; `mission` / `manual` / `purchase` exist as `PoiSystem` API (`register(..., source)`, `addManualWaypoint`) but nothing triggers them in-game (e.g. no manual waypoint-drop input) — `src/world/PoiSystem.js` + a UI/input trigger
+- **Dev SCANNER "bake to constants" + fake-contacts toggle** — drawer has live sliders/toggles + readout, but no bake-to-`Constants.js` button and no placeholder-contact spawner — `index.html` (dev-drawer SCANNER), `src/main.js`, `src/dev/DevTools.js`
+
+Cosmetic / lower priority:
+- **Ship Status is a list, not a schematic** — plan preferred a small ship-schematic damage map; `ship.status` is a stub (systems list, fuel, fires[], weapons) with placeholder values; nothing writes real damage/fuel/ammo yet — `src/systems/CockpitPanels.js` `_shipStatus`, `GameEngine._ensureShipStatus`
+- **Sector map doesn't emphasize the selected contact** (selected POI is highlighted; contacts are plain dots) — `src/systems/CockpitPanels.js` `_sectorMap`
+- **No "objects"/debris contact type** — only asteroids fill the non-AI object slot (off by default; dev toggle on)
+- **Station selection shows no top-down render** (station has no `shipDef`) — expected; add a station glyph if desired
+
+**Not yet exercised live end-to-end:** clicking an in-world/band blip to select (ship kept leaving range), pip +/- add-remove, comms target population, and the fire/alert overlay (needs `ship.status.fires` populated). Recommended manual pass: hover near Jennings at low speed, select a band blip + a POI-rim dot, add/remove pips, and temporarily push a fake fire into `ship.status.fires` to verify the alert banner. Plan of record: `.cursor/plans/scanner_subsystem_roadmap_fe068679.plan.md` (do **not** edit the plan file).
 
 ### Shipped recently (context)
 - **v0.1.267** Title wordmark: locked pose; STRANGER bronze plate windows + smile arch; GALAXY nebula windows

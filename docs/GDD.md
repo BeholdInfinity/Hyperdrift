@@ -8,6 +8,9 @@
 | **[`VISION.md`](VISION.md)** | Long-term north star — *Stranger in the Galaxy* (space-life RPG / station builder) |
 | **This file (`GDD.md`)** | Prototype — solo flight + modular ships, hangar sandbox, procedural space |
 | **[`PROJECT.md`](PROJECT.md)** | Dev handoff — architecture, run, status |
+| **[`CHANGELOG.md`](CHANGELOG.md)** | Version history of user-visible changes (newest first) |
+
+> All handoff docs live in this `docs/` folder; the repo root keeps a short [`README.md`](../README.md).
 
 | Field | Value |
 |-------|-------|

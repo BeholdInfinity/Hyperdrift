@@ -486,7 +486,7 @@
         if (changelogClose) changelogClose.focus();
         if (changelogLoaded) return;
         changelogBody.textContent = 'Loading…';
-        fetch('/CHANGELOG.md?t=' + Date.now(), { cache: 'no-store' })
+        fetch('/docs/CHANGELOG.md?t=' + Date.now(), { cache: 'no-store' })
           .then(function (res) {
             if (!res.ok) throw new Error('changelog missing');
             return res.text();
