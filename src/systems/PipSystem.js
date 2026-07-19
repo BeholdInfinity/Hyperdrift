@@ -1,7 +1,6 @@
 /**
  * Global power-pip pool. Systems (scanner, science, engine, weapons, shield)
- * draw pips as distinct channels from one shared pool. Precision mode frees
- * extra pips (per GDD), raising the pool ceiling while active.
+ * draw pips as distinct channels from one shared pool.
  *
  * The scanner tier reads `get('scanner')`; the Contact Details science package
  * reads `get('science')` — independent channels that never throttle each other.
@@ -12,8 +11,6 @@ import { PIPS } from '../core/Constants.js';
 export class PipSystem {
   constructor() {
     this.basePool = PIPS.BASE_POOL;
-    this.precisionBonus = PIPS.PRECISION_BONUS;
-    this.precision = false;
     /** @type {Record<string, number>} */
     this.alloc = { ...PIPS.DEFAULTS };
     for (const ch of PIPS.CHANNELS) {
@@ -21,9 +18,9 @@ export class PipSystem {
     }
   }
 
-  /** Total pips available right now (base + precision bonus while active). */
+  /** Total pips available. */
   pool() {
-    return this.basePool + (this.precision ? this.precisionBonus : 0);
+    return this.basePool;
   }
 
   used() {
@@ -38,10 +35,6 @@ export class PipSystem {
 
   get(channel) {
     return this.alloc[channel] || 0;
-  }
-
-  setPrecision(active) {
-    this.precision = !!active;
   }
 
   /** Add a pip to a channel if the pool and per-channel cap allow it. */

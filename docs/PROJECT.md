@@ -64,7 +64,7 @@ src/
     Scanner.js            Scanner ring renderer (blips, IFF, sweep, nose/tail, chevrons)
     CockpitFrame.js       Cached 16:9 steel/copper HUD chrome + POI rim dots + corners
     CockpitPanels.js      Live content for the 6 cockpit screens + status alert overlay
-    PipSystem.js          Global power-pip pool (channels; Precision frees pips)
+    PipSystem.js          Global power-pip pool (per-channel allocation)
   entities/
     Ship.js, ShipController.js, ShipHardpoints.js (legacy mount fallback; starter matches)
     Projectile.js, Asteroid.js, Particle.js, Entity.js, EntityManager.js
@@ -111,7 +111,7 @@ src/
 | Area | Status |
 |------|--------|
 | Semi-Newtonian flight (WASD, Q/E yaw, main engine, afterburner, brakes) | Done |
-| Double-tap-hold burst on QWEASD; Caps Lock Precision (engage gate + active speed cap) | Done |
+| Double-tap-hold burst on QWEASD; Caps Lock Precision (instant; 33%/66% authority) | Done |
 | Space brakes snap to rest below velocity threshold; retro-burn when nose-into-velocity | Done |
 | Mouse aims weapons inside viewport circle (cursor always visible); turret/laser slew | Done |
 | 8 blue maneuver thrusters + orange main engine (hardpoint-driven plumes) | Done |
@@ -139,7 +139,7 @@ src/
 
 - `PHYSICS.MAX_SPEED` — 900
 - `PHYSICS.MAX_ROTATION_SPEED` — 2.6 (cruise yaw); `YAW_FAST_MULT` — 1.65
-- `PHYSICS.PRECISION_ENGAGE_SPEED` — 100 (engage gate + active speed cap)
+- `PHYSICS.PRECISION_THRUST_MULT` / `PRECISION_BURST_MULT` — 0.33 / 0.66 (Precision single / double-tap)
 - `SHIP.TURRET_SLEW_RATE` / `MINING_LASER_SLEW_RATE` — 5.5 / 4.5
 - `SHIP.SPAWN_ANGLE` — north (−π/2)
 - `HANGAR.ZOOM_*` / `SIDE_PAD_X` / `PAD_R` — Home Base hangar camera + pad layout (pad disc r=38); player bay via `hangarPadX(i)`
@@ -153,12 +153,12 @@ src/
 
 | Input | Action |
 |-------|--------|
-| WASD | Maneuvering thrusters (double-tap hold = burst) |
-| Q / E | Yaw (double-tap hold = fast / Precision near-default) |
-| Space | Main engine (warm-up in Precision) |
-| Shift | Afterburner (disabled in Precision) |
+| WASD | Maneuvering thrusters (double-tap hold = burst; Precision 33% / 66%) |
+| Q / E | Yaw (double-tap hold = fast / Precision 33% / 66%) |
+| Space | Main engine (scaled to 33% in Precision) |
+| Shift | Afterburner (allowed in Precision; scaled to 33%) |
 | Alt | Smart space brakes (Alt+QWEASD blocked from browser menu chords while playing) |
-| Caps Lock | Precision desire (engage when slow; active = speed-capped) |
+| Caps Lock | Precision toggle (instant; fine-control flight) |
 | R | ORIENT toggle — SHIP-up (head-up, default) ↔ NORTH-up |
 | V | VIEW toggle — SHIP viewport (default) ↔ full radar SCAN scope |
 | LMB | Fire dorsal turret (pointer in circle; slews to aim) |

@@ -35,8 +35,6 @@ export class Ship extends Entity {
     this.turretRecoil = 0;
     this.miningLaserFiring = false;
     this.miningLaserBeamLength = SHIP.MINING_LASER_RANGE;
-    /** Seconds Space has been held (Precision warm-up) */
-    this.mainEngineWarmup = 0;
     /** Hangar hover altitude cue (1 = lifted; scales draw size) */
     this.visualScale = 1;
   }

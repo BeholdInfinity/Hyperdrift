@@ -76,7 +76,7 @@ export class ScannerSystem {
    * @param {number} dt
    * @param {{
    *   ship: object, station: object, ambientTraffic: object, asteroids?: object[],
-   *   camera: object, scannerPips: number, precision: boolean,
+   *   camera: object, scannerPips: number,
    *   centerX: number, centerY: number, innerR: number, outerR: number, band: number,
    * }} ctx
    */
@@ -95,7 +95,6 @@ export class ScannerSystem {
     this.range =
       SCANNER.RANGE *
       tierRow.range *
-      (ctx.precision ? SCANNER.PRECISION_RANGE_BONUS : 1) *
       this.rangeScale;
 
     // Advance sweep (stepped refresh reads the arc crossed this frame).

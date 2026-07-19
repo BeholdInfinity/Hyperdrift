@@ -16,14 +16,10 @@ export const PHYSICS = {
   YAW_FAST_MULT: 1.65,
   /** Outside Precision: WASD double-tap thrust multiplier */
   MANEUVER_BURST_MULT: 1.3,
-  /** Precision active: base thrust/yaw scale */
-  PRECISION_THRUST_MULT: 0.45,
-  /** Precision active: double-tap burst toward near-default cruise */
-  PRECISION_BURST_MULT: 0.9,
-  /** Caps desire engages below this speed; while Precision active this is also max speed */
-  PRECISION_ENGAGE_SPEED: 100,
-  /** Seconds Space must be held in Precision before main engine thrust */
-  MAIN_ENGINE_WARMUP: 0.45,
+  /** Precision active: single-hold thrust/yaw scale (33% of default) */
+  PRECISION_THRUST_MULT: 0.33,
+  /** Precision active: double-tap-hold thrust/yaw scale (66% of default) */
+  PRECISION_BURST_MULT: 0.66,
   /** Double-tap window (seconds) for QWEASD burst */
   DOUBLE_TAP_WINDOW: 0.32,
 };
@@ -460,8 +456,6 @@ export const SCANNER = {
   /** Radar sweep speed (rad/s) at tier 1; +per tier via SWEEP_TIER_MULT. */
   SWEEP_BASE: 0.55,
   SWEEP_TIER_MULT: 0.4,
-  /** Precision mode range multiplier (GDD: Precision frees pips for scanner). */
-  PRECISION_RANGE_BONUS: 1.35,
   /** Asteroids/objects off by default (dev/tier toggle). */
   INCLUDE_ASTEROIDS: false,
   /**
@@ -505,12 +499,11 @@ export const POI = {
 };
 
 /**
- * Global power-pip pool. Systems draw pips as distinct channels. Precision
- * frees extra pips (GDD). Scanner tier reads `scanner`; science reads `science`.
+ * Global power-pip pool. Systems draw pips as distinct channels.
+ * Scanner tier reads `scanner`; science reads `science`.
  */
 export const PIPS = {
   BASE_POOL: 6,
-  PRECISION_BONUS: 2,
   CHANNELS: ['scanner', 'science', 'engine', 'weapons', 'shield'],
   DEFAULTS: { scanner: 2, science: 1, engine: 2, weapons: 1, shield: 0 },
   MAX_PER_CHANNEL: 5,

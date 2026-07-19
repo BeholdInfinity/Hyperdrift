@@ -59,14 +59,10 @@ export class CockpitPanels {
     const bottom = corner.y + corner.h - pad;
     const rowH = Math.max(20, Math.min(30, (bottom - top) / 4));
 
-    // PREC is desire-based (OFF → STBY → ON): it's a two-position switch that
-    // reflects the desire (OFF vs. armed), with the ON-side label swapping
-    // between STBY (armed, waiting for slow enough speed) and ON (engaged).
+    // PREC is a two-position switch: OFF ↔ ON (instant engage).
     const precColor = engine.precisionActive
       ? { fill: 'rgba(95, 224, 138, 0.30)', line: IFF.green }
-      : engine.precisionDesired
-        ? { fill: 'rgba(230, 190, 110, 0.28)', line: 'rgba(230, 190, 110, 0.95)' }
-        : { fill: 'rgba(90, 110, 130, 0.20)', line: 'rgba(150, 178, 202, 0.6)' };
+      : { fill: 'rgba(90, 110, 130, 0.20)', line: 'rgba(150, 178, 202, 0.6)' };
     const accent = { fill: 'rgba(120, 200, 255, 0.28)', line: ACCENT };
 
     // Extend this list to add future mode switches; the stack self-lays out.
@@ -74,8 +70,8 @@ export class CockpitPanels {
       {
         cap: 'PREC',
         off: 'OFF',
-        on: engine.precisionActive ? 'ON' : 'STBY',
-        active: engine.precisionDesired,
+        on: 'ON',
+        active: engine.precisionActive,
         color: precColor,
         click: (e) => e.togglePrecision(),
       },
@@ -493,9 +489,9 @@ export class CockpitPanels {
 
   _pips(ctx, box, engine) {
     const pips = engine.pipSystem;
-    this._text(ctx, `POOL ${pips.used()}/${pips.pool()}${pips.precision ? '  +PREC' : ''}`, box.x, box.y + 12, {
+    this._text(ctx, `POOL ${pips.used()}/${pips.pool()}`, box.x, box.y + 12, {
       size: 12,
-      color: pips.precision ? IFF.green : DIM,
+      color: DIM,
       weight: 600,
     });
     const rowH = 20;

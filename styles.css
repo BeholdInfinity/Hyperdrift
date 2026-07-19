@@ -1869,10 +1869,6 @@ html, body {
   color: rgba(120, 220, 160, 0.85);
 }
 
-#precision-value.precision-standby {
-  color: rgba(220, 180, 100, 0.7);
-}
-
 #start-screen.hidden {
   display: none;
 }

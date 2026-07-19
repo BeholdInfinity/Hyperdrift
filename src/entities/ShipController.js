@@ -130,30 +130,14 @@ export class ShipController {
       }
 
       if (flight.mainEngine || ship.exitBurn) {
-        if (precisionActive && !ship.exitBurn) {
-          ship.mainEngineWarmup += deltaTime;
-          const warm = Math.min(1, ship.mainEngineWarmup / PHYSICS.MAIN_ENGINE_WARMUP);
-          thrusters.mainEngine = warm * 0.35;
-          if (ship.mainEngineWarmup >= PHYSICS.MAIN_ENGINE_WARMUP) {
-            totalForce.add(
-              forward
-                .clone()
-                .scale(PHYSICS.MAIN_ENGINE_THRUST * PHYSICS.PRECISION_THRUST_MULT)
-            );
-            thrusters.mainEngine = PHYSICS.PRECISION_THRUST_MULT;
-          }
-        } else {
-          ship.mainEngineWarmup = 0;
-          let enginePower = PHYSICS.MAIN_ENGINE_THRUST;
-          if (flight.afterburner && !ship.exitBurn) {
-            enginePower *= PHYSICS.AFTERBURNER_MULT;
-            thrusters.afterburner = 1;
-          }
-          totalForce.add(forward.clone().scale(enginePower));
-          thrusters.mainEngine = flight.afterburner && !ship.exitBurn ? 1.5 : 1;
+        let enginePower = PHYSICS.MAIN_ENGINE_THRUST * precisionScale;
+        if (flight.afterburner && !ship.exitBurn) {
+          enginePower *= PHYSICS.AFTERBURNER_MULT;
+          thrusters.afterburner = precisionScale;
         }
-      } else {
-        ship.mainEngineWarmup = 0;
+        totalForce.add(forward.clone().scale(enginePower));
+        thrusters.mainEngine =
+          (flight.afterburner && !ship.exitBurn ? 1.5 : 1) * precisionScale;
       }
     }
 
@@ -164,14 +148,6 @@ export class ShipController {
     }
 
     this.physics.integrate(ship, deltaTime);
-
-    // While Precision is active, engage speed is a hard velocity ceiling
-    if (precisionActive) {
-      const spd = ship.velocity.length();
-      if (spd > PHYSICS.PRECISION_ENGAGE_SPEED) {
-        ship.velocity.normalize().scale(PHYSICS.PRECISION_ENGAGE_SPEED);
-      }
-    }
   }
 
   _addThruster(thrusters, name, amount) {

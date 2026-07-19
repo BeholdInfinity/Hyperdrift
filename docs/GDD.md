@@ -159,14 +159,14 @@ Ship silhouette is a **modular composition**: sections + hardpoint items from `s
 | D | Both port thrusters | Accelerate right |
 | Q / E | Yaw couples | Rotate hull CCW / CW |
 | Space | Main engine (aft) | Strongest forward thrust (orange plume) |
-| Shift | Afterburner | Extra main-engine thrust — disabled in Precision |
+| Shift | Afterburner | Extra main-engine thrust (scaled in Precision) |
 | Alt | Space brakes | Soft brake via thruster face pairs; main-engine retro-burn when nose faces into velocity. During play, Alt and Alt+QWEASD/Space are `preventDefault`’d so browser menus / address-bar chords are less likely to steal focus |
-| Caps Lock | Precision desire | See Precision mode below |
+| Caps Lock | Precision | See Precision mode below |
 
 **Double-tap then hold** on **Q W E A S D** boosts that axis:
 
 - Outside Precision: WASD → above-cruise maneuver burst; Q/E → combat-fast yaw
-- Inside Precision: those keys → near-default cruise authority (not full combat boost)
+- Inside Precision: single hold → **33%** of default; double-tap hold → **66%** of default
 
 Plume colors: **blue** = thrusters, **orange** = main engine (including afterburner and retro-burn). Intensity scales length/width with power (translation stronger than yaw).
 
@@ -190,19 +190,19 @@ Yaw uses two **4-thruster** couples from the same eight nozzles:
 
 ### Precision mode (Caps Lock)
 
-Caps Lock is **desire** (OS LED via `getModifierState`) — browsers cannot clear Caps from script.
+Fine-control flight for careful work: asteroid-field mining/navigation (once collision damage exists), docking approaches, and lining the nose onto a POI blip before a long cruise burn.
 
-| Caps | Speed | State | Flight |
-|------|-------|-------|--------|
-| Off | any | Off | Full authority; afterburner OK |
-| On | at/above engage gate | **Standby** | Full authority (mid-fight Caps is harmless) |
-| On | under engage gate | **Active** | Thrust/yaw scaled; afterburner **off**; main engine **warm-up** before thrust |
+Caps Lock (or the cockpit **PREC** switch) toggles Precision **instantly at any speed**. The OS Caps Lock LED is read via `getModifierState` (browsers cannot clear Caps from script); the cockpit switch and key stay in sync via `precisionDesired` / `precisionActive`.
 
-- Engage when desired **and** under the speed gate; once active, stays until Caps off
-- While active, that same speed is a **hard velocity cap** (cannot accelerate past it)
-- Caps off exits immediately; Caps on while too fast to engage → **standby** until you slow down
-- HUD: `PRECISION` / `PRECISION STANDBY`
-- **Future:** Precision frees power pips for laser / scanner (not built — mode only scales flight now)
+| Caps / PREC | State | Flight |
+|-------------|-------|--------|
+| Off | Off | Full authority |
+| On | **Active** | All thrust/yaw scaled; afterburner allowed (scaled) |
+
+- **QWEASD:** single hold → 33% of default; double-tap hold → 66% of default
+- **Space / Shift / Alt:** use the base 33% scale (no double-tap on those keys)
+- No engage-speed gate, no standby, no hard velocity cap, no main-engine warm-up
+- HUD: `PRECISION` when active; cockpit PREC switch reads `OFF` / `ON`
 
 ---
 

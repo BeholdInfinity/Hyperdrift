@@ -145,9 +145,9 @@ export class GameEngine {
     this._pendingBlueprintDef = null;
     this.precisionActive = false;
     /**
-     * Precision *desire* (the engage request). Driven by Caps Lock or the
-     * cockpit MODES switch; `precisionActive` follows it once slow enough.
-     * Decoupled from the raw Caps Lock LED so a click toggle can own it too.
+     * Precision request. Driven by Caps Lock or the cockpit MODES switch;
+     * `precisionActive` mirrors it instantly. Decoupled from the raw Caps Lock
+     * LED so a click toggle can own it too.
      */
     this.precisionDesired = false;
     this._prevCapsLED = false;
@@ -2497,12 +2497,7 @@ export class GameEngine {
     if (!ship) return;
 
     const zoomWheel = this.input.consumeZoomDelta();
-    const speed = ship.velocity.length();
-    const capsDesired = this.input.capsLockDesired;
-    if (!capsDesired) this.precisionActive = false;
-    else if (!this.precisionActive && speed < PHYSICS.PRECISION_ENGAGE_SPEED) {
-      this.precisionActive = true;
-    }
+    this.precisionActive = this.input.capsLockDesired;
 
     const dx = this.input.mouseScreen.x - this.renderer.centerX;
     const dy = this.input.mouseScreen.y - this.renderer.centerY;
@@ -2615,21 +2610,13 @@ export class GameEngine {
 
     this.asteroidSystem.update(this.ship.position.x, this.ship.position.y);
 
-    const speed = this.ship.velocity.length();
     // Caps Lock LED edge sets the desire; the MODES switch can also flip it.
     const capsLED = this.input.capsLockDesired;
     if (capsLED !== this._prevCapsLED) {
       this.precisionDesired = capsLED;
       this._prevCapsLED = capsLED;
     }
-    const capsDesired = this.precisionDesired;
-    if (!capsDesired) {
-      this.precisionActive = false;
-    } else if (this.precisionActive) {
-      // stay active
-    } else if (speed < PHYSICS.PRECISION_ENGAGE_SPEED) {
-      this.precisionActive = true;
-    }
+    this.precisionActive = this.precisionDesired;
 
     const dx = this.input.mouseScreen.x - this.renderer.centerX;
     const dy = this.input.mouseScreen.y - this.renderer.centerY;
@@ -2791,7 +2778,7 @@ export class GameEngine {
       this.hangarBay.syncSpaceApproachReservations(claims);
     }
 
-    this._updateHUD(capsDesired);
+    this._updateHUD();
 
     const stationFull = this.station.allBaysBlocked(this.ship);
     const canDock =
@@ -3278,7 +3265,7 @@ export class GameEngine {
   /** Request/cancel Precision from the cockpit switch (mirrors Caps Lock). */
   togglePrecision() {
     this.precisionDesired = !this.precisionDesired;
-    if (!this.precisionDesired) this.precisionActive = false;
+    this.precisionActive = this.precisionDesired;
   }
 
   /**
@@ -3369,7 +3356,6 @@ export class GameEngine {
     if (!r.scannerBand || !this.ship) return;
 
     const dt = this._lastFrameDt || 1 / 60;
-    this.pipSystem.setPrecision(this.precisionActive);
     const scannerPips = this.pipSystem.get('scanner');
     const geo = this._scannerGeometry();
 
@@ -3380,7 +3366,6 @@ export class GameEngine {
       asteroids: this.asteroidSystem.getActiveAsteroids(),
       camera: this.camera,
       scannerPips,
-      precision: this.precisionActive,
       centerX: r.centerX,
       centerY: r.centerY,
       innerR: geo.innerR,
@@ -3854,7 +3839,7 @@ export class GameEngine {
     }
   }
 
-  _updateHUD(capsDesired = this.input?.capsLockDesired) {
+  _updateHUD() {
     if (!this._hudSpeed || !this.ship) return;
     // Lift the SPD/ZOOM/PRECISION row above the scanner ring band (POS lives in
     // the ring). Sits just inside the lower edge of the space viewport.
@@ -3883,9 +3868,6 @@ export class GameEngine {
       if (this.precisionActive) {
         this._hudPrecision.textContent = 'PRECISION';
         this._hudPrecision.className = 'precision-active';
-      } else if (capsDesired) {
-        this._hudPrecision.textContent = 'PRECISION STANDBY';
-        this._hudPrecision.className = 'precision-standby';
       } else {
         this._hudPrecision.textContent = '';
         this._hudPrecision.className = '';
