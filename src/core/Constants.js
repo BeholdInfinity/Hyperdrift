@@ -436,3 +436,76 @@ export const AMBIENT = {
 export const RENDER = {
   CIRCLE_MARGIN: 0.08,
 };
+
+/**
+ * Scanner / sensor tuning. Detection is range-gated and driven by
+ * `effectiveTier = min(scannerMk, scannerPips)`. The tier table is
+ * data-driven and open-ended — append rows for higher Mks / bigger pip pools.
+ * `range` is a multiplier of `RANGE` (world units, same space as ship.position);
+ * `rings` is the count of range-reference divider rings drawn in the band.
+ */
+export const SCANNER = {
+  /** Tier-max scan range in world units (multiplied per tier row). */
+  RANGE: 12000,
+  /** Contacts beyond this fraction of the tier range read as "edge" (ghosted). */
+  EDGE_MARGIN: 0.12,
+  /** Hard cap on plotted contacts (nearest kept). */
+  MAX_CONTACTS: 48,
+  /** Radar sweep speed (rad/s) at tier 1; +per tier via SWEEP_TIER_MULT. */
+  SWEEP_BASE: 0.55,
+  SWEEP_TIER_MULT: 0.4,
+  /** Precision mode range multiplier (GDD: Precision frees pips for scanner). */
+  PRECISION_RANGE_BONUS: 1.35,
+  /** Asteroids/objects off by default (dev/tier toggle). */
+  INCLUDE_ASTEROIDS: false,
+  /**
+   * Tier rows indexed by effectiveTier (0 = off). `range` multiplies RANGE,
+   * `rings` is the range-ring divider count. Open-ended: add rows freely.
+   */
+  TIERS: [
+    { range: 0, rings: 0 }, // 0 — no scanner / 0 pips
+    { range: 0.45, rings: 0 }, // 1 — limited range, no rings
+    { range: 1.0, rings: 1 }, // 2 — full range, 1 range ring
+    { range: 1.0, rings: 2 }, // 3 — full range, 2 range rings
+    { range: 1.2, rings: 3 }, // 4 — beyond baseline (future)
+  ],
+};
+
+/**
+ * IFF (Identification Friend or Foe) palette. Applies to scanner contacts and
+ * POIs. Blue = known neutral POI + its patrols; Yellow = unknown/unidentified
+ * (incl. unaffiliated civilians); Red = hostile; Green = faction ally.
+ */
+export const IFF = {
+  blue: '#5fb0ff',
+  yellow: '#ffd24a',
+  red: '#ff5a5a',
+  green: '#5fe08a',
+  /** Non-IFF space objects (asteroids, debris). */
+  object: '#9aa6b0',
+};
+
+/** Points-of-interest / waypoint tracker tuning. */
+export const POI = {
+  /** Register a POI when the player passes within this world range. */
+  DISCOVER_RANGE: 2600,
+  /** Discovery source tags. */
+  SOURCE: {
+    PROXIMITY: 'proximity',
+    MISSION: 'mission',
+    MANUAL: 'manual',
+    PURCHASE: 'purchase',
+  },
+};
+
+/**
+ * Global power-pip pool. Systems draw pips as distinct channels. Precision
+ * frees extra pips (GDD). Scanner tier reads `scanner`; science reads `science`.
+ */
+export const PIPS = {
+  BASE_POOL: 6,
+  PRECISION_BONUS: 2,
+  CHANNELS: ['scanner', 'science', 'engine', 'weapons', 'shield'],
+  DEFAULTS: { scanner: 2, science: 1, engine: 2, weapons: 1, shield: 0 },
+  MAX_PER_CHANNEL: 5,
+};

@@ -212,6 +212,15 @@ function syncDevTraffic() {
   el.textContent = rows.join('\n');
 }
 
+function syncDevScanner() {
+  const el = document.getElementById('dev-scan-readout');
+  if (!el) return;
+  const s = engine.scannerSystem;
+  if (!s) return;
+  const km = (s.range / 100).toFixed(0);
+  el.textContent = `tier ${s.tier}${s.on ? '' : ' (off)'} · ${km} km · ${s.contacts.length} contacts`;
+}
+
 function rebuildHangarPalette() {
   const host = document.getElementById('hangar-edit-palette');
   if (!host) return;
@@ -514,9 +523,11 @@ function showPlayingUi() {
   if (hangarHud) hangarHud.classList.add('hidden');
   if (controlsHud) controlsHud.classList.add('hidden');
   if (blueprintHud) blueprintHud.classList.add('hidden');
-  hud.classList.remove('hidden');
+  // SPD/ZOOM/PREC + corner placeholders are now drawn on the canvas cockpit
+  // frame (CockpitFrame corner screens); keep the legacy DOM HUD hidden.
+  hud.classList.add('hidden');
   pauseMenu.classList.add('hidden');
-  if (cornerUi) cornerUi.classList.remove('hidden');
+  if (cornerUi) cornerUi.classList.add('hidden');
   syncDevModeUi();
 }
 
@@ -592,8 +603,8 @@ function openBlueprint(from = 'title') {
 
 function leaveControls(dest) {
   if (dest === 'pause') {
-    hud.classList.remove('hidden');
-    if (cornerUi) cornerUi.classList.remove('hidden');
+    hud.classList.add('hidden');
+    if (cornerUi) cornerUi.classList.add('hidden');
     if (controlsHud) controlsHud.classList.add('hidden');
     pauseMenu.classList.remove('hidden');
     return;
@@ -919,6 +930,16 @@ document.getElementById('dev-ov-vel')?.addEventListener('change', (e) => {
 });
 document.getElementById('dev-ov-axes')?.addEventListener('change', (e) => {
   DevTools.overlay.axes = !!e.target.checked;
+});
+
+document.getElementById('dev-scan-asteroids')?.addEventListener('change', (e) => {
+  if (engine.scannerSystem) engine.scannerSystem.includeAsteroids = !!e.target.checked;
+});
+document.getElementById('dev-scan-mk')?.addEventListener('input', (e) => {
+  if (engine.scannerSystem) engine.scannerSystem.scannerMk = Number(e.target.value) || 0;
+});
+document.getElementById('dev-scan-range')?.addEventListener('input', (e) => {
+  if (engine.scannerSystem) engine.scannerSystem.rangeScale = Number(e.target.value) || 1;
 });
 
 function wireTuneSlider(id, key) {
@@ -1442,6 +1463,7 @@ setInterval(() => {
   if (!Settings.isDevMode()) return;
   syncDevInspect();
   syncDevTraffic();
+  syncDevScanner();
   if (DevTools.bayPanelOpen) syncBayOptionsUi();
   if (DevTools.placePanelOpen) syncPlacePanelUi();
   if (DevTools.titlePanelOpen) syncTitleLayoutUi();

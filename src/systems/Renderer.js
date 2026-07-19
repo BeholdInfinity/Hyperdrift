@@ -12,6 +12,13 @@ export class Renderer {
     this.centerX = 0;
     this.centerY = 0;
     this.viewportRadius = 0;
+    /** Scanner Output Screen ring band (space mode only). */
+    this.scannerBand = 0;
+    this.scannerOuterRadius = 0;
+    /** POI waypoint rim outer radius (reaches the 16:9 frame top/bottom). */
+    this.poiOuterRadius = 0;
+    /** Largest 16:9 cockpit content box; {x,y,w,h} or null outside space mode. */
+    this.hudRect = null;
     this.time = 0;
     /** @type {'default'|'blueprint'} */
     this.layoutMode = 'default';
@@ -32,9 +39,38 @@ export class Renderer {
     if (this.layoutMode === 'blueprint') {
       this.centerY = this.height * BLUEPRINT.VIEW_CENTER_Y;
       this.viewportRadius = (minDim / 2) * BLUEPRINT.VIEW_RADIUS_FRAC;
+      this.scannerBand = 0;
+      this.scannerOuterRadius = this.viewportRadius;
+      this.poiOuterRadius = this.viewportRadius;
+      this.hudRect = null;
     } else {
       this.centerY = this.height / 2;
-      this.viewportRadius = (minDim / 2) * (1 - 0.08);
+      // 16:9 cockpit content box, letterboxed when the window isn't 16:9.
+      const aspect = 16 / 9;
+      let hw;
+      let hh;
+      if (this.width / this.height > aspect) {
+        hh = this.height;
+        hw = hh * aspect;
+      } else {
+        hw = this.width;
+        hh = hw / aspect;
+      }
+      this.hudRect = {
+        x: this.centerX - hw / 2,
+        y: this.centerY - hh / 2,
+        w: hw,
+        h: hh,
+      };
+      // Rings size to the frame's short axis so the POI rim can reach the
+      // 16:9 frame's top/bottom edge (fills the old ~2% margin). On a 16:9-or-
+      // wider window this equals the previous window-based sizing.
+      const frameMin = hh;
+      const outer = (frameMin / 2) * (1 - 0.02);
+      this.scannerBand = Math.max(34, Math.round(frameMin * 0.05));
+      this.viewportRadius = outer - this.scannerBand;
+      this.scannerOuterRadius = outer;
+      this.poiOuterRadius = hh / 2;
     }
   }
 

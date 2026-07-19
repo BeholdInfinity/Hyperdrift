@@ -58,6 +58,11 @@ src/
     WeaponSystem.js       Dorsal turret + mining laser, collisions, impacts
     AsteroidSystem.js     Chunk load/unload
     ProceduralGeneration.js  Seeded asteroids + nebulae
+    ScannerSystem.js      Scanner model: contacts, dist/bearing, tier gating, selection
+    Scanner.js            Scanner ring renderer (blips, IFF, sweep, nose/tail, chevrons)
+    CockpitFrame.js       Cached 16:9 steel/copper HUD chrome + POI rim dots + corners
+    CockpitPanels.js      Live content for the 6 cockpit screens + status alert overlay
+    PipSystem.js          Global power-pip pool (channels; Precision frees pips)
   entities/
     Ship.js, ShipController.js, ShipHardpoints.js (legacy mount fallback; starter matches)
     Projectile.js, Asteroid.js, Particle.js, Entity.js, EntityManager.js
@@ -79,6 +84,8 @@ src/
     AmbientTrafficSystem.js Near-station traffic + always-on cops; off-screen spawn/despawn
     NpcPilot.js           Shared Newtonian thruster pilot (holds, police hex, ambient burns)
     Station.js            Jennings Station overworld exterior + dock zones
+    PoiSystem.js          POI address book + waypoint tracker (4 discovery sources)
+    SectorMap.js          Dual-level fog-of-war grid + scan trail for the sector map
   utils/
     MathUtils.js, SeededRandom.js
 ```

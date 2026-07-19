@@ -25,6 +25,37 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.283] — 2026-07-19
+
+### Added
+- **Scanner subsystem model (`ScannerSystem`)** — the scanner now runs off a real data model split from its renderer. It gathers contacts (station, ambient ships, optional asteroids) with stable IDs, computes distance/bearing, and range-gates them into **visual / in / edge** states. Detection is **tier-gated**: `effectiveTier = min(scannerMk, scannerPips)` over a data-driven `SCANNER.TIERS` table (tier 0 off → tier 1 limited/no rings → tier 2 full +1 range ring → tier 3 +2 rings, open-ended). Blip refresh is **radar-stepped** — positions snap to truth only as the sweep passes their bearing, and higher tiers sweep faster.
+- **Richer scanner blips + indicators** — radial position encodes distance and blips shrink with range. **Color = IFF** (blue = neutral POI/patrol, yellow = unknown/civilian, red = hostile, green = ally); **shape = contact type** (station ring, ship chevron, asteroid). Contacts inside visual range **collapse to dot blips** on the ring's inner border. Added a mirrored **red tail line** opposite the nose and a **red anti-vector chevron** stack mirroring the velocity chevrons. **Range-reference rings** draw per tier. A **sweep offline** state blanks the ring when unpowered.
+- **Click-to-select contacts** — click a scanner blip (or a row in the CONTACTS panel) to select it; selection brackets highlight the blip and its distance prints inside the viewport against the ring edge.
+- **POI ring + address book (`PoiSystem`)** — discovered points-of-interest register via four sources (proximity / mission / manual / purchase), each with independent **ring** + **sector-map** toggles. Toggled POIs show as bearing-only dots on the copper rim (no sweep) at any range; select one for the Destination panel.
+- **Six live cockpit panels (`CockpitPanels`)** — CONTACT (selected contact detail + top-down hull render, science-gated cargo), CONTACTS (in-range list), COMMS (in-range hail/dock/trade stub), DESTINATION (tabs: Dest | POI Book with R/M toggles), SECTOR MAP (`SectorMap` dual-level fog of war + scan trail + POI/contact markers), and POWER (tabs: Pips | Ship Status).
+- **Global power-pip pool (`PipSystem`)** — a shared pool with per-channel allocation (scanner / science / engine / weapons / shield) via the Pip Control panel; **Precision frees extra pips**. Scanner tier reads the scanner channel; contact cargo detail reads the science channel.
+- **Ship status scaffold + alert overlay** — a `ship.status` shape (systems damage, fuel, onboard fires, per-weapon ammo/readiness) drives the Status tab and a flashing critical-alert banner.
+- **Dev SCANNER drawer** — asteroid-blip toggle, scanner Mk override, range multiplier slider, and a live tier/range/contact readout.
+
+---
+
+## [0.1.282] — 2026-07-19
+
+### Added
+- **16:9 Cockpit HUD frame** — a worn steel + copper industrial console framing the space view. A stroked 16:9 outer border (letterboxed with a chrome housing on off-ratio windows) with corner rivets and a copper inlay; a thickened **POI waypoint rim** (copper ring) hugging the scanner's outer edge; vertical dividers + horizontal thirds carve the left/right columns into **six recessed screen panels** (CONTACT / CONTACTS / COMMS · DESTINATION / SECTOR MAP / POWER) as scaffolding for later; and **four corner readout screens** around the ring showing live **SPD / POS / ZOOM / PRECISION**.
+
+### Changed
+- Ship metadata moved into the cockpit frame's corner screens; the legacy DOM SPD/ZOOM/PRECISION readouts, the POS-in-ring text, and the old RADAR/SYSTEMS/WEAPONS/NAVIGATION corner placeholders are retired.
+
+---
+
+## [0.1.281] — 2026-07-18
+
+### Added
+- **Scanner Output Screen** — a circular radar ring in a border band hugging the space viewport. Ambient ships (amber blips) and police (blue blips) plus the station (green disc + ring icon) plot at their true bearing from the ship, radial position encoding distance. Cardinal/minor ticks (North a touch thicker), a slow radar sweep, and a white **nose heading line**. A three-**velocity chevron** stack points outward along the ship's travel vector: hidden at rest, then 1 / 2 / 3 chevrons lit across the low / mid / top thirds of the speed limit, brightening to intense white near max. The **POS** readout lives at the bottom of the ring; SPD/ZOOM lift just inside the viewport so they clear the band.
+
+---
+
 ## [0.1.280] — 2026-07-18
 
 ### Fixed

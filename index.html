@@ -121,6 +121,13 @@
             <label class="dev-check"><input type="checkbox" id="dev-ov-vel" /> Velocity</label>
             <label class="dev-check"><input type="checkbox" id="dev-ov-axes" /> Axes</label>
           </div>
+          <div class="dev-drawer-section" data-dev-modes="playing">
+            <span class="dev-drawer-label">SCANNER</span>
+            <label class="dev-check"><input type="checkbox" id="dev-scan-asteroids" /> Asteroid blips</label>
+            <label class="dev-check">Mk <input type="number" id="dev-scan-mk" min="0" max="4" value="3" class="dev-num-input" /></label>
+            <label class="dev-check">Range <input type="range" id="dev-scan-range" min="0.25" max="3" step="0.05" value="1" /></label>
+            <span id="dev-scan-readout" class="dev-drawer-status">tier — · — km</span>
+          </div>
           <div class="dev-drawer-section" data-dev-modes="title">
             <span class="dev-drawer-label">TITLE</span>
             <button type="button" class="hangar-dev-btn" id="dev-title-layout-btn">Title Layout</button>
@@ -366,7 +373,6 @@
 
     <div id="hud" class="hidden">
         <div id="speed-readout">SPD: <span id="speed-value">0</span></div>
-        <div id="coords-readout">POS: <span id="coords-value">0, 0</span></div>
         <div id="zoom-readout">ZOOM: <span id="zoom-value">1.0</span>x</div>
         <div id="precision-readout"><span id="precision-value"></span></div>
     </div>

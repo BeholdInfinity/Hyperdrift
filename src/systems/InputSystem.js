@@ -27,6 +27,8 @@ export class InputSystem {
     };
     /** Hangar: true after LMB up without a pan drag (consumed via consumeClick). */
     this._clickPending = false;
+    /** Space cockpit: last LMB-up screen point (consumed via consumeClickPos). */
+    this._clickPos = null;
 
     this._burst = Object.fromEntries(
       BURST_KEYS.map((k) => [k, { lastPress: -Infinity, armed: false }])
@@ -74,6 +76,7 @@ export class InputSystem {
     this.zoomDelta = 0;
     this.pauseToggle = false;
     this.hangarPanEnabled = false;
+    this._clickPos = null;
     this._resetPan();
     this._clearBurstArms();
   }
@@ -205,6 +208,9 @@ export class InputSystem {
       if (this.hangarPanEnabled && !this._pan.dragged) {
         this._clickPending = true;
       }
+      if (this.enabled && !this.paused && !this._pan.dragged) {
+        this._clickPos = { x: e.clientX, y: e.clientY };
+      }
       this.mouseDown = false;
       this._pan.tracking = false;
     }
@@ -288,6 +294,13 @@ export class InputSystem {
   consumeClick() {
     const v = this._clickPending;
     this._clickPending = false;
+    return v;
+  }
+
+  /** Space cockpit: consume the last LMB-up screen point (or null). */
+  consumeClickPos() {
+    const v = this._clickPos;
+    this._clickPos = null;
     return v;
   }
 

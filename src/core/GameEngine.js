@@ -5,6 +5,13 @@ import { ParticleSystem } from '../entities/Particle.js';
 import { InputSystem } from '../systems/InputSystem.js';
 import { CameraSystem } from '../systems/CameraSystem.js';
 import { Renderer } from '../systems/Renderer.js';
+import { Scanner } from '../systems/Scanner.js';
+import { ScannerSystem } from '../systems/ScannerSystem.js';
+import { CockpitFrame } from '../systems/CockpitFrame.js';
+import { CockpitPanels } from '../systems/CockpitPanels.js';
+import { PipSystem } from '../systems/PipSystem.js';
+import { PoiSystem } from '../world/PoiSystem.js';
+import { SectorMap } from '../world/SectorMap.js';
 import { WeaponSystem } from '../systems/WeaponSystem.js';
 import { AsteroidSystem } from '../systems/AsteroidSystem.js';
 import { PhysicsSystem } from '../systems/PhysicsSystem.js';
@@ -101,6 +108,13 @@ export class GameEngine {
     this.lastTime = 0;
 
     this.renderer = new Renderer(canvas);
+    this.scanner = new Scanner();
+    this.scannerSystem = new ScannerSystem();
+    this.pipSystem = new PipSystem();
+    this.poiSystem = new PoiSystem();
+    this.sectorMap = new SectorMap();
+    this.cockpitFrame = new CockpitFrame();
+    this.cockpitPanels = new CockpitPanels();
     this.input = new InputSystem(canvas);
     this.camera = new CameraSystem();
     this.entityManager = new EntityManager();
@@ -203,6 +217,7 @@ export class GameEngine {
     this._dockHud = document.getElementById('dock-hud');
     this._hangarLaunchBtn = document.getElementById('hangar-launch-btn');
 
+    this._hudEl = document.getElementById('hud');
     this._hudSpeed = document.getElementById('speed-value');
     this._hudCoords = document.getElementById('coords-value');
     this._hudZoom = document.getElementById('zoom-value');
@@ -2602,6 +2617,9 @@ export class GameEngine {
       this.renderer.centerY
     );
 
+    this._ensureShipStatus();
+    this._processCockpitClicks();
+
     // AI holding pattern owns thrusters until the captain moves
     if (this._approachHoldAI) {
       this._tickApproachHoldAI(deltaTime);
@@ -3140,6 +3158,159 @@ export class GameEngine {
     }
 
     this.renderer.endCircularClip();
+
+    this._renderScanner();
+    this.cockpitFrame.render(this.renderer.ctx, this.renderer);
+    this.cockpitFrame.drawPoiDots(
+      this.renderer.ctx,
+      this.renderer,
+      this.poiSystem,
+      this.ship,
+      this.camera.rotation || 0
+    );
+    this.cockpitPanels.render(this.renderer.ctx, this);
+    this._renderCornerReadouts();
+  }
+
+  /** Live ship metadata in the cockpit frame's four corner screens. */
+  _renderCornerReadouts() {
+    if (!this.cockpitFrame.layout || !this.ship) return;
+    const speed = Math.round(
+      Math.hypot(this.ship.velocity.x, this.ship.velocity.y)
+    );
+    const capsDesired = this.input?.capsLockDesired;
+    let prec = { text: 'OFF', color: 'rgba(150, 180, 205, 0.5)' };
+    if (this.precisionActive) prec = { text: 'ON', color: 'rgba(120, 240, 170, 0.95)' };
+    else if (capsDesired) prec = { text: 'STBY', color: 'rgba(230, 190, 110, 0.9)' };
+    this.cockpitFrame.drawCorners(this.renderer.ctx, {
+      SPD: { text: `${speed}` },
+      POS: {
+        text: `${Math.round(this.ship.position.x)}, ${Math.round(
+          this.ship.position.y
+        )}`,
+      },
+      ZOOM: { text: `${this.camera.effectiveZoom.toFixed(2)}x` },
+      PREC: prec,
+    });
+  }
+
+  /** Scaffold the ship-status shape read by the HUD status tab + alert overlay. */
+  _ensureShipStatus() {
+    if (!this.ship || this.ship.status) return;
+    this.ship.status = {
+      systems: [
+        { name: 'Engines', state: 'ok' },
+        { name: 'Thrusters', state: 'ok' },
+        { name: 'Scanner', state: 'ok' },
+        { name: 'Weapons', state: 'ok' },
+        { name: 'Life Support', state: 'ok' },
+      ],
+      fuel: 1,
+      fires: [],
+      weapons: [
+        { name: 'Turret', ammo: '\u221E', state: 'ready' },
+        { name: 'Mining Laser', ammo: '\u221E', state: 'ready' },
+      ],
+    };
+  }
+
+  /** Route space-cockpit LMB clicks: panels → scanner band → POI rim. */
+  _processCockpitClicks() {
+    const click = this.input.consumeClickPos();
+    if (!click) return;
+    const { x, y } = click;
+    const dx = x - this.renderer.centerX;
+    const dy = y - this.renderer.centerY;
+    const distC = Math.hypot(dx, dy);
+    if (distC <= this.renderer.viewportRadius) return; // inside play area → gameplay
+
+    if (this.cockpitPanels.handleClick(x, y, this)) return;
+
+    if (distC <= this.renderer.scannerOuterRadius) {
+      if (this.scannerSystem.on) {
+        this.scannerSystem.selectNearestScreen(
+          x,
+          y,
+          Math.max(18, this.renderer.scannerBand)
+        );
+      }
+      return;
+    }
+
+    if (distC <= this.renderer.poiOuterRadius) {
+      this._selectPoiAt(x, y);
+    }
+  }
+
+  _selectPoiAt(x, y) {
+    const rim = this.cockpitFrame.poiRimGeometry();
+    if (!rim || !this.ship) return;
+    const camRot = this.camera.rotation || 0;
+    let best = null;
+    let bestD = 16;
+    for (const poi of this.poiSystem.ringPois()) {
+      const b =
+        Math.atan2(poi.y - this.ship.position.y, poi.x - this.ship.position.x) + camRot;
+      const px = rim.cx + Math.cos(b) * rim.rimR;
+      const py = rim.cy + Math.sin(b) * rim.rimR;
+      const d = Math.hypot(px - x, py - y);
+      if (d < bestD) {
+        bestD = d;
+        best = poi;
+      }
+    }
+    this.poiSystem.selectedId = best ? best.id : null;
+  }
+
+  /** Scanner Output Screen ring: model update + radar render. */
+  _renderScanner() {
+    const r = this.renderer;
+    if (!r.scannerBand || !this.ship) return;
+
+    const dt = this._lastFrameDt || 1 / 60;
+    this.pipSystem.setPrecision(this.precisionActive);
+    const scannerPips = this.pipSystem.get('scanner');
+
+    this.scannerSystem.update(dt, {
+      ship: this.ship,
+      station: this.station,
+      ambientTraffic: this.ambientTraffic,
+      asteroids: this.asteroidSystem.getActiveAsteroids(),
+      camera: this.camera,
+      scannerPips,
+      precision: this.precisionActive,
+      centerX: r.centerX,
+      centerY: r.centerY,
+      innerR: r.viewportRadius,
+      outerR: r.scannerOuterRadius,
+      band: r.scannerBand,
+    });
+
+    // POI discovery (proximity) + sector-map fog reveal ride the scan.
+    this.poiSystem.update({
+      ship: this.ship,
+      station: this.station,
+      scanRange: this.scannerSystem.on ? this.scannerSystem.range : 0,
+    });
+    this.sectorMap.update({
+      ship: this.ship,
+      scanRange: this.scannerSystem.on ? this.scannerSystem.range : 0,
+      contacts: this.scannerSystem.contacts,
+      pois: this.poiSystem.list,
+    });
+
+    this.scanner.render(r.ctx, {
+      centerX: r.centerX,
+      centerY: r.centerY,
+      innerR: r.viewportRadius,
+      outerR: r.scannerOuterRadius,
+      band: r.scannerBand,
+      ship: this.ship,
+      model: this.scannerSystem,
+      cameraRotation: this.camera.rotation || 0,
+      time: this.gameTime,
+      maxSpeed: PHYSICS.MAX_SPEED,
+    });
   }
 
   _renderControls() {
@@ -3579,11 +3750,26 @@ export class GameEngine {
 
   _updateHUD(capsDesired = this.input?.capsLockDesired) {
     if (!this._hudSpeed || !this.ship) return;
+    // Lift the SPD/ZOOM/PRECISION row above the scanner ring band (POS lives in
+    // the ring). Sits just inside the lower edge of the space viewport.
+    if (this._hudEl && this.renderer.scannerBand) {
+      const bottom = Math.round(
+        this.renderer.height -
+          (this.renderer.centerY + this.renderer.viewportRadius) +
+          6
+      );
+      if (this._hudBottom !== bottom) {
+        this._hudEl.style.bottom = `${bottom}px`;
+        this._hudBottom = bottom;
+      }
+    }
     const speed = Math.round(
       Math.hypot(this.ship.velocity.x, this.ship.velocity.y)
     );
     this._hudSpeed.textContent = speed;
-    this._hudCoords.textContent = `${Math.round(this.ship.position.x)}, ${Math.round(this.ship.position.y)}`;
+    if (this._hudCoords) {
+      this._hudCoords.textContent = `${Math.round(this.ship.position.x)}, ${Math.round(this.ship.position.y)}`;
+    }
     if (this._hudZoom) {
       this._hudZoom.textContent = this.camera.effectiveZoom.toFixed(2);
     }
