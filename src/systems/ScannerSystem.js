@@ -51,6 +51,8 @@ export class ScannerSystem {
     this.contacts = [];
     /** id → last displayed {r, bearing} (radar-stepped refresh). */
     this._display = new Map();
+    /** Ring geometry signature; a change forces a blip snap (view hand-off). */
+    this._geoKey = '';
     /** Live model summary for the renderer/panels. */
     this.tier = 0;
     this.range = 0;
@@ -107,7 +109,9 @@ export class ScannerSystem {
 
     const rot = camera?.rotation || 0;
     const zoom = camera?.effectiveZoom || 1;
-    const visualR = ctx.innerR / zoom;
+    // Full-scope (SCAN) view plots every contact by range across the whole
+    // disc, so nothing collapses to a "visual" dot on the inner border.
+    const visualR = ctx.fullScope ? -1 : ctx.innerR / zoom;
     const px = ship.position.x;
     const py = ship.position.y;
 
@@ -160,10 +164,23 @@ export class ScannerSystem {
       }
     }
 
-    const innerPlot = ctx.innerR + ctx.band * 0.28;
-    const outerPlot = ctx.outerR - ctx.band * 0.28;
+    const pad = ctx.plotPad ?? 0.28;
+    const innerPlot = ctx.innerR + ctx.band * pad;
+    const outerPlot = ctx.outerR - ctx.band * pad;
+
+    // When the ring geometry changes (PORT thin ring ↔ full SCAN scope), the
+    // cached radar-stepped positions belong to the old layout. Drop them so
+    // every blip snaps to its correct spot for the new view immediately,
+    // instead of lingering at the old coordinates until the next sweep ping.
+    const geoKey = `${ctx.fullScope ? 1 : 0}:${Math.round(ctx.innerR)}:${Math.round(ctx.outerR)}`;
+    if (geoKey !== this._geoKey) {
+      this._display.clear();
+      this._geoKey = geoKey;
+    }
     const edgeStart = this.range * (1 - SCANNER.EDGE_MARGIN);
-    const maxSize = Math.max(4, ctx.band * 0.26);
+    // Blip size scales with the (thin) ring band; the full-scope band is the
+    // whole radius, so pin it to a readable fixed size there.
+    const maxSize = ctx.fullScope ? 12 : Math.max(4, ctx.band * 0.26);
 
     const out = [];
     for (const c of raw) {

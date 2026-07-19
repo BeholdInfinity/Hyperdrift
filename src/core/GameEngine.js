@@ -152,11 +152,18 @@ export class GameEngine {
     this.precisionDesired = false;
     this._prevCapsLED = false;
     /**
-     * Pilot view lock: 'world' keeps the world fixed and rotates the ship
-     * inside it (default); 'ship' locks the ship pointing up and rotates the
-     * world around it. Toggled from the cockpit MODES switch.
+     * Pilot ORIENT lock: 'ship' locks the hull pointing screen-up and rotates
+     * the world around it (default); 'world' keeps world-north up and rotates
+     * the ship inside it. Toggled from the cockpit MODES switch or the R key.
      */
-    this.viewMode = 'world';
+    this.viewMode = 'ship';
+    /**
+     * Cockpit VIEW mode: 'ship' shows the world through the viewport with the
+     * thin scanner ring around it (default); 'scan' replaces both with one
+     * full-disc radar scope (ship at center, blips plotted by range). The POI
+     * rim ring is unchanged. Toggled from the cockpit MODES switch or the V key.
+     */
+    this.scanView = 'ship';
     this.gameTime = 0;
     /** Dev sim clock scale: 0=pause, 0.5=slow, 1=normal, 2=fast, 4=fast2x */
     this.simSpeed = 1;
@@ -2626,7 +2633,10 @@ export class GameEngine {
 
     const dx = this.input.mouseScreen.x - this.renderer.centerX;
     const dy = this.input.mouseScreen.y - this.renderer.centerY;
+    // In SCAN view the disc is a radar scope, not the world — don't let the
+    // pointer aim/fire weapons blind through it.
     const pointerInViewport =
+      this.scanView !== 'scan' &&
       dx * dx + dy * dy <= this.renderer.viewportRadius * this.renderer.viewportRadius;
 
     const aimWorld = this.camera.screenToWorld(
@@ -2638,6 +2648,10 @@ export class GameEngine {
 
     this._ensureShipStatus();
     this._processCockpitClicks();
+
+    // Cockpit MODES keybinds: R flips ORIENT (ship/north), V flips VIEW (ship/scan).
+    if (this.input.consumeTap('r')) this.toggleViewMode();
+    if (this.input.consumeTap('v')) this.toggleScanView();
 
     // AI holding pattern owns thrusters until the captain moves
     if (this._approachHoldAI) {
@@ -3062,6 +3076,25 @@ export class GameEngine {
     }
 
     this.renderer.setupCircularClip();
+    if (this.scanView === 'scan') this._renderScanBackdrop();
+    else this._renderPlayWorld();
+    this.renderer.endCircularClip();
+
+    this._renderScanner();
+    this.cockpitFrame.render(this.renderer.ctx, this.renderer);
+    this.cockpitFrame.drawPoiDots(
+      this.renderer.ctx,
+      this.renderer,
+      this.poiSystem,
+      this.ship,
+      this.camera.rotation || 0
+    );
+    this.cockpitPanels.render(this.renderer.ctx, this);
+    this._renderCornerReadouts();
+  }
+
+  /** The normal flight world drawn inside the viewport circle (PORT view). */
+  _renderPlayWorld() {
     this._renderBackground({ fullscreen: false, includeWorldNebulae: true });
 
     this.renderer.ctx.save();
@@ -3177,20 +3210,19 @@ export class GameEngine {
         });
       }, this.camera);
     }
+  }
 
-    this.renderer.endCircularClip();
-
-    this._renderScanner();
-    this.cockpitFrame.render(this.renderer.ctx, this.renderer);
-    this.cockpitFrame.drawPoiDots(
-      this.renderer.ctx,
-      this.renderer,
-      this.poiSystem,
-      this.ship,
-      this.camera.rotation || 0
-    );
-    this.cockpitPanels.render(this.renderer.ctx, this);
-    this._renderCornerReadouts();
+  /** Dark radar-scope backdrop that fills the viewport disc in SCAN view. */
+  _renderScanBackdrop() {
+    const ctx = this.renderer.ctx;
+    const { centerX: cx, centerY: cy, viewportRadius: vr } = this.renderer;
+    const g = ctx.createRadialGradient(cx, cy, vr * 0.04, cx, cy, vr);
+    g.addColorStop(0, 'rgba(8, 20, 30, 0.98)');
+    g.addColorStop(1, 'rgba(3, 8, 14, 0.98)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(cx, cy, vr, 0, Math.PI * 2);
+    ctx.fill();
   }
 
   /** Live ship metadata in the cockpit frame's four corner screens. */
@@ -3214,6 +3246,33 @@ export class GameEngine {
   /** Flip the pilot view lock between world-locked and ship-locked. */
   toggleViewMode() {
     this.viewMode = this.viewMode === 'ship' ? 'world' : 'ship';
+  }
+
+  /** Flip the cockpit VIEW between the ship viewport and the full radar scope. */
+  toggleScanView() {
+    this.scanView = this.scanView === 'scan' ? 'ship' : 'scan';
+  }
+
+  /** Scanner ring geometry for the active VIEW (thin port ring vs full scope). */
+  _scannerGeometry() {
+    const r = this.renderer;
+    if (this.scanView === 'scan') {
+      const hub = Math.max(6, r.viewportRadius * 0.06);
+      return {
+        innerR: hub,
+        outerR: r.scannerOuterRadius,
+        band: r.scannerOuterRadius - hub,
+        plotPad: 0.06,
+        fullScope: true,
+      };
+    }
+    return {
+      innerR: r.viewportRadius,
+      outerR: r.scannerOuterRadius,
+      band: r.scannerBand,
+      plotPad: 0.28,
+      fullScope: false,
+    };
   }
 
   /** Request/cancel Precision from the cockpit switch (mirrors Caps Lock). */
@@ -3263,17 +3322,18 @@ export class GameEngine {
     const dx = x - this.renderer.centerX;
     const dy = y - this.renderer.centerY;
     const distC = Math.hypot(dx, dy);
-    if (distC <= this.renderer.viewportRadius) return; // inside play area → gameplay
+    // PORT view: the inner disc is the world → leave clicks to gameplay. SCAN
+    // view: the whole disc is the scope → let clicks fall through to blip pick.
+    if (this.scanView !== 'scan' && distC <= this.renderer.viewportRadius) return;
 
     if (this.cockpitPanels.handleClick(x, y, this)) return;
 
     if (distC <= this.renderer.scannerOuterRadius) {
       if (this.scannerSystem.on) {
-        this.scannerSystem.selectNearestScreen(
-          x,
-          y,
-          Math.max(18, this.renderer.scannerBand)
-        );
+        const tol = this.scanView === 'scan'
+          ? Math.max(18, this.renderer.viewportRadius * 0.12)
+          : Math.max(18, this.renderer.scannerBand);
+        this.scannerSystem.selectNearestScreen(x, y, tol);
       }
       return;
     }
@@ -3311,6 +3371,7 @@ export class GameEngine {
     const dt = this._lastFrameDt || 1 / 60;
     this.pipSystem.setPrecision(this.precisionActive);
     const scannerPips = this.pipSystem.get('scanner');
+    const geo = this._scannerGeometry();
 
     this.scannerSystem.update(dt, {
       ship: this.ship,
@@ -3322,9 +3383,11 @@ export class GameEngine {
       precision: this.precisionActive,
       centerX: r.centerX,
       centerY: r.centerY,
-      innerR: r.viewportRadius,
-      outerR: r.scannerOuterRadius,
-      band: r.scannerBand,
+      innerR: geo.innerR,
+      outerR: geo.outerR,
+      band: geo.band,
+      plotPad: geo.plotPad,
+      fullScope: geo.fullScope,
     });
 
     // POI discovery (proximity) + sector-map fog reveal ride the scan.
@@ -3343,9 +3406,11 @@ export class GameEngine {
     this.scanner.render(r.ctx, {
       centerX: r.centerX,
       centerY: r.centerY,
-      innerR: r.viewportRadius,
-      outerR: r.scannerOuterRadius,
-      band: r.scannerBand,
+      innerR: geo.innerR,
+      outerR: geo.outerR,
+      band: geo.band,
+      plotPad: geo.plotPad,
+      fullScope: geo.fullScope,
       ship: this.ship,
       model: this.scannerSystem,
       cameraRotation: this.camera.rotation || 0,

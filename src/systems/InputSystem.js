@@ -1,11 +1,15 @@
 import { PHYSICS } from '../core/Constants.js';
 
 const BURST_KEYS = ['q', 'w', 'e', 'a', 's', 'd'];
+/** Discrete edge-triggered keys: registered once per press, consumed by name. */
+const TAP_KEYS = ['r', 'v'];
 
 export class InputSystem {
   constructor(canvas) {
     this.canvas = canvas;
     this.keys = new Set();
+    /** Edge-triggered key taps awaiting consumption (see TAP_KEYS). */
+    this._taps = new Set();
     this.mouseDown = false;
     this.mouseRightDown = false;
     this.mouseScreen = { x: 0, y: 0 };
@@ -55,6 +59,7 @@ export class InputSystem {
 
     window.addEventListener('blur', () => {
       this.keys.clear();
+      this._taps.clear();
       this.mouseDown = false;
       this.mouseRightDown = false;
       this._resetPan();
@@ -77,6 +82,7 @@ export class InputSystem {
     this.pauseToggle = false;
     this.hangarPanEnabled = false;
     this._clickPos = null;
+    this._taps.clear();
     this._resetPan();
     this._clearBurstArms();
   }
@@ -173,6 +179,8 @@ export class InputSystem {
       state.lastPress = now;
     }
 
+    if (!e.repeat && TAP_KEYS.includes(key)) this._taps.add(key);
+
     this.keys.add(trackKey);
   }
 
@@ -266,6 +274,14 @@ export class InputSystem {
   consumeZoomDelta() {
     const v = this.zoomDelta;
     this.zoomDelta = 0;
+    return v;
+  }
+
+  /** Consume a one-shot key tap (TAP_KEYS), true if pressed since last consume. */
+  consumeTap(key) {
+    const k = key.toLowerCase();
+    const v = this._taps.has(k);
+    this._taps.delete(k);
     return v;
   }
 

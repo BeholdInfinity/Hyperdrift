@@ -80,12 +80,25 @@ export class CockpitPanels {
         click: (e) => e.togglePrecision(),
       },
       {
-        cap: 'VIEW',
-        off: 'WLD',
-        on: 'SHIP',
-        active: engine.viewMode === 'ship',
+        // ORIENT = display stabilization, the marine radar "Head-Up vs
+        // North-Up" convention. SHIP keeps the hull pointing up so the world
+        // rotates around it (default); NORTH keeps world-north up. Bound to R.
+        cap: 'ORIENT',
+        off: 'SHIP',
+        on: 'NORTH',
+        active: engine.viewMode === 'world',
         color: accent,
         click: (e) => e.toggleViewMode(),
+      },
+      {
+        // VIEW = ship viewport (world through the circle) vs. one full radar
+        // scope. SHIP is the default flight view; SCAN is the scope. Bound to V.
+        cap: 'VIEW',
+        off: 'SHIP',
+        on: 'SCAN',
+        active: engine.scanView === 'scan',
+        color: accent,
+        click: (e) => e.toggleScanView(),
       },
     ];
 

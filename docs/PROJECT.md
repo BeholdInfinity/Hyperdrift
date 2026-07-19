@@ -159,6 +159,8 @@ src/
 | Shift | Afterburner (disabled in Precision) |
 | Alt | Smart space brakes (Alt+QWEASD blocked from browser menu chords while playing) |
 | Caps Lock | Precision desire (engage when slow; active = speed-capped) |
+| R | ORIENT toggle — SHIP-up (head-up, default) ↔ NORTH-up |
+| V | VIEW toggle — SHIP viewport (default) ↔ full radar SCAN scope |
 | LMB | Fire dorsal turret (pointer in circle; slews to aim) |
 | RMB | Mining laser (pointer in circle; slews within arc) |
 | Scroll | Zoom |

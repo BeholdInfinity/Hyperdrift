@@ -141,7 +141,9 @@ Each hardpoint holds up to **4** items in a 2×2 slot grid. Freight is drawn as 
 
 - Ship yaw is **keyboard** (`Q` / `E`), not mouse
 - Cursor always visible (no pointer lock)
-- Mouse aims weapons only while the pointer is **inside the circular viewport**
+- Mouse aims weapons only while the pointer is **inside the circular viewport** (disabled in **SCAN** view, where the disc is a radar scope)
+- **ORIENT** (cockpit MODES switch / `R`): **SHIP**-up (head-up, default) locks the hull pointing screen-up and rotates the world around it; **NORTH**-up keeps world-north up and rotates the ship inside it (marine "Head-Up vs North-Up" convention)
+- **VIEW** (cockpit MODES switch / `V`): **SHIP** (default) shows the world through the viewport with the thin scanner ring; **SCAN** replaces both with one full-disc radar scope (ship centered, blips by range). The outer POI rim ring is unchanged
 
 ### Translation
 

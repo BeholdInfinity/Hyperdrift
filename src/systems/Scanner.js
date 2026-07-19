@@ -56,16 +56,18 @@ export class Scanner {
       cameraRotation = 0,
       time = 0,
       maxSpeed,
+      fullScope = false,
+      plotPad = 0.28,
     } = opts;
     if (!ship || band <= 0) return;
     if (maxSpeed) this.maxSpeed = maxSpeed;
 
     ctx.save();
     this._drawBand(ctx, cx, cy, innerR, outerR);
-    this._drawTicks(ctx, cx, cy, innerR, outerR, band, cameraRotation, model?.on);
+    this._drawTicks(ctx, cx, cy, innerR, outerR, band, cameraRotation, model?.on, fullScope);
 
     if (model?.on) {
-      this._drawRangeRings(ctx, cx, cy, innerR, outerR, band, model.rings);
+      this._drawRangeRings(ctx, cx, cy, innerR, outerR, band, model.rings, plotPad);
       this._drawSweep(ctx, cx, cy, innerR, outerR, model.sweepAngle);
     }
 
@@ -74,12 +76,12 @@ export class Scanner {
     this._drawHeadingLine(
       ctx, cx, cy, innerR, outerR, ship, cameraRotation, Math.PI, COLORS.tail
     );
-    this._drawChevrons(ctx, cx, cy, innerR, band, ship, cameraRotation, false);
-    this._drawChevrons(ctx, cx, cy, innerR, band, ship, cameraRotation, true);
+    this._drawChevrons(ctx, cx, cy, innerR, band, ship, cameraRotation, false, fullScope);
+    this._drawChevrons(ctx, cx, cy, innerR, band, ship, cameraRotation, true, fullScope);
 
     if (model?.on) {
       this._drawContacts(ctx, model);
-      this._drawSelection(ctx, cx, cy, innerR, model, cameraRotation);
+      this._drawSelection(ctx, cx, cy, innerR, model, cameraRotation, fullScope);
     } else {
       this._drawOffline(ctx, cx, cy, innerR, outerR, band);
     }
@@ -108,10 +110,10 @@ export class Scanner {
     ctx.stroke();
   }
 
-  _drawRangeRings(ctx, cx, cy, innerR, outerR, band, rings) {
+  _drawRangeRings(ctx, cx, cy, innerR, outerR, band, rings, pad = 0.28) {
     if (!rings) return;
-    const innerPlot = innerR + band * 0.28;
-    const outerPlot = outerR - band * 0.28;
+    const innerPlot = innerR + band * pad;
+    const outerPlot = outerR - band * pad;
     ctx.save();
     ctx.strokeStyle = COLORS.rangeRing;
     ctx.lineWidth = 1;
@@ -126,8 +128,11 @@ export class Scanner {
     ctx.restore();
   }
 
-  _drawTicks(ctx, cx, cy, innerR, outerR, band, rot, on) {
-    const midR = innerR + band * 0.5;
+  _drawTicks(ctx, cx, cy, innerR, outerR, band, rot, on, fullScope = false) {
+    // Thin port ring centers ticks in the band; the full scope hangs a compass
+    // just inside the outer rim with fixed-length ticks (band is huge there).
+    const tickBand = fullScope ? Math.min(band, outerR) * 0.05 : band;
+    const midR = fullScope ? outerR - tickBand * 0.9 : innerR + band * 0.5;
     const dim = on ? 1 : 0.5;
     for (let deg = 0; deg < 360; deg += 15) {
       const cardinal = deg % 90 === 0;
@@ -135,7 +140,7 @@ export class Scanner {
       const a = (deg * Math.PI) / 180 + rot;
       const cos = Math.cos(a);
       const sin = Math.sin(a);
-      const len = cardinal ? band * 0.55 : band * 0.3;
+      const len = cardinal ? tickBand * 0.55 : tickBand * 0.3;
       const r0 = midR - len / 2;
       const r1 = midR + len / 2;
       ctx.beginPath();
@@ -262,7 +267,7 @@ export class Scanner {
     ctx.restore();
   }
 
-  _drawSelection(ctx, cx, cy, innerR, model, rot) {
+  _drawSelection(ctx, cx, cy, innerR, model, rot, fullScope = false) {
     const c = model.getSelected();
     if (!c) return;
     this._drawBlip(ctx, c);
@@ -283,11 +288,20 @@ export class Scanner {
     }
     ctx.restore();
 
-    // Distance readout just inside the viewport, along the contact bearing.
+    // Distance readout: just inside the viewport border (PORT), or tucked
+    // beside the blip toward center (full scope, where the border is a hub).
     const km = (c.dist / 100).toFixed(1);
-    const rr = innerR - 16;
-    const tx = cx + Math.cos(c.bearing) * rr;
-    const ty = cy + Math.sin(c.bearing) * rr;
+    let tx;
+    let ty;
+    if (fullScope) {
+      const rr = Math.max(0, (c.plotR || 0) - r - 8);
+      tx = cx + Math.cos(c.bearing) * rr;
+      ty = cy + Math.sin(c.bearing) * rr;
+    } else {
+      const rr = innerR - 16;
+      tx = cx + Math.cos(c.bearing) * rr;
+      ty = cy + Math.sin(c.bearing) * rr;
+    }
     ctx.save();
     ctx.font = "600 12px 'Barlow Condensed', 'Segoe UI', sans-serif";
     ctx.textAlign = 'center';
@@ -320,7 +334,7 @@ export class Scanner {
    * Chevron stack along the velocity vector. `anti` mirrors it toward center in
    * red (anti-vector). Lit count/intensity ramp with speed; hidden at rest.
    */
-  _drawChevrons(ctx, cx, cy, innerR, band, ship, rot, anti) {
+  _drawChevrons(ctx, cx, cy, innerR, band, ship, rot, anti, fullScope = false) {
     const vx = ship.velocity?.x ?? 0;
     const vy = ship.velocity?.y ?? 0;
     const speed = Math.hypot(vx, vy);
@@ -332,9 +346,11 @@ export class Scanner {
     if (f > 2 / 3) intensity = 0.82 + 0.18 * ((f - 2 / 3) / (1 / 3));
 
     const vb = Math.atan2(vy, vx) + rot + (anti ? Math.PI : 0);
-    const cs = band * 0.085;
+    // Thin port ring sizes chevrons to the band; the full scope band is the
+    // whole radius, so clamp them and seat the stack just outside the hub.
+    const cs = fullScope ? Math.min(band * 0.085, 12) : band * 0.085;
     const gap = cs * 2.1;
-    const r0 = innerR + band * 0.24;
+    const r0 = fullScope ? innerR + cs * 2.2 : innerR + band * 0.24;
     const litRGB = anti ? '255, 110, 110' : '240, 248, 255';
     const glowRGB = anti ? '255, 140, 140' : '210, 232, 255';
 
