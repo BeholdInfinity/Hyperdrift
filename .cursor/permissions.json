@@ -1,0 +1,18 @@
+{
+  // Terminal commands the agent may run without an approval pop-up in this repo.
+  // Prefix match, case-sensitive (e.g. "git push" also matches "git push --force ...").
+  // NOTE: this REPLACES the in-app terminal allowlist for this workspace and makes
+  // that Settings editor read-only. Requires a Run Mode (Auto-review / Allowlist /
+  // Run Everything) under Settings > Agents > Approvals & Execution.
+  // Reference: https://cursor.com/docs/reference/permissions.md
+  "terminalAllowlist": [
+    "git status",
+    "git add",
+    "git commit",
+    "git push",
+    "git pull",
+    "git fetch",
+    "git diff",
+    "git log"
+  ]
+}
