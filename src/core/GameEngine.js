@@ -24,6 +24,12 @@ import { makeVisitorThrusters } from '../world/HangarVisitorShips.js';
 import { Station } from '../world/Station.js';
 import { AmbientTrafficSystem } from '../world/AmbientTrafficSystem.js';
 import {
+  cruiseTo,
+  followWaypointRing,
+  holdRacetrackCorners,
+  initHoldLeg,
+} from '../world/NpcPilot.js';
+import {
   PHYSICS,
   HANGAR,
   SHIP,
@@ -31,6 +37,7 @@ import {
   PAD_MK_RADIUS,
   PAD_MK4_TEASE_RADIUS,
   STATION,
+  AMBIENT,
 } from '../core/Constants.js';
 import { Vec2, angleDifference, clamp } from '../utils/MathUtils.js';
 import {
@@ -405,9 +412,10 @@ export class GameEngine {
     this.ambientTraffic.spawnBayApproach(
       this.station,
       1,
-      null, // allow on-screen — title wants the approach visible
+      null,
       this.station.x,
-      this.station.y + 800
+      this.station.y + 800,
+      { runwayLocal: true } // title vignette — start on the north corridor
     );
     // Kick one update so seed bubble + approach exist on first paint
     this.ambientTraffic.update(1 / 60, {
@@ -454,14 +462,17 @@ export class GameEngine {
   beginPlay() {
     this.camera.rotation = 0;
     this._clearPlaySession();
-    const spawn = this.station.getExitSpawn();
+    // Pick exit bay first — spawn lane + departing pad light must match
+    this.playerBayIndex = (Math.random() * 3) | 0;
+    const spawn = this.station.getExitSpawn(this.playerBayIndex);
     this.ship = new Ship(spawn.x, spawn.y);
     this._applyPendingBlueprint(this.ship);
     this.ship.angle = spawn.angle;
     this.ship.turretAngle = spawn.angle;
-    // Match hangar-exit feel: already leaving the bay mouth northbound
-    this.ship.velocity.set(0, -160);
-    this.ship.thrusters.mainEngine = 0.85;
+    // Match hangar-exit feel: engine already engaged northbound
+    this.ship.velocity.set(0, -220);
+    this.ship.thrusters.mainEngine = 1;
+    this.ship.exitBurn = true;
     this._beginExitBurn();
     this.precisionActive = false;
     this.entityManager.add(this.ship, 'ship');
@@ -472,7 +483,6 @@ export class GameEngine {
 
     // Live hangar behind the station (LOD by distance) so visitors land/leave in space
     syncHangarSidePadFromLayout(null);
-    this.playerBayIndex = (Math.random() * 3) | 0;
     this._bindPlayerVessel(this.ship);
     this.hangarBay.reset(this.ship, {
       playerBayIndex: this.playerBayIndex,
@@ -1016,6 +1026,8 @@ export class GameEngine {
     if (!this.ship || this._approachHoldAI) return;
     this._approachHoldAI = { phase: 'hold', t: 0, targetLane: null };
     this._clearShipThrusters(this.ship);
+    const corners = holdRacetrackCorners(this.station, AMBIENT);
+    initHoldLeg(this.ship, corners);
   }
 
   _releaseHoldingPattern() {
@@ -1023,8 +1035,8 @@ export class GameEngine {
   }
 
   /**
-   * AI holding pattern north of the runway until a green bay opens, then
-   * approach that lane and dock. Captain movement input cancels immediately.
+   * AI racetrack hold north of the runway until a green bay opens, then
+   * thruster-approach that lane and dock. Captain movement input cancels.
    */
   _tickApproachHoldAI(dt) {
     const ai = this._approachHoldAI;
@@ -1044,23 +1056,9 @@ export class GameEngine {
     const greens = [0, 1, 2].filter((i) => station.padAvailable(i, ship));
 
     ai.t += dt;
-    this._clearShipThrusters(ship);
 
     if (ai.phase === 'hold') {
-      const holdY = station.furthestApproachLightY() - STATION.SCALE * 20;
-      const sway = Math.sin(ai.t * 0.45) * STATION.APPROACH_LIGHT_HALF_W * 0.35;
-      const tx = station.x + sway;
-      const dx = tx - ship.position.x;
-      const dy = holdY - ship.position.y;
-      const desired = Math.atan2(dy, dx);
-      let dAng = desired - ship.angle;
-      while (dAng > Math.PI) dAng -= Math.PI * 2;
-      while (dAng < -Math.PI) dAng += Math.PI * 2;
-      ship.angle += dAng * Math.min(1, 2.2 * dt);
-      ship.angularVelocity = 0;
-      const spd = 55;
-      ship.velocity.set(Math.cos(ship.angle) * spd, Math.sin(ship.angle) * spd);
-      ship.thrusters.mainEngine = 0.3;
+      // Never stay in hold while a pad is open
       if (greens.length) {
         let best = greens[0];
         let bestD = Infinity;
@@ -1074,39 +1072,65 @@ export class GameEngine {
         ai.targetLane = best;
         ai.phase = 'approach';
         ai.t = 0;
+      } else {
+        const corners = holdRacetrackCorners(station, AMBIENT);
+        if (ship.holdLeg == null) initHoldLeg(ship, corners);
+        followWaypointRing(ship, corners, AMBIENT.HOLD_CRUISE_SPEED, dt, {
+          legKey: 'holdLeg',
+          reverse: !!ship.holdReverse,
+          arrivalR: AMBIENT.HOLD_ARRIVAL_R,
+          speedBand: AMBIENT.COAST_SPEED_BAND,
+          headingTol: AMBIENT.COAST_HEADING_TOL,
+        });
+        return;
       }
-      return;
     }
 
-    // approach — commit into the chosen green lane
-    const lane = ai.targetLane ?? greens[0];
+    // approach — commit into the chosen green lane (thruster cruise)
+    let lane = ai.targetLane ?? greens[0];
     if (lane == null || !station.padAvailable(lane, ship)) {
-      ai.phase = 'hold';
-      ai.targetLane = null;
-      return;
+      if (greens.length) {
+        lane = greens[0];
+        let bestD = Infinity;
+        for (const g of greens) {
+          const d = Math.abs(ship.position.x - station.laneCenterWorldX(g));
+          if (d < bestD) {
+            bestD = d;
+            lane = g;
+          }
+        }
+        ai.targetLane = lane;
+      } else {
+        ai.phase = 'hold';
+        ai.targetLane = null;
+        const corners = holdRacetrackCorners(station, AMBIENT);
+        initHoldLeg(ship, corners);
+        followWaypointRing(ship, corners, AMBIENT.HOLD_CRUISE_SPEED, dt, {
+          legKey: 'holdLeg',
+          reverse: !!ship.holdReverse,
+          arrivalR: AMBIENT.HOLD_ARRIVAL_R,
+          speedBand: AMBIENT.COAST_SPEED_BAND,
+          headingTol: AMBIENT.COAST_HEADING_TOL,
+        });
+        return;
+      }
     }
+
     const tx = station.laneCenterWorldX(lane);
-    const ty = station.stripeWorldY() - STATION.SCALE * 30;
     const nearMouth =
       Math.hypot(ship.position.x - tx, ship.position.y - station.stripeWorldY()) <
       STATION.DOCK_RADIUS * 0.9;
-    const FACE_S = Math.PI / 2;
-    const desired = nearMouth
-      ? FACE_S
-      : Math.atan2(ty - ship.position.y, tx - ship.position.x);
-    let dAng = desired - ship.angle;
-    while (dAng > Math.PI) dAng -= Math.PI * 2;
-    while (dAng < -Math.PI) dAng += Math.PI * 2;
-    ship.angle += dAng * Math.min(1, 2.4 * dt);
-    ship.angularVelocity = 0;
+    const targetY = nearMouth
+      ? station.stripeWorldY() + STATION.SCALE * 20
+      : station.furthestApproachLightY() + STATION.SCALE * 15;
     const approachSpd = Math.min(STATION.DOCK_MAX_SPEED * 0.8, 95);
-    ship.velocity.set(
-      Math.cos(ship.angle) * approachSpd,
-      Math.sin(ship.angle) * approachSpd
-    );
-    // Nudge toward lane center
-    ship.velocity.x += (tx - ship.position.x) * 0.35;
-    ship.thrusters.mainEngine = 0.45;
+    cruiseTo(ship, tx, targetY, approachSpd, dt, {
+      arrivalR: 40,
+      brakeForArrival: true,
+      yawMult: nearMouth ? 1.35 : 1.15,
+      speedBand: AMBIENT.COAST_SPEED_BAND,
+      headingTol: nearMouth ? 0.35 : AMBIENT.COAST_HEADING_TOL,
+    });
     const speed = ship.velocity.length();
     if (station.shouldAutoIngress(ship, speed)) {
       this._releaseHoldingPattern();
@@ -1586,7 +1610,10 @@ export class GameEngine {
 
     // Keep a runway approach ship in the vignette when the mouth is free
     const hasApproach = (this.ambientTraffic.ships || []).some(
-      (s) => s.state === 'bayApproach' || s.state === 'bayIngress'
+      (s) =>
+        s.state === 'bayApproach' ||
+        s.state === 'bayIngress' ||
+        s.state === 'bayInbound'
     );
     if (!hasApproach && Math.random() < deltaTime * 0.12) {
       this.ambientTraffic.spawnBayApproach(
@@ -1594,7 +1621,8 @@ export class GameEngine {
         (Math.random() * 3) | 0,
         null,
         this.station.x,
-        this.station.y + 800
+        this.station.y + 800,
+        { runwayLocal: true }
       );
     }
 
@@ -1816,8 +1844,8 @@ export class GameEngine {
       cur &&
       cur.kind === hit.kind &&
       (hit.kind === 'player' || cur.bayIndex === hit.bayIndex);
-    // Ship-local exhaust always attaches to the player hull — clear on retarget
-    this.particleSystem.clearShipSpace();
+    // Drop primary (no-attachId) ship-local exhaust on retarget
+    this.particleSystem.clearShipSpace(null);
     if (cur?.kind === 'visitor') this._muteHangarVisitorWeapons(cur.bayIndex);
     if (same) {
       this.hangarControlTarget = null;
@@ -1954,6 +1982,33 @@ export class GameEngine {
     }
   }
 
+  /**
+   * Pose map for multi-hull ship-local exhaust (ambient + hangar visitors).
+   * Primary/controlled ship uses attachId null and the `ship` arg to renderParticles.
+   */
+  _exhaustHullPoses() {
+    /** @type {Record<string, { x: number, y: number, angle: number }>} */
+    const hulls = Object.create(null);
+    for (const s of this.ambientTraffic?.ships || []) {
+      hulls[`a${s.id}`] = {
+        x: s.x,
+        y: s.y,
+        angle: s.angle ?? 0,
+      };
+    }
+    if (this.state === 'hangar') {
+      for (const pad of this.hangarBay?.sidePads || []) {
+        if (!pad?.visitorId || pad.bayIndex == null) continue;
+        hulls[`v${pad.bayIndex}`] = {
+          x: pad.x,
+          y: pad.shipY || 0,
+          angle: pad.shipAngle ?? SHIP.SPAWN_ANGLE,
+        };
+      }
+    }
+    return hulls;
+  }
+
   _emitHangarThrusterParticles() {
     const sceneBusy = this.hangarBay.isPlayerDevSceneActive();
     const playerLive =
@@ -1974,8 +2029,7 @@ export class GameEngine {
       this.renderer.emitThrusterParticles(this.ship, this.particleSystem);
     }
 
-    // Every thrusting hangar visitor — mount-driven, world-space (ship-local
-    // particles would attach to the player hull in renderParticles).
+    // Hangar visitors — same ship-local exhaust as the player (per-hull attachId)
     for (const pad of this.hangarBay.sidePads || []) {
       if (!pad?.visitorId || !pad.shipDef || !pad.thrusters) continue;
       const shipLike = {
@@ -1987,7 +2041,7 @@ export class GameEngine {
         angularVelocity: 0,
       };
       this.renderer.emitThrusterParticles(shipLike, this.particleSystem, {
-        worldSpace: true,
+        attachId: `v${pad.bayIndex}`,
       });
     }
   }
@@ -2626,9 +2680,11 @@ export class GameEngine {
     const baySignals = this._hangarLive
       ? this.hangarBay.getBaySignals()
       : ['green', 'green', 'green'];
-    // Controlled ship exit burn counts as departing for that bay's spin light
-    if (this._exitBurn && Number.isFinite(this.playerBayIndex)) {
-      baySignals[this.playerBayIndex] = 'departing';
+    // Exit burn: departing light follows the lane the ship is actually in
+    if (this._exitBurn && this.ship?.position) {
+      const lane = this.station.laneIndexFromWorldX(this.ship.position.x);
+      this.playerBayIndex = lane;
+      baySignals[lane] = 'departing';
     }
     this.station.setBaySignals(baySignals);
 
@@ -2806,6 +2862,14 @@ export class GameEngine {
       this.ambientTraffic.render(ctx, { only: ambientOccluded });
     }, this.camera);
 
+    const exhaustHulls = this._exhaustHullPoses();
+    this.renderer.renderParticles(
+      this.particleSystem.particles,
+      this.camera,
+      null,
+      { layer: 'under', hulls: exhaustHulls }
+    );
+
     if (anyOccluded) {
       this.renderer.renderWorldLayer((ctx) => {
         this.station.render(ctx, {
@@ -2835,7 +2899,8 @@ export class GameEngine {
     this.renderer.renderParticles(
       this.particleSystem.particles,
       this.camera,
-      null
+      null,
+      { layer: 'over', hulls: exhaustHulls }
     );
   }
 
@@ -3013,6 +3078,14 @@ export class GameEngine {
       this.renderer.renderShip(this.ship, this.camera);
     }
 
+    const exhaustHulls = this._exhaustHullPoses();
+    this.renderer.renderParticles(
+      this.particleSystem.particles,
+      this.camera,
+      this.ship,
+      { layer: 'under', shipLocalUnder: playerOccluded, hulls: exhaustHulls }
+    );
+
     if (anyOccluded) {
       this.renderer.renderWorldLayer((ctx) => {
         this.station.render(ctx, {
@@ -3052,7 +3125,8 @@ export class GameEngine {
     this.renderer.renderParticles(
       this.particleSystem.particles,
       this.camera,
-      this.ship
+      this.ship,
+      { layer: 'over', shipLocalUnder: playerOccluded, hulls: exhaustHulls }
     );
 
     if (Settings.isDevMode() && this.ship) {
@@ -3460,7 +3534,8 @@ export class GameEngine {
     this.renderer.renderParticles(
       this.particleSystem.particles,
       this.camera,
-      this.ship
+      this.ship,
+      { hulls: this._exhaustHullPoses() }
     );
 
     this.renderer.renderWorldLayer((worldCtx) => {

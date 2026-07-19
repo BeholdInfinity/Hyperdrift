@@ -183,11 +183,33 @@ function syncDevInspect() {
     `spd ${spd.toFixed(0)}`,
     `yaw ${(((ship?.angle ?? 0) * 180) / Math.PI).toFixed(0)}°`,
     `chunk ${chunk}`,
-    `ambient ${engine.ambientTraffic?.ships?.length ?? 0}`,
     DevTools.dirty.tuning || DevTools.dirty.mounts || DevTools.dirty.hangar
       ? `dirty ${[DevTools.dirty.tuning && 'tune', DevTools.dirty.mounts && 'mnt', DevTools.dirty.hangar && 'hgr'].filter(Boolean).join(',')}`
       : 'dirty —',
   ].join('\n');
+}
+
+function syncDevTraffic() {
+  const el = document.getElementById('dev-traffic');
+  if (!el || !Settings.isDevMode()) return;
+  const stats = engine.ambientTraffic?.getTrafficStats?.();
+  if (!stats) {
+    el.textContent = 'total 0\n(no ambient system)';
+    return;
+  }
+  const rows = [
+    `total ${stats.total}`,
+    `Customers ${stats.customers}`,
+    `Police ${stats.police}`,
+    `Miners ${stats.miners}`,
+    `Flyby ${stats.flyby}`,
+    `Freight ${stats.freight}`,
+    `Survey ${stats.survey}`,
+    `Deep ${stats.deep}`,
+    `Leaving ${stats.leaving}`,
+  ];
+  if (stats.other > 0) rows.push(`Other ${stats.other}`);
+  el.textContent = rows.join('\n');
 }
 
 function rebuildHangarPalette() {
@@ -1419,6 +1441,7 @@ document.getElementById('hangar-edit-inspector')?.addEventListener('change', (ev
 setInterval(() => {
   if (!Settings.isDevMode()) return;
   syncDevInspect();
+  syncDevTraffic();
   if (DevTools.bayPanelOpen) syncBayOptionsUi();
   if (DevTools.placePanelOpen) syncPlacePanelUi();
   if (DevTools.titlePanelOpen) syncTitleLayoutUi();

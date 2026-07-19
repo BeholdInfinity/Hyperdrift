@@ -200,18 +200,57 @@ export class Renderer {
     }, camera);
   }
 
-  renderParticles(particles, camera, ship) {
+  /**
+   * @param {object[]} particles
+   * @param {object} camera
+   * @param {object|null} ship — primary hull for ship-local particles with no attachId
+   * @param {{
+   *   layer?: 'all'|'under'|'over',
+   *   shipLocalUnder?: boolean,
+   *   hulls?: Record<string, { x: number, y: number, angle: number }>,
+   * }} [opts]
+   *   layer under/over splits station-mouth occlusion; primary ship-local
+   *   exhaust uses shipLocalUnder; attachId particles use p.underStation.
+   */
+  renderParticles(particles, camera, ship, opts = {}) {
+    const layer = opts.layer || 'all';
+    const shipLocalUnder = !!opts.shipLocalUnder;
+    const hulls = opts.hulls || null;
     this.renderWorldLayer((ctx) => {
-      const cos = ship ? Math.cos(ship.angle) : 1;
-      const sin = ship ? Math.sin(ship.angle) : 0;
-      const sx = ship ? ship.position.x : 0;
-      const sy = ship ? ship.position.y : 0;
+      const primaryCos = ship ? Math.cos(ship.angle) : 1;
+      const primarySin = ship ? Math.sin(ship.angle) : 0;
+      const primarySx = ship ? ship.position.x : 0;
+      const primarySy = ship ? ship.position.y : 0;
 
       for (const p of particles) {
+        const isShipLocal = p.space === 'ship';
+        const under = isShipLocal
+          ? p.attachId != null
+            ? !!p.underStation
+            : shipLocalUnder
+          : !!p.underStation;
+        if (layer === 'under' && !under) continue;
+        if (layer === 'over' && under) continue;
+
         const lifeRatio = p.life / p.maxLife;
         let x = p.x;
         let y = p.y;
-        if (p.space === 'ship' && ship) {
+        if (isShipLocal) {
+          let sx = primarySx;
+          let sy = primarySy;
+          let cos = primaryCos;
+          let sin = primarySin;
+          let havePose = !!ship;
+          if (p.attachId != null) {
+            const pose = hulls?.[p.attachId];
+            if (!pose) continue;
+            sx = pose.x;
+            sy = pose.y;
+            cos = Math.cos(pose.angle);
+            sin = Math.sin(pose.angle);
+            havePose = true;
+          }
+          if (!havePose) continue;
           x = sx + p.x * cos - p.y * sin;
           y = sy + p.x * sin + p.y * cos;
         }
@@ -229,8 +268,7 @@ export class Renderer {
    * Exhaust particles from equipped propulsion mounts (same path for all ships).
    * @param {object} ship
    * @param {import('../entities/Particle.js').ParticleSystem} particleSystem
-   * @param {{ worldSpace?: boolean }} [opts] — worldSpace when renderParticles
-   *   is bound to another hull (hangar visitors / ambient)
+   * @param {{ attachId?: string|null, underStation?: boolean, worldSpace?: boolean }} [opts]
    */
   emitThrusterParticles(ship, particleSystem, opts = {}) {
     emitMountExhaust(ship, particleSystem, opts);

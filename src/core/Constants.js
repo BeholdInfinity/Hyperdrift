@@ -250,6 +250,11 @@ export const STATION = {
   APPROACH_RADIUS: 420 * STATION_SCALE,
   /** Enter/Click ready distance from dock face (furthest approach lights sit here) */
   DOCK_RADIUS: 160 * STATION_SCALE,
+  /**
+   * Floating runway length: station north rim → outer approach lights.
+   * (With DOCK_FACE_Y === RADIUS, equals DOCK_RADIUS.)
+   */
+  RUNWAY_LENGTH: 160 * STATION_SCALE,
   /** Safe approach speed — ship handling, not station scale */
   DOCK_MAX_SPEED: 120,
   /** Bay mouth half-width (caution stripe span); approach corridor matches */
@@ -344,9 +349,18 @@ export const AMBIENT = {
   MAX_SHIPS: 16,
   /** Soft cap for non-police near the station */
   MAX_NEAR_NON_POLICE: 5,
-  /** Always maintain at least this many police around the station */
+  /** Always maintain this many police around the station (min = max) */
   MIN_POLICE: 3,
-  MAX_POLICE: 6,
+  MAX_POLICE: 3,
+  /**
+   * Fixed pack mix (length = MIN/MAX_POLICE):
+   * 1× Heavy fighter (biggest tier, Mk5) + 2× Standard fighter (Mk2 — player size).
+   */
+  POLICE_SLOTS: [
+    { classId: 'heavyFighter', mk: 5 },
+    { classId: 'standardFighter', mk: 2 },
+    { classId: 'standardFighter', mk: 2 },
+  ],
   NEAR_RADIUS: 900 * STATION_SCALE,
   MID_RADIUS: 2800 * STATION_SCALE,
   DEEP_RADIUS: 9000 * STATION_SCALE,
@@ -379,6 +393,44 @@ export const AMBIENT = {
    */
   BAY_APPROACH_SPAWN_MIN: 12,
   BAY_APPROACH_SPAWN_MAX: 26,
+  /**
+   * Station customers spawn on a wide ring around the station (all bearings),
+   * then fly inbound to the north runway staging point — not only from the north.
+   */
+  CUSTOMER_SPAWN_R_MIN: 2000 * STATION_SCALE,
+  CUSTOMER_SPAWN_R_MAX: 3400 * STATION_SCALE,
+  /** Staging point north of furthest approach lights before final runway approach */
+  CUSTOMER_STAGE_NORTH: 420 * STATION_SCALE,
+  CUSTOMER_INBOUND_SPEED: 175,
+  CUSTOMER_STAGE_ARRIVAL_R: 140,
+  /**
+   * Station holding racetrack (north of runway). South edge sits
+   * HOLD_RUNWAY_CLEARANCE above furthest approach lights.
+   */
+  HOLD_RUNWAY_CLEARANCE: 220 * STATION_SCALE,
+  HOLD_HALF_W: 200 * STATION_SCALE,
+  HOLD_HALF_H: 110 * STATION_SCALE,
+  HOLD_ARRIVAL_R: 70,
+  HOLD_CRUISE_SPEED: 70,
+  /**
+   * Police hex orbit: station edge + 2× runway length
+   * (visible around Jennings, not deep-space).
+   */
+  POLICE_ORBIT_R: 160 * STATION_SCALE + 2 * (160 * STATION_SCALE),
+  /** Slight radial spread so the pack isn’t on one perfect circle */
+  POLICE_ORBIT_SPREAD: 80 * STATION_SCALE,
+  /** Police hex legs around station */
+  POLICE_HEX_SIDES: 6,
+  POLICE_ARRIVAL_R: 90,
+  /** Lane/shuttle chord hex (slightly looser) */
+  LANE_HEX_SIDES: 6,
+  LANE_ARRIVAL_R: 90,
+  /**
+   * Reboost hysteresis: burn only when speed < cruise*(1-band).
+   * At/above that → coast (no thrust). No upper-band braking; only PHYSICS.MAX_SPEED clamps.
+   */
+  COAST_SPEED_BAND: 0.08,
+  COAST_HEADING_TOL: 0.22,
 };
 
 export const RENDER = {

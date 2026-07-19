@@ -12,11 +12,18 @@ const YAW_CCW = ['nosePort', 'portAft', 'aftStarboard', 'starboardFore'];
 /** Clockwise yaw couple (the other 4). */
 const YAW_CW = ['noseStarboard', 'starboardAft', 'aftPort', 'portFore'];
 
+/** Includes Heavy extras (*2 / Mid) so lighting matches equipped mounts. */
 const FACE_PAIRS = {
-  aft: ['aftPort', 'aftStarboard'],
+  aft: ['aftPort', 'aftStarboard', 'aftPort2', 'aftStarboard2'],
   nose: ['nosePort', 'noseStarboard'],
-  port: ['portFore', 'portAft'],
-  starboard: ['starboardFore', 'starboardAft'],
+  port: ['portFore', 'portAft', 'portMid', 'portFore2', 'portAft2'],
+  starboard: [
+    'starboardFore',
+    'starboardAft',
+    'starboardMid',
+    'starboardFore2',
+    'starboardAft2',
+  ],
 };
 
 function axisPower(held, burst, precisionActive) {
@@ -122,8 +129,8 @@ export class ShipController {
         this._lightFace(thrusters, 'port', TRANSLATION_INTENSITY * rightPow);
       }
 
-      if (flight.mainEngine) {
-        if (precisionActive) {
+      if (flight.mainEngine || ship.exitBurn) {
+        if (precisionActive && !ship.exitBurn) {
           ship.mainEngineWarmup += deltaTime;
           const warm = Math.min(1, ship.mainEngineWarmup / PHYSICS.MAIN_ENGINE_WARMUP);
           thrusters.mainEngine = warm * 0.35;
@@ -138,12 +145,12 @@ export class ShipController {
         } else {
           ship.mainEngineWarmup = 0;
           let enginePower = PHYSICS.MAIN_ENGINE_THRUST;
-          if (flight.afterburner) {
+          if (flight.afterburner && !ship.exitBurn) {
             enginePower *= PHYSICS.AFTERBURNER_MULT;
             thrusters.afterburner = 1;
           }
           totalForce.add(forward.clone().scale(enginePower));
-          thrusters.mainEngine = flight.afterburner ? 1.5 : 1;
+          thrusters.mainEngine = flight.afterburner && !ship.exitBurn ? 1.5 : 1;
         }
       } else {
         ship.mainEngineWarmup = 0;

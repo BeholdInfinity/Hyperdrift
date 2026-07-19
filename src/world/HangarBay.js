@@ -2879,14 +2879,27 @@ export class HangarBay {
       : rand(HANGAR.VISITOR_COOLDOWN_EMPTY_MIN, HANGAR.VISITOR_COOLDOWN_EMPTY_MAX);
   }
 
-  _finishVisitorLeave(pad, { clearCargo = true } = {}) {
-    if (pad?.shipDef && Number.isFinite(pad.bayIndex)) {
-      this.pendingSpaceEgress.push({
-        shipDef: pad.shipDef,
-        bayIndex: pad.bayIndex,
-        visitorId: pad.visitorId || 'patrol',
-      });
+  /**
+   * Queue a hangar→space egress hull before the pad visitor is cleared.
+   * Door depart / raiseLaunch wipe shipDef at the door — must call this first.
+   */
+  _queueSpaceEgress(pad) {
+    if (!pad?.shipDef || !Number.isFinite(pad.bayIndex)) return false;
+    if (!this.pendingSpaceEgress) this.pendingSpaceEgress = [];
+    // One egress per bay in the pending queue
+    if (this.pendingSpaceEgress.some((e) => e.bayIndex === pad.bayIndex)) {
+      return false;
     }
+    this.pendingSpaceEgress.push({
+      shipDef: pad.shipDef,
+      bayIndex: pad.bayIndex,
+      visitorId: pad.visitorId || 'patrol',
+    });
+    return true;
+  }
+
+  _finishVisitorLeave(pad, { clearCargo = true } = {}) {
+    this._queueSpaceEgress(pad);
     clearPadVisitor(pad);
     pad.shipY = 0;
     pad.shipScale = 1;
@@ -5060,6 +5073,8 @@ export class HangarBay {
         if (pad.shipY < HANGAR.LAUNCH_EXIT_Y || s.t > 5) {
           s.phase = 'doorsClose';
           s.t = 0;
+          // Hand off to space before wipe — otherwise bay lights spin→green with no ship
+          this._queueSpaceEgress(pad);
           clearPadVisitor(pad);
           pad.shipY = 0;
           pad.shipHover = 0;
@@ -5376,6 +5391,7 @@ export class HangarBay {
         if (pad.shipY < HANGAR.LAUNCH_EXIT_Y || s.t > 4.5) {
           s.phase = 'doorsClose';
           s.t = 0;
+          this._queueSpaceEgress(pad);
           clearPadVisitor(pad);
           pad.shipY = 0;
           pad.shipHover = 0;

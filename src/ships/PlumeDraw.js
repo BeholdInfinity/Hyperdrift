@@ -248,7 +248,10 @@ function drawThrusterPlumeAt(ctx, ship, key, sock, intensity) {
 
 /**
  * Emit exhaust particles from equipped propulsion mounts.
- * @param {{ worldSpace?: boolean }} [opts]
+ * Default = ship-local (same glue-to-nozzle rules as the player).
+ * Pass `attachId` for ambient / hangar visitors so renderParticles can
+ * transform each hull independently. `worldSpace` is a legacy escape hatch.
+ * @param {{ worldSpace?: boolean, attachId?: string|null, underStation?: boolean }} [opts]
  */
 export function emitMountExhaust(ship, particleSystem, opts = {}) {
   const t = ship?.thrusters;
@@ -257,7 +260,7 @@ export function emitMountExhaust(ship, particleSystem, opts = {}) {
   if (!def) return;
 
   const { angle, position } = shipMotion(ship);
-  // Ensure emitExhaustWorld can read a position bag without clobbering Vec2
+  // Keep a position bag for legacy world-space emit / callers
   if (!ship.position) {
     ship.position = { x: position.x, y: position.y };
   } else {
@@ -266,18 +269,14 @@ export function emitMountExhaust(ship, particleSystem, opts = {}) {
   }
   if (ship.angle == null) ship.angle = angle;
 
+  const underStation = !!opts.underStation;
+  const attachId = opts.attachId ?? null;
   const emit = opts.worldSpace
     ? (lx, ly, ang, intensity, color, spread, flowOpts) =>
-        particleSystem.emitExhaustWorld(
-          ship,
-          lx,
-          ly,
-          ang,
-          intensity,
-          color,
-          spread,
-          flowOpts
-        )
+        particleSystem.emitExhaustWorld(ship, lx, ly, ang, intensity, color, spread, {
+          ...flowOpts,
+          underStation,
+        })
     : (lx, ly, ang, intensity, color, spread, flowOpts) =>
         particleSystem.emitExhaustLocal(
           lx,
@@ -286,7 +285,11 @@ export function emitMountExhaust(ship, particleSystem, opts = {}) {
           intensity,
           color,
           spread,
-          flowOpts
+          {
+            ...flowOpts,
+            underStation,
+            attachId,
+          }
         );
 
   const mounts = listPropulsionMounts(ship);

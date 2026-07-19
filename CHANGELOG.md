@@ -25,6 +25,107 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.280] — 2026-07-18
+
+### Fixed
+- Quick Launch departing pad light matches the bay you actually exit from (spawn lane + signal were desynced)
+
+---
+
+## [0.1.279] — 2026-07-18
+
+### Fixed
+- Quick Launch / hangar exit burn now **applies main-engine thrust** (was plume-only) so the ship accelerates at engine-engaged speed
+- Police pack orbits at **station edge + 2× runway length** (was far off-screen on oversized rings)
+
+### Changed
+- Ambient AI arrival / stop uses player **Alt Space-brakes** (`spaceBrake` — thruster faces or main-engine retro into velocity)
+
+---
+
+## [0.1.278] — 2026-07-18
+
+### Changed
+- AI / ambient / hangar visitor exhaust uses the same **ship-local** mount particles as the player (no world-space tentacle trails); multi-hull `attachId` in `renderParticles`
+- NPC thruster bag lighting matches the player (Heavy face mounts, main-engine vs maneuver rules); cruise AI keeps nose on **prograde** harder (tighter face/burn gates, faster yaw)
+
+---
+
+## [0.1.277] — 2026-07-18
+
+### Changed
+- Station police pack is **1× Heavy fighter (Mk5)** + **2× Standard fighters (Mk2, player size)**, police theme
+
+---
+
+## [0.1.276] — 2026-07-18
+
+### Changed
+- Station police pack capped at **3** (`MIN_POLICE` = `MAX_POLICE`) so cops don’t crowd the ambient ship budget
+
+---
+
+## [0.1.275] — 2026-07-18
+
+### Changed
+- Ambient “patrol” merged into **police** (station fighters are cops: hex ring + scan); Dev AI TRAFFIC no longer lists Patrol
+
+---
+
+## [0.1.274] — 2026-07-18
+
+### Added
+- Dev drawer **AI TRAFFIC** panel (title / play): total ambient ships + Customers / Police / Miners / Flyby / Freight / Survey / Deep / Leaving
+
+---
+
+## [0.1.273] — 2026-07-18
+
+### Changed
+- AI pilot: coast facing travel (prograde); turn-then-burn on course changes — no more nose-backward drifts while Newtonian coasting
+
+---
+
+## [0.1.272] — 2026-07-18
+
+### Changed
+- Station customers spawn far out on a full ring around Jennings (any bearing), fly inbound to north-runway staging, then final approach — no longer only from the north corridor
+
+---
+
+## [0.1.271] — 2026-07-18
+
+### Fixed
+- Hangar door depart / raise-launch now queues the space egress hull **before** clearing the pad visitor — bay lights no longer spin red→green with no ship exiting the station
+
+---
+
+## [0.1.270] — 2026-07-18
+
+### Fixed
+- Ambient bay approaches no longer park at the outer runway lights (aim through the mouth; stuck approaches free the mouth mutex)
+- Exhaust particles under the hangar roof draw below tape/roof occlusion (same layering as the hull)
+
+---
+
+## [0.1.269] — 2026-07-18
+
+### Changed
+- Ambient / hold AI: true 2D Newtonian coast — once straight at desired speed, thrusters off; burn only to accelerate or turn; brake only for arrival; sole soft non-Newtonian limit remains `PHYSICS.MAX_SPEED`
+
+---
+
+## [0.1.268] — 2026-07-18
+
+### Changed
+- Station holding pattern is a thruster-flown **racetrack north of the runway** (player AI + ambient `bayHold`) — no more runway-mouth sway / circles
+- Police / patrol / lane traffic fly **hex legs** with coasting on straights (fuel-friendly); ambient motion uses shared `NpcPilot` (Newtonian yaw + engine/maneuver burns)
+
+### Fixed
+- Ships no longer loiter in hold when another bay is open — retarget the nearest green pad; failed ingress returns to racetrack only if still blocked (no teleport onto the lights)
+
+---
+
 ## [0.1.267] — 2026-07-18
 
 ### Changed

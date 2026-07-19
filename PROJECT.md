@@ -77,6 +77,7 @@ src/
     HangarBay.js          Hangar sim hydrated from active Place hangar area
     HangarVisitorShips.js Modular hangar visitors (generateVisitor + ShipRenderer; locked shipDef)
     AmbientTrafficSystem.js Near-station traffic + always-on cops; off-screen spawn/despawn
+    NpcPilot.js           Shared Newtonian thruster pilot (holds, police hex, ambient burns)
     Station.js            Jennings Station overworld exterior + dock zones
   utils/
     MathUtils.js, SeededRandom.js
@@ -114,7 +115,7 @@ src/
 | Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Place-hydrated kit; random player bay; free-look pan; modular visitors; Dev Bay Options + **Place** composer; 2.5D elevator; title elevator raise; **ships draw in angled 2.5D** |
 | Place → Area → Feature registry (stations / capital / outpost / vessel) | Groundwork (v0.1.232); hangar first; other rooms stubbed; vessel interior contract + Dev tests |
 | Jennings Station overworld exterior + dock prompt (4× scale via `STATION.SCALE`) | Done |
-| Ambient space traffic (modular; cops always near station; off-screen spawn/despawn) | Done (v0.1.150–154); further tuning OK |
+| Ambient space traffic (modular; police pack near station; thruster `NpcPilot`; police hex + racetrack hold) | Done (v0.1.275) |
 | Settings controls sandbox (ship-only viewport) | Done |
 | Blueprint (player Upgrade UI + Dev Author) | Done — always available; Dev Mode adds mount drag / tuning Save |
 | Dev Mode drawer + hangar layout editor + bake-back | Done (v0.1.159); Bay Options panel (v0.1.160); bay unit spacing drag (v0.1.173); unified prop categories (v0.1.174); **Title Layout** panel (v0.1.243) |
@@ -237,6 +238,7 @@ src/
 - **v0.1.204** Reserved lane lights pulse green; hangar approach animation runs during runway reservation
 - **v0.1.203** Safe-speed runway approach in a pad lane reserves that bay (red for others)
 - **v0.1.202** Bay lights: yellow spin on elevator; floating mid + outer runway beacon rows (ships pass under)
+- **v0.1.268** Thruster `NpcPilot`; station hold = north racetrack; police hex legs; open-bay retarget
 - **v0.1.201** Station-full “Engage holding pattern” AI hold → auto-land; cancel on movement input
 - **v0.1.200** Pad status lights + choose-your-bay; hangar↔space hull carry-over; ambient mouth traffic; door apron pavement
 - **v0.1.199** Board corner scanners stay mounted on empty / elevator pads

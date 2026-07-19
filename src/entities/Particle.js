@@ -1,5 +1,17 @@
 export class Particle {
-  constructor(x, y, vx, vy, life, color, size, type = 'default', space = 'world') {
+  constructor(
+    x,
+    y,
+    vx,
+    vy,
+    life,
+    color,
+    size,
+    type = 'default',
+    space = 'world',
+    underStation = false,
+    attachId = null
+  ) {
     this.x = x;
     this.y = y;
     this.vx = vx;
@@ -11,6 +23,14 @@ export class Particle {
     this.type = type;
     /** 'world' = map space; 'ship' = ship-local (moves/rotates with the hull) */
     this.space = space;
+    /** Draw under Jennings hangar roof / caution tape (set at emit) */
+    this.underStation = !!underStation;
+    /**
+     * When space === 'ship': which hull to attach to.
+     * null = primary/controlled ship passed to renderParticles;
+     * string id = look up in opts.hulls (ambient / hangar visitors).
+     */
+    this.attachId = attachId ?? null;
     this.active = true;
   }
 
@@ -33,11 +53,37 @@ export class ParticleSystem {
     this.maxParticles = maxParticles;
   }
 
-  emit(x, y, vx, vy, life, color, size, type = 'default', space = 'world') {
+  emit(
+    x,
+    y,
+    vx,
+    vy,
+    life,
+    color,
+    size,
+    type = 'default',
+    space = 'world',
+    underStation = false,
+    attachId = null
+  ) {
     if (this.particles.length >= this.maxParticles) {
       this.particles.shift();
     }
-    this.particles.push(new Particle(x, y, vx, vy, life, color, size, type, space));
+    this.particles.push(
+      new Particle(
+        x,
+        y,
+        vx,
+        vy,
+        life,
+        color,
+        size,
+        type,
+        space,
+        underStation,
+        attachId
+      )
+    );
   }
 
   emitBurst(x, y, count, speed, life, color, size, spread = Math.PI * 2) {
@@ -45,7 +91,8 @@ export class ParticleSystem {
       const angle = (i / count) * spread + (Math.random() - 0.5) * 0.3;
       const spd = speed * (0.5 + Math.random() * 0.5);
       this.emit(
-        x, y,
+        x,
+        y,
         Math.cos(angle) * spd,
         Math.sin(angle) * spd,
         life * (0.5 + Math.random() * 0.5),
@@ -60,11 +107,24 @@ export class ParticleSystem {
   /**
    * Exhaust in ship-local space so plumes stay glued to nozzles
    * (no world-space tentacle trails when translating/rotating).
+   * @param {object} [options]
+   * @param {string|null} [options.attachId] — multi-hull id; null = primary ship
+   * @param {boolean} [options.underStation]
    */
-  emitExhaustLocal(localX, localY, exhaustAngle, intensity, color, spread = 0.4, options = {}) {
+  emitExhaustLocal(
+    localX,
+    localY,
+    exhaustAngle,
+    intensity,
+    color,
+    spread = 0.4,
+    options = {}
+  ) {
     const speedScale = options.speedScale ?? 1;
     const lifeScale = options.lifeScale ?? 1;
     const leanAngle = options.leanAngle ?? 0;
+    const underStation = !!options.underStation;
+    const attachId = options.attachId ?? null;
     const count = Math.ceil(intensity * 3);
     for (let i = 0; i < count; i++) {
       const angle = exhaustAngle + leanAngle + (Math.random() - 0.5) * spread;
@@ -78,19 +138,30 @@ export class ParticleSystem {
         color,
         2.25 + intensity * 3.3,
         'exhaust',
-        'ship'
+        'ship',
+        underStation,
+        attachId
       );
     }
   }
 
   /**
-   * Exhaust baked into world space at emit time (hangar multi-ship — ship-local
-   * particles always attach to the player hull in renderParticles).
+   * Legacy world-baked exhaust (prefer emitExhaustLocal + attachId).
    */
-  emitExhaustWorld(ship, localX, localY, exhaustAngle, intensity, color, spread = 0.4, options = {}) {
+  emitExhaustWorld(
+    ship,
+    localX,
+    localY,
+    exhaustAngle,
+    intensity,
+    color,
+    spread = 0.4,
+    options = {}
+  ) {
     const speedScale = options.speedScale ?? 1;
     const lifeScale = options.lifeScale ?? 1;
     const leanAngle = options.leanAngle ?? 0;
+    const underStation = !!options.underStation;
     const cos = Math.cos(ship.angle);
     const sin = Math.sin(ship.angle);
     const sx = ship.position.x;
@@ -111,15 +182,27 @@ export class ParticleSystem {
         color,
         2.25 + intensity * 3.3,
         'exhaust',
-        'world'
+        'world',
+        underStation
       );
     }
   }
 
-  /** Drop ship-local particles (hangar control retarget / mute). */
-  clearShipSpace() {
+  /**
+   * Drop ship-local particles.
+   * @param {string|null} [attachId=null] — null = primary hull only;
+   *   string = that attachId; '*' = every ship-local particle.
+   */
+  clearShipSpace(attachId = null) {
     for (let i = this.particles.length - 1; i >= 0; i--) {
-      if (this.particles[i].space === 'ship') this.particles.splice(i, 1);
+      const p = this.particles[i];
+      if (p.space !== 'ship') continue;
+      if (attachId === '*') {
+        this.particles.splice(i, 1);
+        continue;
+      }
+      if (p.attachId !== attachId) continue;
+      this.particles.splice(i, 1);
     }
   }
 
