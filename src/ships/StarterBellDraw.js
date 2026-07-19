@@ -9,6 +9,7 @@ import { paintSectionSkin } from './ThemeSkin.js';
 import {
   VIEW_ANGLED,
   activeShipView,
+  activeSilhouette,
   angledLiftLocal,
   extrudePhase,
   setLastDeckLift,
@@ -74,6 +75,21 @@ function deckPoly(pts, inset) {
  */
 function extrudeFlat(ctx, footprint, cols) {
   setLastDeckLift(0, 0);
+  const sil = activeSilhouette();
+  if (sil) {
+    ctx.fillStyle = sil.fill;
+    poly(ctx, footprint);
+    ctx.fill();
+    if (sil.stroke) {
+      ctx.strokeStyle = sil.stroke;
+      ctx.lineWidth = 0.7;
+      ctx.lineJoin = 'round';
+      poly(ctx, footprint);
+      ctx.stroke();
+    }
+    return footprint;
+  }
+
   ctx.fillStyle = cols.top;
   poly(ctx, footprint);
   ctx.fill();

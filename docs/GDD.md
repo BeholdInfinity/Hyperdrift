@@ -143,7 +143,7 @@ Each hardpoint holds up to **4** items in a 2×2 slot grid. Freight is drawn as 
 - Cursor always visible (no pointer lock)
 - Mouse aims weapons only while the pointer is **inside the circular viewport** (disabled in **SCAN** view, where the disc is a radar scope)
 - **ORIENT** (cockpit MODES switch / `R`): **SHIP**-up (head-up, default) locks the hull pointing screen-up and rotates the world around it; **NORTH**-up keeps world-north up and rotates the ship inside it (marine "Head-Up vs North-Up" convention)
-- **VIEW** (cockpit MODES switch / `V`): **SHIP** (default) shows the world through the viewport with the thin scanner ring; **SCAN** replaces both with one full-disc radar scope (ship centered, blips by range). The outer POI rim ring is unchanged
+- **VIEW** (cockpit MODES switch / `V`): **SHIP** (default) shows the world through the viewport with the thin scanner ring; **SCAN** replaces both with one full-disc radar scope (ship centered, blips by piecewise pip range, own-ship silhouette at center). Scanner reach follows `min(scannerMk, scannerPips)` through **Mk5 / 5 pips** with fixed rings at **50 / 100 / 150 / 200 / 250 km**. Sweep arms max at **3**; the 4th and 5th pips increase sweep speed. In SCAN, mouse wheel zooms the scope one pip-ring at a time (local detail) without dropping sensor tier or camera zoom. Prototype ships may not ship with Mk5 — Dev Mk override and Pip Control can force it for testing. The outer POI rim ring is unchanged
 
 ### Translation
 

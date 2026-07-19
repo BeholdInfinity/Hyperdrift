@@ -1,5 +1,6 @@
 import { GameEngine } from './core/GameEngine.js';
 import { Settings } from './core/Settings.js';
+import { SCANNER } from './core/Constants.js';
 import { DevTools } from './dev/DevTools.js';
 import {
   enableDevPanelDrag,
@@ -217,8 +218,10 @@ function syncDevScanner() {
   if (!el) return;
   const s = engine.scannerSystem;
   if (!s) return;
-  const km = (s.range / 100).toFixed(0);
+  const km = (s.range / (SCANNER.KM_SCALE || 100)).toFixed(0);
   el.textContent = `tier ${s.tier}${s.on ? '' : ' (off)'} · ${km} km · ${s.contacts.length} contacts`;
+  const ast = document.getElementById('dev-scan-asteroids');
+  if (ast && ast.checked !== !!s.includeAsteroids) ast.checked = !!s.includeAsteroids;
 }
 
 function rebuildHangarPalette() {

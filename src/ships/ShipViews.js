@@ -106,6 +106,9 @@ let _lastDeckLift = { x: 0, y: 0 };
  */
 let _extrudePhase = 'all';
 
+/** Scanner blip / own-ship paint: flat fill+stroke, no skin/windows/detail. */
+let _silhouette = null;
+
 export function beginShipDraw(view) {
   _activeShipView = view && view.mode ? view : topDownView();
   _lastDeckLift = { x: 0, y: 0 };
@@ -116,6 +119,23 @@ export function endShipDraw() {
   _activeShipView = topDownView();
   _lastDeckLift = { x: 0, y: 0 };
   _extrudePhase = 'all';
+  _silhouette = null;
+}
+
+/**
+ * @param {string} fill
+ * @param {string} stroke
+ */
+export function beginSilhouette(fill, stroke) {
+  _silhouette = { fill, stroke };
+}
+
+export function endSilhouette() {
+  _silhouette = null;
+}
+
+export function activeSilhouette() {
+  return _silhouette;
 }
 
 /** @param {'all'|'base'|'deck'} phase */
@@ -145,6 +165,7 @@ export function lastDeckLift() {
 
 /** Run deck-overlay draws in the lifted top-face space (no-op when flat / base pass). */
 export function withDeckLift(ctx, fn) {
+  if (_silhouette) return; // silhouette: skip windows / canopy / deck detail
   if (_extrudePhase === 'base') return;
   const lift = _lastDeckLift;
   if (!lift.x && !lift.y) {

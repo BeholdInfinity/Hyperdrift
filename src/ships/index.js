@@ -114,6 +114,7 @@ export {
 
 export {
   drawModularShip,
+  drawShipSilhouette,
   getShipMounts,
   getShipHardpointsTable,
   getShipThrusterKeys,

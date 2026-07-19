@@ -10,6 +10,8 @@ import {
   topDownView,
   beginShipDraw,
   endShipDraw,
+  beginSilhouette,
+  endSilhouette,
   setExtrudePhase,
 } from './ShipViews.js';
 import { createPlayerStarter } from './ShipGenerator.js';
@@ -101,6 +103,41 @@ function drawMiningBeam(ctx, ship, def, itemOffset = null) {
   ctx.lineTo(muzzle + len, 0);
   ctx.stroke();
   ctx.restore();
+}
+
+/**
+ * Flat IFF/own-ship silhouette: section footprints only (fill + stroke), no
+ * hardware, plumes, windows, or theme skin. Used by scanner blips / SCAN own-ship.
+ * @param {CanvasRenderingContext2D} ctx
+ * @param {object} shipOrDef ship with shipDef, or a ShipDefinition
+ * @param {{ fillStyle?: string, strokeStyle?: string }} [opts]
+ */
+export function drawShipSilhouette(ctx, shipOrDef, opts = {}) {
+  const fill = opts.fillStyle || '#6a7a8a';
+  const stroke = opts.strokeStyle || '#3a4858';
+  const ship =
+    shipOrDef && shipOrDef.shipDef
+      ? shipOrDef
+      : shipOrDef && typeof shipOrDef.sections === 'function'
+        ? { shipDef: shipOrDef }
+        : shipOrDef;
+  const def = ensureDef(ship);
+  beginShipDraw(topDownView());
+  beginSilhouette(fill, stroke);
+  ctx.save();
+  try {
+    const roles = def.sectionRoles();
+    const aftRoles = roles.filter((r) => r === 'engine' || r === 'aft');
+    const midRoles = roles.filter((r) => r === 'body' || r === 'hull');
+    const foreRoles = roles.filter((r) => r === 'bridge' || r === 'cockpit');
+    drawSectionsOrdered(ctx, def, null, aftRoles);
+    drawSectionsOrdered(ctx, def, null, midRoles);
+    drawSectionsOrdered(ctx, def, null, foreRoles);
+  } finally {
+    ctx.restore();
+    endSilhouette();
+    endShipDraw();
+  }
 }
 
 /**

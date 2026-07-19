@@ -6,8 +6,9 @@
  *   1 stale   — scanned earlier but now out of range (last-known, not updated)
  *   2 in-range— inside the live scanner range right now (full reveal)
  *
- * Also records a downsampled scan trail (where the ship has flown) and keeps a
- * snapshot of contacts last seen in each revealed area (stale markers).
+ * Also records a downsampled scan trail (where the ship has flown). Contact
+ * blips are drawn by CockpitPanels from `ScannerSystem` last-ping positions
+ * (same sweep-gated paints as the radar), not live world coords.
  */
 
 const CELL = 1500;

@@ -13,7 +13,9 @@
  * Geometry (all derived from the renderer):
  *   - hudRect ...... largest 16:9 rect fitting the window (letterbox otherwise)
  *   - circleR ...... POI rim outer radius = hudRect.h / 2 (touches top/bottom)
- *   - scannerOuterR  inner edge of the POI rim (outer edge of the scanner band)
+ *   - scannerOuterR  inner edge of the POI rim (outer edge of the scanner band);
+ *                    copper bezel is stroked fully outside this radius so it
+ *                    does not cover the outermost scanner range divider
  *   - dividers ..... vertical lines at centerX ± circleR (tangent to the rim)
  */
 
@@ -48,7 +50,7 @@ const SCREEN = {
 };
 
 const PANEL_LABELS = {
-  left: ['CONTACT', 'CONTACTS', 'COMMS'],
+  left: ['CONTACT DETAILS', 'CONTACTS', 'COMMS'],
   right: ['DESTINATION', 'SECTOR MAP', 'POWER'],
 };
 const CORNER_LABELS = ['SPD', 'POS', 'ZOOM', 'MODES'];
@@ -69,7 +71,7 @@ export class CockpitFrame {
    */
   render(ctx, r) {
     if (!r.hudRect || !r.scannerBand) return;
-    const key = `${r.width}x${r.height}|${Math.round(r.scannerOuterRadius)}`;
+    const key = `${r.width}x${r.height}|${Math.round(r.scannerOuterRadius)}|cd2`;
     if (key !== this._key || !this.cache) {
       this._build(r);
       this._key = key;
@@ -255,16 +257,13 @@ export class CockpitFrame {
     c.fill();
     c.restore();
 
-    // 8. Copper bezel ring around the punched scanner hole.
+    // 8. Copper bezel around the punched hole — stroke fully outside so it
+    // does not eat the outer scanner band (outermost pip range / divider).
+    const bezelW = Math.max(2, circleR * 0.012);
     c.beginPath();
-    c.arc(cx, cy, scannerOuterR + 1, 0, TWO_PI);
-    c.lineWidth = Math.max(2, circleR * 0.012);
+    c.arc(cx, cy, scannerOuterR + bezelW / 2, 0, TWO_PI);
+    c.lineWidth = bezelW;
     c.strokeStyle = COPPER.line;
-    c.stroke();
-    c.beginPath();
-    c.arc(cx, cy, scannerOuterR - 1, 0, TWO_PI);
-    c.lineWidth = 1;
-    c.strokeStyle = 'rgba(0,0,0,0.5)';
     c.stroke();
   }
 
@@ -351,7 +350,7 @@ export class CockpitFrame {
     if (rect.title) {
       const fs = compact
         ? Math.max(10, Math.min(h * 0.34, w * 0.3))
-        : Math.max(11, Math.min(16, w * 0.09));
+        : Math.max(10, Math.min(15, w * (rect.title && rect.title.length > 12 ? 0.072 : 0.09)));
       c.font = `600 ${fs}px 'Barlow Condensed', 'Segoe UI', sans-serif`;
       c.fillStyle = SCREEN.label;
       c.shadowColor = COPPER.glow;

@@ -387,6 +387,12 @@ export const AMBIENT = {
    * Ships only appear/disappear outside viewRadius + this margin.
    */
   VISIBLE_MARGIN: 140,
+  /**
+   * Extra world units beyond max scanner reach. Ambient spawn/despawn also
+   * stay outside this bubble around the player so contacts don't pop onto /
+   * off the radar. Cheap: still capped by MAX_SHIPS.
+   */
+  SCAN_HORIZON_MARGIN: 1200,
   /** Seed this many non-police near the station on flight start (off-screen) */
   SEED_NEAR_TRAFFIC: 3,
   /**
@@ -443,33 +449,69 @@ export const RENDER = {
  * Scanner / sensor tuning. Detection is range-gated and driven by
  * `effectiveTier = min(scannerMk, scannerPips)`. The tier table is
  * data-driven and open-ended — append rows for higher Mks / bigger pip pools.
- * `range` is a multiplier of `RANGE` (world units, same space as ship.position);
- * `rings` is the count of range-reference divider rings drawn in the band.
+ * Each tier's `range` is world units; HUD km = `range / KM_SCALE`.
+ *
+ * Plot radius uses a piecewise pip map: 1 pip fills the whole band/scope with
+ * R1; each extra pip halves the outermost display band and extends reach to Rn.
+ * Range-divider rings sit at display fracs 0.5, 0.75, 0.875, … (tier − 1 rings).
  */
 export const SCANNER = {
-  /** Tier-max scan range in world units (multiplied per tier row). */
+  /**
+   * @deprecated Legacy base; tier rows now store absolute world ranges.
+   * Kept so older multipliers / drawers don't NaN if referenced.
+   */
   RANGE: 12000,
+  /** World units per displayed kilometre (contact + ring labels). */
+  KM_SCALE: 100,
   /** Contacts beyond this fraction of the tier range read as "edge" (ghosted). */
   EDGE_MARGIN: 0.12,
-  /** Hard cap on plotted contacts (nearest kept). */
+  /** Hard cap on plotted contacts (ships/station kept before asteroids). */
   MAX_CONTACTS: 48,
-  /** Radar sweep speed (rad/s) at tier 1; +per tier via SWEEP_TIER_MULT. */
-  SWEEP_BASE: 0.55,
-  SWEEP_TIER_MULT: 0.4,
-  /** Asteroids/objects off by default (dev/tier toggle). */
-  INCLUDE_ASTEROIDS: false,
   /**
-   * Tier rows indexed by effectiveTier (0 = off). `range` multiplies RANGE,
-   * `rings` is the range-ring divider count. Open-ended: add rows freely.
+   * Sweep arms scale with tier up to this cap. Further pips boost angular
+   * speed instead (`SWEEP_SPEED + (tier − SWEEP_ARM_MAX) × SWEEP_SPEED_PER_EXTRA_PIP`).
+   */
+  SWEEP_ARM_MAX: 3,
+  /** Base radar sweep angular speed (rad/s) at ≤ SWEEP_ARM_MAX pips. */
+  SWEEP_SPEED: 0.95,
+  /** Added rad/s for each scanner pip beyond SWEEP_ARM_MAX. */
+  SWEEP_SPEED_PER_EXTRA_PIP: 0.4,
+  /** @deprecated use SWEEP_SPEED — kept so old reads don't NaN */
+  SWEEP_BASE: 0.95,
+  SWEEP_TIER_MULT: 0,
+  /** Residual blip alpha after one full sweep without a re-ping. */
+  BLIP_FADE_FLOOR: 0.22,
+  /** Shortest-arc epsilon (rad) when deciding a painted contact has moved. */
+  BLIP_BEARING_EPS: 0.04,
+  /** Asteroids/objects on by default (dev drawer can disable). */
+  INCLUDE_ASTEROIDS: true,
+  /**
+   * Temporary test gate: asteroid contacts only within this tier's range (R1),
+   * even when the live scanner tier is higher. Bump to widen later.
+   */
+  ASTEROID_RANGE_TIER: 1,
+  /**
+   * Tier rows indexed by effectiveTier (0 = off). `range` = world units
+   * (strictly increasing). Display km = range / KM_SCALE.
    */
   TIERS: [
-    { range: 0, rings: 0 }, // 0 — no scanner / 0 pips
-    { range: 0.45, rings: 0 }, // 1 — limited range, no rings
-    { range: 1.0, rings: 1 }, // 2 — full range, 1 range ring
-    { range: 1.0, rings: 2 }, // 3 — full range, 2 range rings
-    { range: 1.2, rings: 3 }, // 4 — beyond baseline (future)
+    { range: 0 }, // 0 — off
+    { range: 5000 }, // 1 — 50 km
+    { range: 10000 }, // 2 — 100 km
+    { range: 15000 }, // 3 — 150 km
+    { range: 20000 }, // 4 — 200 km
+    { range: 25000 }, // 5 — 250 km (Mk5 / 5 pips)
   ],
 };
+
+/** Furthest scanner world range (highest TIERS.range). */
+export function scannerMaxRange() {
+  let m = 0;
+  for (const row of SCANNER.TIERS) {
+    if ((row.range || 0) > m) m = row.range;
+  }
+  return m;
+}
 
 /**
  * IFF (Identification Friend or Foe) palette. Applies to scanner contacts and

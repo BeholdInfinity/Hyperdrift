@@ -45,6 +45,7 @@ import {
   PAD_MK4_TEASE_RADIUS,
   STATION,
   AMBIENT,
+  SCANNER,
 } from '../core/Constants.js';
 import { Vec2, angleDifference, clamp } from '../utils/MathUtils.js';
 import {
@@ -2607,6 +2608,12 @@ export class GameEngine {
     if (!this.ship) return;
 
     const zoomWheel = this.input.consumeZoomDelta();
+    // Full SCAN: wheel steps one pip-ring of scope zoom (camera zoom unchanged).
+    let camZoomWheel = zoomWheel;
+    if (this.scanView === 'scan' && zoomWheel !== 0) {
+      this.scannerSystem.stepPlotZoom(zoomWheel);
+      camZoomWheel = 0;
+    }
 
     this.asteroidSystem.update(this.ship.position.x, this.ship.position.y);
 
@@ -2697,7 +2704,7 @@ export class GameEngine {
       this.ship.velocity,
       deltaTime,
       this.renderer.viewportRadius,
-      zoomWheel
+      camZoomWheel
     );
 
     const speedAfter = this.ship.velocity.length();
@@ -3219,6 +3226,11 @@ export class GameEngine {
       Math.hypot(this.ship.velocity.x, this.ship.velocity.y)
     );
     // PREC corner is now the MODES switch stack, drawn by CockpitPanels.
+    const kmScale = SCANNER.KM_SCALE || 100;
+    const scanZoomText =
+      this.scanView === 'scan' && this.scannerSystem?.on
+        ? `${Math.round((this.scannerSystem.plotRange || 0) / kmScale)}km`
+        : `${this.camera.displayZoom().toFixed(2)}x`;
     this.cockpitFrame.drawCorners(this.renderer.ctx, {
       SPD: { text: `${speed}` },
       POS: {
@@ -3226,7 +3238,7 @@ export class GameEngine {
           this.ship.position.y
         )}`,
       },
-      ZOOM: { text: `${this.camera.displayZoom().toFixed(2)}x` },
+      ZOOM: { text: scanZoomText },
     });
   }
 
@@ -3244,21 +3256,23 @@ export class GameEngine {
   _scannerGeometry() {
     const r = this.renderer;
     if (this.scanView === 'scan') {
-      const hub = Math.max(6, r.viewportRadius * 0.06);
       return {
-        innerR: hub,
+        innerR: 0,
         outerR: r.scannerOuterRadius,
-        band: r.scannerOuterRadius - hub,
-        plotPad: 0.06,
+        band: r.scannerOuterRadius,
+        plotPad: 0.02,
         fullScope: true,
+        chevronBand: r.scannerBand || 40,
       };
     }
     return {
       innerR: r.viewportRadius,
       outerR: r.scannerOuterRadius,
       band: r.scannerBand,
-      plotPad: 0.28,
+      // Full blue→orange band; edge blips get occluded by the ring strokes / POI rim.
+      plotPad: 0,
       fullScope: false,
+      chevronBand: r.scannerBand,
     };
   }
 
@@ -3396,6 +3410,7 @@ export class GameEngine {
       band: geo.band,
       plotPad: geo.plotPad,
       fullScope: geo.fullScope,
+      chevronBand: geo.chevronBand,
       ship: this.ship,
       model: this.scannerSystem,
       cameraRotation: this.camera.rotation || 0,

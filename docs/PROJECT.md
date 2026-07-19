@@ -60,10 +60,10 @@ src/
     WeaponSystem.js       Dorsal turret + mining laser, collisions, impacts
     AsteroidSystem.js     Chunk load/unload
     ProceduralGeneration.js  Seeded asteroids + nebulae
-    ScannerSystem.js      Scanner model: contacts, dist/bearing, tier gating, selection
-    Scanner.js            Scanner ring renderer (blips, IFF, sweep, nose/tail, chevrons)
-    CockpitFrame.js       Cached 16:9 steel/copper HUD chrome + POI rim dots + corners
-    CockpitPanels.js      Live content for the 6 cockpit screens + status alert overlay
+    ScannerSystem.js      Scanner model: contacts, sweep-gated paints, piecewise pip range + SCAN plot-zoom, age fade, selection
+    Scanner.js            Scanner ring/scope renderer (silhouettes, IFF, sweep, nose/tail, chevrons)
+    CockpitFrame.js       Cached 16:9 steel/copper HUD chrome + POI rim dots + corners (CONTACT DETAILS / CONTACTS / …)
+    CockpitPanels.js      Live content for the 6 cockpit screens + CONTACTS filters (list + scanner blips) + status alert overlay
     PipSystem.js          Global power-pip pool (per-channel allocation)
   entities/
     Ship.js, ShipController.js, ShipHardpoints.js (legacy mount fallback; starter matches)

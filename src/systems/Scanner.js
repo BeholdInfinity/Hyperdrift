@@ -1,18 +1,15 @@
 /**
- * Scanner Output Screen renderer — draws the circular radar ring in the border
- * band hugging the space viewport from a `ScannerSystem` model. Contacts plot
- * at their (radar-stepped) bearing, radial position encoding distance, sized
- * down with range and colored by IFF with distinct per-type shapes.
+ * Scanner Output Screen renderer — draws the circular radar ring / full-disc
+ * scope from a `ScannerSystem` model. Contacts plot at their (radar-stepped)
+ * bearing with piecewise range mapping; ship/asteroid blips use silhouettes.
  *
  * Indicators drawn here are ship telemetry (nose/tail heading, velocity /
  * anti-vector chevrons) and stay visible even when the sensor is offline; the
  * sweep, range rings, blips and selection only render when the scanner is on.
- *
- * World bearing maps straight to screen (the play camera is north-up);
- * `cameraRotation` is folded in so the ring stays correct if that changes.
  */
 
-import { IFF } from '../core/Constants.js';
+import { IFF, SCANNER } from '../core/Constants.js';
+import { drawShipSilhouette } from '../ships/ShipRenderer.js';
 
 const TWO_PI = Math.PI * 2;
 
@@ -26,8 +23,11 @@ const COLORS = {
   nose: 'rgba(240, 248, 255, 0.85)',
   tail: 'rgba(255, 110, 110, 0.7)',
   rangeRing: 'rgba(110, 190, 255, 0.16)',
+  rangeLabel: 'rgba(130, 195, 235, 0.42)',
   text: 'rgba(120, 190, 255, 0.75)',
   offline: 'rgba(150, 175, 200, 0.4)',
+  ownShip: '#6a7a8a',
+  ownShipStroke: '#3d4a58',
 };
 
 export class Scanner {
@@ -42,6 +42,7 @@ export class Scanner {
    *   innerR: number, outerR: number, band: number,
    *   ship: object, model: import('./ScannerSystem.js').ScannerSystem,
    *   cameraRotation?: number, time?: number, maxSpeed?: number,
+   *   fullScope?: boolean, plotPad?: number, chevronBand?: number,
    * }} opts
    */
   render(ctx, opts) {
@@ -58,32 +59,54 @@ export class Scanner {
       maxSpeed,
       fullScope = false,
       plotPad = 0.28,
+      chevronBand,
     } = opts;
-    if (!ship || band <= 0) return;
+    if (!ship || (band <= 0 && !fullScope)) return;
     if (maxSpeed) this.maxSpeed = maxSpeed;
+
+    const telemetryBand = chevronBand ?? (fullScope ? 40 : band);
 
     ctx.save();
     this._drawBand(ctx, cx, cy, innerR, outerR);
     this._drawTicks(ctx, cx, cy, innerR, outerR, band, cameraRotation, model?.on, fullScope);
 
     if (model?.on) {
-      this._drawRangeRings(ctx, cx, cy, innerR, outerR, band, model.rings, plotPad);
-      this._drawSweep(ctx, cx, cy, innerR, outerR, model.sweepAngle);
+      this._drawRangeRings(
+        ctx, cx, cy, innerR, outerR, band, model.rangeBreaks, plotPad,
+        fullScope ? model.rangeRingMarks : null
+      );
+      this._drawSweep(ctx, cx, cy, innerR, outerR, model.sweepAngle, model.sweepArmCount?.() || 1);
     }
 
-    // Telemetry indicators (always on).
+    if (fullScope) {
+      this._drawOwnShip(ctx, cx, cy, ship, cameraRotation);
+    }
+
     this._drawHeadingLine(ctx, cx, cy, innerR, outerR, ship, cameraRotation, 0, COLORS.nose);
     this._drawHeadingLine(
       ctx, cx, cy, innerR, outerR, ship, cameraRotation, Math.PI, COLORS.tail
     );
-    this._drawChevrons(ctx, cx, cy, innerR, band, ship, cameraRotation, false, fullScope);
-    this._drawChevrons(ctx, cx, cy, innerR, band, ship, cameraRotation, true, fullScope);
+    this._drawChevrons(ctx, cx, cy, innerR, outerR, telemetryBand, ship, cameraRotation, false, fullScope);
+    this._drawChevrons(ctx, cx, cy, innerR, outerR, telemetryBand, ship, cameraRotation, true, fullScope);
 
     if (model?.on) {
-      this._drawContacts(ctx, model);
-      this._drawSelection(ctx, cx, cy, innerR, model, cameraRotation, fullScope);
+      if (!fullScope && innerR > 0.5) {
+        // Clip blips to the band so they occlude cleanly at the blue / outer edges.
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(cx, cy, outerR, 0, TWO_PI, false);
+        ctx.arc(cx, cy, innerR, 0, TWO_PI, true);
+        ctx.clip();
+        this._drawContacts(ctx, model);
+        this._drawSelection(ctx, cx, cy, innerR, model, cameraRotation, fullScope);
+        ctx.restore();
+        this._strokeBandEdges(ctx, cx, cy, innerR, outerR);
+      } else {
+        this._drawContacts(ctx, model);
+        this._drawSelection(ctx, cx, cy, innerR, model, cameraRotation, fullScope);
+      }
     } else {
-      this._drawOffline(ctx, cx, cy, innerR, outerR, band);
+      this._drawOffline(ctx, cx, cy, innerR, outerR, Math.max(band, 40));
     }
 
     ctx.restore();
@@ -91,48 +114,84 @@ export class Scanner {
 
   _drawBand(ctx, cx, cy, innerR, outerR) {
     ctx.beginPath();
-    ctx.arc(cx, cy, outerR, 0, TWO_PI, false);
-    ctx.arc(cx, cy, innerR, 0, TWO_PI, true);
-    const grad = ctx.createRadialGradient(cx, cy, innerR, cx, cy, outerR);
-    grad.addColorStop(0, 'rgba(10, 22, 34, 0.78)');
-    grad.addColorStop(0.5, COLORS.band);
-    grad.addColorStop(1, 'rgba(4, 9, 15, 0.9)');
-    ctx.fillStyle = grad;
-    ctx.fill();
+    if (innerR <= 0.5) {
+      ctx.arc(cx, cy, outerR, 0, TWO_PI);
+      const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, outerR);
+      grad.addColorStop(0, 'rgba(10, 22, 34, 0.88)');
+      grad.addColorStop(0.55, COLORS.band);
+      grad.addColorStop(1, 'rgba(4, 9, 15, 0.92)');
+      ctx.fillStyle = grad;
+      ctx.fill();
+    } else {
+      ctx.arc(cx, cy, outerR, 0, TWO_PI, false);
+      ctx.arc(cx, cy, innerR, 0, TWO_PI, true);
+      const grad = ctx.createRadialGradient(cx, cy, innerR, cx, cy, outerR);
+      grad.addColorStop(0, 'rgba(10, 22, 34, 0.78)');
+      grad.addColorStop(0.5, COLORS.band);
+      grad.addColorStop(1, 'rgba(4, 9, 15, 0.9)');
+      ctx.fillStyle = grad;
+      ctx.fill();
+    }
 
+    this._strokeBandEdges(ctx, cx, cy, innerR, outerR);
+  }
+
+  /** Inner (blue) + outer band strokes — redrawn over edge blips for occlusion. */
+  _strokeBandEdges(ctx, cx, cy, innerR, outerR) {
     ctx.lineWidth = 1.5;
     ctx.strokeStyle = COLORS.bandEdge;
     ctx.beginPath();
     ctx.arc(cx, cy, outerR, 0, TWO_PI);
     ctx.stroke();
-    ctx.beginPath();
-    ctx.arc(cx, cy, innerR, 0, TWO_PI);
-    ctx.stroke();
+    if (innerR > 0.5) {
+      ctx.beginPath();
+      ctx.arc(cx, cy, innerR, 0, TWO_PI);
+      ctx.stroke();
+    }
   }
 
-  _drawRangeRings(ctx, cx, cy, innerR, outerR, band, rings, pad = 0.28) {
-    if (!rings) return;
+  _drawRangeRings(ctx, cx, cy, innerR, outerR, band, breaks, pad = 0.28, marks = null) {
+    const fracs = breaks || [];
+    const labels = marks || [];
+    if (!fracs.length && !labels.length) return;
     const innerPlot = innerR + band * pad;
     const outerPlot = outerR - band * pad;
     ctx.save();
     ctx.strokeStyle = COLORS.rangeRing;
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 5]);
-    for (let i = 1; i <= rings; i++) {
-      const frac = i / (rings + 1);
+    for (const frac of fracs) {
       const r = innerPlot + (outerPlot - innerPlot) * frac;
       ctx.beginPath();
       ctx.arc(cx, cy, r, 0, TWO_PI);
       ctx.stroke();
     }
+    if (labels.length) {
+      // Screen-fixed upper-right radial so labels stay readable under view rotation.
+      const labelAngle = -Math.PI * 0.32;
+      const fontPx = Math.max(9, Math.min(12, outerR * 0.028));
+      ctx.setLineDash([]);
+      ctx.font = `500 ${fontPx}px 'Barlow Condensed', 'Segoe UI', sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillStyle = COLORS.rangeLabel;
+      for (const m of labels) {
+        const r = innerPlot + (outerPlot - innerPlot) * m.frac;
+        const tr = Math.max(8, r - fontPx * 0.85);
+        const tx = cx + Math.cos(labelAngle) * tr;
+        const ty = cy + Math.sin(labelAngle) * tr;
+        const km = m.dist / (SCANNER.KM_SCALE || 100);
+        // Tier rings are whole km (50 / 100 / 150 / …).
+        const text = `${Math.round(km)} km`;
+        ctx.fillText(text, tx, ty);
+      }
+    }
     ctx.restore();
   }
 
   _drawTicks(ctx, cx, cy, innerR, outerR, band, rot, on, fullScope = false) {
-    // Thin port ring centers ticks in the band; the full scope hangs a compass
-    // just inside the outer rim with fixed-length ticks (band is huge there).
-    const tickBand = fullScope ? Math.min(band, outerR) * 0.05 : band;
-    const midR = fullScope ? outerR - tickBand * 0.9 : innerR + band * 0.5;
+    const tickBand = fullScope ? Math.min(Math.max(band, outerR) * 0.05, 18) : band;
+    const midR = fullScope ? outerR - tickBand * 0.55 : innerR + band * 0.5;
     const dim = on ? 1 : 0.5;
     for (let deg = 0; deg < 360; deg += 15) {
       const cardinal = deg % 90 === 0;
@@ -158,15 +217,30 @@ export class Scanner {
     ctx.globalAlpha = 1;
   }
 
-  _drawSweep(ctx, cx, cy, innerR, outerR, sweepAngle) {
+  _drawSweep(ctx, cx, cy, innerR, outerR, sweepAngle, arms = 1) {
+    const n = Math.max(1, arms | 0);
+    const step = TWO_PI / n;
+    for (let i = 0; i < n; i++) {
+      this._drawSweepArm(ctx, cx, cy, innerR, outerR, sweepAngle + i * step);
+    }
+  }
+
+  _drawSweepArm(ctx, cx, cy, innerR, outerR, sweepAngle) {
     const a = sweepAngle;
     const width = 0.5;
     const start = a - width;
+    const rIn = Math.max(0, innerR);
     ctx.save();
     ctx.beginPath();
-    ctx.arc(cx, cy, outerR, start, a, false);
-    ctx.arc(cx, cy, innerR, a, start, true);
-    ctx.closePath();
+    if (rIn <= 0.5) {
+      ctx.moveTo(cx, cy);
+      ctx.arc(cx, cy, outerR, start, a, false);
+      ctx.closePath();
+    } else {
+      ctx.arc(cx, cy, outerR, start, a, false);
+      ctx.arc(cx, cy, rIn, a, start, true);
+      ctx.closePath();
+    }
     const lead = { x: cx + Math.cos(a) * outerR, y: cy + Math.sin(a) * outerR };
     const tail = { x: cx + Math.cos(start) * outerR, y: cy + Math.sin(start) * outerR };
     const grad = ctx.createLinearGradient(tail.x, tail.y, lead.x, lead.y);
@@ -177,20 +251,42 @@ export class Scanner {
     ctx.restore();
   }
 
+  _drawOwnShip(ctx, cx, cy, ship, rot) {
+    const def = ship.shipDef;
+    if (!def) return;
+    const extent = (def.forwardExtent?.() || 22) + (def.aftExtent?.() || 20);
+    const target = 14;
+    const s = target / Math.max(8, extent);
+    const heading = (ship.angle || 0) + rot;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(heading);
+    ctx.scale(s, s);
+    try {
+      drawShipSilhouette(ctx, ship, {
+        fillStyle: COLORS.ownShip,
+        strokeStyle: COLORS.ownShipStroke,
+      });
+    } catch (_) {
+      /* ignore missing def */
+    }
+    ctx.restore();
+  }
+
   _drawContacts(ctx, model) {
     for (const c of model.contacts) {
-      if (c.id === model.selectedId) continue; // drawn on top by selection
+      if (c.id === model.selectedId) continue;
+      if (model.passesContactFilter && !model.passesContactFilter(c)) continue;
       this._drawBlip(ctx, c);
     }
   }
 
   _drawBlip(ctx, c) {
     const color = IFF[c.iff] || IFF.yellow;
-    const alpha = c.state === 'edge' ? 0.5 : 1;
+    const alpha = c.alpha != null ? c.alpha : c.state === 'edge' ? 0.5 : 1;
     ctx.save();
     ctx.globalAlpha = alpha;
     if (c.state === 'visual') {
-      // Collapsed to a dot on the inner border (contact is in visual range).
       ctx.fillStyle = color;
       ctx.shadowColor = color;
       ctx.shadowBlur = 4;
@@ -200,22 +296,45 @@ export class Scanner {
       ctx.restore();
       return;
     }
-    // Shape is keyed to contact TYPE; IFF is conveyed purely by color.
     switch (c.type) {
       case 'station':
         this._shapeStation(ctx, c.screenX, c.screenY, c.size * 1.15, color);
         break;
       case 'asteroid':
-        this._shapeAsteroid(ctx, c.screenX, c.screenY, c.size, color);
+        this._shapeAsteroid(ctx, c);
         break;
       default:
-        // All ship contacts (patrol, civilian, …) share the ship silhouette.
-        this._shapeShip(ctx, c.screenX, c.screenY, c.bearing, color, c.size);
+        this._shapeShip(ctx, c, color);
     }
     ctx.restore();
   }
 
-  _shapeShip(ctx, x, y, heading, color, size) {
+  _shapeShip(ctx, c, color) {
+    const shipDef = c.ref?.shipDef;
+    const heading = c.heading != null ? c.heading : c.bearing;
+    if (shipDef) {
+      const extent =
+        (shipDef.forwardExtent?.() || 22) + (shipDef.aftExtent?.() || 20);
+      const s = (c.size * 2) / Math.max(8, extent);
+      const stroke = shadeHex(color, -40);
+      ctx.save();
+      ctx.translate(c.screenX, c.screenY);
+      ctx.rotate(heading);
+      ctx.scale(s, s);
+      ctx.shadowColor = color;
+      ctx.shadowBlur = 3;
+      try {
+        drawShipSilhouette(ctx, c.ref, { fillStyle: color, strokeStyle: stroke });
+      } catch (_) {
+        this._shapeShipChevron(ctx, 0, 0, 0, color, c.size / s);
+      }
+      ctx.restore();
+      return;
+    }
+    this._shapeShipChevron(ctx, c.screenX, c.screenY, heading, color, c.size);
+  }
+
+  _shapeShipChevron(ctx, x, y, heading, color, size) {
     ctx.save();
     ctx.translate(x, y);
     ctx.rotate(heading);
@@ -248,22 +367,43 @@ export class Scanner {
     ctx.restore();
   }
 
-  _shapeAsteroid(ctx, x, y, size, color) {
+  _shapeAsteroid(ctx, c) {
+    const color = IFF[c.iff] || IFF.object;
+    const verts = c.ref?.vertices;
+    const radius = c.ref?.radius || 1;
+    const heading = c.heading != null ? c.heading : 0;
     ctx.save();
-    ctx.translate(x, y);
+    ctx.translate(c.screenX, c.screenY);
+    ctx.rotate(heading);
+    const s = c.size / Math.max(1, radius);
+    ctx.scale(s, s);
     ctx.fillStyle = color;
+    ctx.strokeStyle = shadeHex(color, -35);
+    ctx.lineWidth = Math.max(0.8, 1.2 / s);
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 3;
     ctx.beginPath();
-    const n = 6;
-    for (let i = 0; i < n; i++) {
-      const a = (i / n) * TWO_PI;
-      const rr = size * (0.7 + ((i * 37) % 5) * 0.06);
-      const px = Math.cos(a) * rr;
-      const py = Math.sin(a) * rr;
-      if (i === 0) ctx.moveTo(px, py);
-      else ctx.lineTo(px, py);
+    if (verts?.length) {
+      for (let i = 0; i < verts.length; i++) {
+        const v = verts[i];
+        if (i === 0) ctx.moveTo(v.x, v.y);
+        else ctx.lineTo(v.x, v.y);
+      }
+      ctx.closePath();
+    } else {
+      const n = 6;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * TWO_PI;
+        const rr = radius * (0.7 + ((i * 37) % 5) * 0.06);
+        const px = Math.cos(a) * rr;
+        const py = Math.sin(a) * rr;
+        if (i === 0) ctx.moveTo(px, py);
+        else ctx.lineTo(px, py);
+      }
+      ctx.closePath();
     }
-    ctx.closePath();
     ctx.fill();
+    ctx.stroke();
     ctx.restore();
   }
 
@@ -288,8 +428,6 @@ export class Scanner {
     }
     ctx.restore();
 
-    // Distance readout: just inside the viewport border (PORT), or tucked
-    // beside the blip toward center (full scope, where the border is a hub).
     const km = (c.dist / 100).toFixed(1);
     let tx;
     let ty;
@@ -313,18 +451,18 @@ export class Scanner {
     ctx.restore();
   }
 
-  /** White nose / red tail heading line (offset 0 or π). */
   _drawHeadingLine(ctx, cx, cy, innerR, outerR, ship, rot, offset, color) {
     const a = (ship.angle || 0) + rot + offset;
     const cos = Math.cos(a);
     const sin = Math.sin(a);
+    const r0 = Math.max(0, innerR);
     ctx.save();
     ctx.strokeStyle = color;
     ctx.lineWidth = 2;
     ctx.shadowColor = color;
     ctx.shadowBlur = 4;
     ctx.beginPath();
-    ctx.moveTo(cx + cos * innerR, cy + sin * innerR);
+    ctx.moveTo(cx + cos * r0, cy + sin * r0);
     ctx.lineTo(cx + cos * outerR, cy + sin * outerR);
     ctx.stroke();
     ctx.restore();
@@ -332,9 +470,11 @@ export class Scanner {
 
   /**
    * Chevron stack along the velocity vector. `anti` mirrors it toward center in
-   * red (anti-vector). Lit count/intensity ramp with speed; hidden at rest.
+   * red; tips face outward (forward) or toward center (anti). PORT sits the
+   * stack in the thin ring band; SCAN keeps the same band sizing at the outer
+   * rose edge (not near the ship silhouette).
    */
-  _drawChevrons(ctx, cx, cy, innerR, band, ship, rot, anti, fullScope = false) {
+  _drawChevrons(ctx, cx, cy, innerR, outerR, band, ship, rot, anti, fullScope = false) {
     const vx = ship.velocity?.x ?? 0;
     const vy = ship.velocity?.y ?? 0;
     const speed = Math.hypot(vx, vy);
@@ -346,13 +486,17 @@ export class Scanner {
     if (f > 2 / 3) intensity = 0.82 + 0.18 * ((f - 2 / 3) / (1 / 3));
 
     const vb = Math.atan2(vy, vx) + rot + (anti ? Math.PI : 0);
-    // Thin port ring sizes chevrons to the band; the full scope band is the
-    // whole radius, so clamp them and seat the stack just outside the hub.
-    const cs = fullScope ? Math.min(band * 0.085, 12) : band * 0.085;
+    // Same chevron size in PORT and SCAN (thin telemetry band, not disc radius).
+    const cs = Math.min(band * 0.085, 12);
     const gap = cs * 2.1;
-    const r0 = fullScope ? innerR + cs * 2.2 : innerR + band * 0.24;
+    // PORT: near viewport edge of the ring. SCAN: same relative slot at the outer rose.
+    const r0 = fullScope
+      ? Math.max(0, outerR - band * 0.76)
+      : innerR + band * 0.24;
     const litRGB = anti ? '255, 110, 110' : '240, 248, 255';
     const glowRGB = anti ? '255, 140, 140' : '210, 232, 255';
+    // Anti tips face center; forward tips face outward along velocity.
+    const tipRot = anti ? vb + Math.PI : vb;
 
     for (let i = 0; i < 3; i++) {
       const lit = i < litCount;
@@ -361,7 +505,7 @@ export class Scanner {
       const py = cy + Math.sin(vb) * r;
       ctx.save();
       ctx.translate(px, py);
-      ctx.rotate(vb);
+      ctx.rotate(tipRot);
       ctx.beginPath();
       ctx.moveTo(-cs, -cs);
       ctx.lineTo(cs, 0);
@@ -385,13 +529,27 @@ export class Scanner {
   }
 
   _drawOffline(ctx, cx, cy, innerR, outerR, band) {
-    const r = (innerR + outerR) / 2;
+    const r = (Math.max(0, innerR) + outerR) / 2;
     ctx.save();
     ctx.font = `600 ${Math.max(10, Math.round(band * 0.3))}px 'Barlow Condensed', 'Segoe UI', sans-serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = COLORS.offline;
-    ctx.fillText('SENSOR OFFLINE', cx, cy - r);
+    ctx.fillText('SENSOR OFFLINE', cx, cy - r * 0.15);
     ctx.restore();
   }
+}
+
+function shadeHex(hex, amt) {
+  const s = String(hex || '#8899aa').replace('#', '');
+  const full = s.length === 3 ? s.split('').map((c) => c + c).join('') : s;
+  const num = parseInt(full, 16);
+  if (Number.isNaN(num)) return hex;
+  let r = (num >> 16) & 0xff;
+  let g = (num >> 8) & 0xff;
+  let b = num & 0xff;
+  r = Math.max(0, Math.min(255, r + amt));
+  g = Math.max(0, Math.min(255, g + amt));
+  b = Math.max(0, Math.min(255, b + amt));
+  return `rgb(${r},${g},${b})`;
 }

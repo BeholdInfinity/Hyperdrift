@@ -5,12 +5,13 @@
  * Density north star: a few ships near the hangar (police always pack),
  * almost never deep out — but not zero.
  *
- * Spawn / despawn rule: never pop in or out of the player's visible circle.
- * Ships only instantiate outside the camera viewport (+ margin), and only
- * cull when off-screen. Age expiry while visible extends life / steers out.
+ * Spawn / despawn rule: never pop in or out of the player's visible circle
+ * or their max scanner horizon. Ships only instantiate outside
+ * max(camera viewport, furthest scan range) + margin, and only cull past
+ * that same bubble. Age expiry while inside extends life / steers out.
  */
 
-import { STATION, AMBIENT, SHIP } from '../core/Constants.js';
+import { STATION, AMBIENT, SHIP, scannerMaxRange } from '../core/Constants.js';
 import { generateShip, generateVisitor } from '../ships/ShipGenerator.js';
 import { SHIP_CLASSES } from '../ships/ShipClasses.js';
 import { drawVisitorShip, makeVisitorThrusters } from './HangarVisitorShips.js';
@@ -275,7 +276,8 @@ export class AmbientTrafficSystem {
   }
 
   /**
-   * Circular play viewport in world units (center + radius), plus margin.
+   * Circular play viewport in world units (center + radius), plus margin, and
+   * the player-centered scanner horizon used for spawn/despawn gating.
    * @param {{ x?: number, y?: number, viewRadius?: number }|null|undefined} camera
    * @param {number} px
    * @param {number} py
@@ -284,8 +286,17 @@ export class AmbientTrafficSystem {
     const cx = camera?.x ?? px;
     const cy = camera?.y ?? py;
     const baseR = camera?.viewRadius ?? 520;
-    const r = baseR + AMBIENT.VISIBLE_MARGIN;
-    this._view = { x: cx, y: cy, viewRadius: r };
+    const viewRadius = baseR + AMBIENT.VISIBLE_MARGIN;
+    const scanHorizon =
+      scannerMaxRange() + (AMBIENT.SCAN_HORIZON_MARGIN ?? 1200);
+    this._view = {
+      x: cx,
+      y: cy,
+      viewRadius,
+      px,
+      py,
+      scanHorizon,
+    };
     return this._view;
   }
 
@@ -293,6 +304,19 @@ export class AmbientTrafficSystem {
   _isVisible(x, y, view = this._view) {
     if (!view) return false;
     return dist(x, y, view.x, view.y) <= view.viewRadius;
+  }
+
+  /**
+   * Camera view or max scanner reach from the player — spawn/despawn bubble.
+   * Keeping traffic outside this prevents radar pop-in/out.
+   */
+  _isInPresenceBubble(x, y, view = this._view) {
+    if (!view) return false;
+    if (this._isVisible(x, y, view)) return true;
+    const hx = view.px ?? view.x;
+    const hy = view.py ?? view.y;
+    const horizon = view.scanHorizon ?? view.viewRadius;
+    return dist(x, y, hx, hy) <= horizon;
   }
 
   /** Pose bag for Station occlusion / ingress helpers. */
@@ -565,7 +589,7 @@ export class AmbientTrafficSystem {
     for (const ship of this.ships) {
       ship.age += dt;
       ship.stateT += dt;
-      // Age expired while visible → mark leave, do not cull yet
+      // Age expired while in camera view or scan horizon → mark leave, do not cull yet
       if (
         ship.age > ship.maxAge &&
         !ship.pendingCull &&
@@ -575,7 +599,7 @@ export class AmbientTrafficSystem {
         ship.state !== 'bayEgress' &&
         ship.state !== 'bayHold'
       ) {
-        if (this._isVisible(ship.x, ship.y, view)) {
+        if (this._isInPresenceBubble(ship.x, ship.y, view)) {
           ship.pendingCull = true;
           ship.state = 'leave';
           ship.stateT = 0;
@@ -721,33 +745,45 @@ export class AmbientTrafficSystem {
       const orbitAng = Math.random() * Math.PI * 2;
       const x = sx + Math.cos(orbitAng) * r;
       const y = sy + Math.sin(orbitAng) * r;
+      // Prefer past camera + past max scan from the player (radar pop prevention).
+      if (this._isInPresenceBubble(x, y, view)) continue;
+      if (dist(x, y, px, py) < AMBIENT.PLAYER_CLEARANCE) continue;
+      return { x, y, r, orbitAng };
+    }
+    // Fallback for police / station pack when the player is inside the near bubble:
+    // off-camera only (may still be inside scanner range).
+    for (let i = 0; i < 12; i++) {
+      const r = r0 + Math.random() * Math.max(1, r1 - r0);
+      const orbitAng = Math.random() * Math.PI * 2;
+      const x = sx + Math.cos(orbitAng) * r;
+      const y = sy + Math.sin(orbitAng) * r;
       if (this._isVisible(x, y, view)) continue;
       if (dist(x, y, px, py) < AMBIENT.PLAYER_CLEARANCE) continue;
       return { x, y, r, orbitAng };
     }
-    // Fallback: place just outside the visible rim, biased toward station ring
     if (!view) return null;
     const escapeAng = Math.random() * Math.PI * 2;
-    const r = Math.max(view.viewRadius + 40, (r0 + r1) * 0.5);
-    const x = view.x + Math.cos(escapeAng) * r;
-    const y = view.y + Math.sin(escapeAng) * r;
+    const horizon = view.scanHorizon || view.viewRadius;
+    const r = Math.max(horizon + 40, (r0 + r1) * 0.5);
+    const x = (view.px ?? view.x) + Math.cos(escapeAng) * r;
+    const y = (view.py ?? view.y) + Math.sin(escapeAng) * r;
     if (dist(x, y, px, py) < AMBIENT.PLAYER_CLEARANCE * 0.6) return null;
     return { x, y, r: dist(x, y, sx, sy), orbitAng: Math.atan2(y - sy, x - sx) };
   }
 
   /**
-   * Off-screen spawn for flybys: outside view rim, heading across/toward station.
+   * Off-screen spawn for flybys: outside view rim AND past max scan from player.
    */
   _pickOffscreenFlyby(sx, sy, px, py, view) {
     if (!view) return null;
+    const horizon = view.scanHorizon || view.viewRadius;
     for (let i = 0; i < 16; i++) {
       const edgeAng = Math.random() * Math.PI * 2;
-      const r = view.viewRadius + 60 + Math.random() * 180;
-      const x = view.x + Math.cos(edgeAng) * r;
-      const y = view.y + Math.sin(edgeAng) * r;
-      if (this._isVisible(x, y, view)) continue;
+      const r = horizon + 60 + Math.random() * 180;
+      const x = (view.px ?? view.x) + Math.cos(edgeAng) * r;
+      const y = (view.py ?? view.y) + Math.sin(edgeAng) * r;
+      if (this._isInPresenceBubble(x, y, view)) continue;
       if (dist(x, y, px, py) < AMBIENT.PLAYER_CLEARANCE) continue;
-      // Aim roughly across the view / past the station so they enter then exit
       const toward = angleTo(sx - x, sy - y) + (Math.random() - 0.5) * 0.7;
       return { x, y, heading: toward };
     }
@@ -759,11 +795,13 @@ export class AmbientTrafficSystem {
       holdSpeed(ship, this._cruiseSpeed(ship.behavior), 1 / 60);
       return;
     }
-    const a = angleTo(ship.x - view.x, ship.y - view.y);
+    const hx = view.px ?? view.x;
+    const hy = view.py ?? view.y;
+    const a = angleTo(ship.x - hx, ship.y - hy);
+    const outR = Math.max(view.viewRadius, view.scanHorizon || 0) + 400;
     const spd = Math.max(180, this._cruiseSpeed(ship.behavior));
-    const tx = view.x + Math.cos(a) * (view.viewRadius + 400);
-    const ty = view.y + Math.sin(a) * (view.viewRadius + 400);
-    // Intent only — actual burn runs next tick via leave state
+    const tx = hx + Math.cos(a) * outR;
+    const ty = hy + Math.sin(a) * outR;
     ship._leaveTarget = { x: tx, y: ty, spd };
   }
 
@@ -799,7 +837,7 @@ export class AmbientTrafficSystem {
         const sin = Math.sin(edge.heading);
         const gx = edge.x + ox * cos - oy * sin;
         const gy = edge.y + ox * sin + oy * cos;
-        if (this._isVisible(gx, gy, view)) continue;
+        if (this._isInPresenceBubble(gx, gy, view)) continue;
         const ship = this._makeShip(classId, role, gx, gy, edge.heading, groupId, false);
         if (ship) this.ships.push(ship);
       }
@@ -851,7 +889,7 @@ export class AmbientTrafficSystem {
       const sin = Math.sin(leadHeading);
       const gx = pos.x + ox * cos - oy * sin;
       const gy = pos.y + ox * sin + oy * cos;
-      if (this._isVisible(gx, gy, view)) continue;
+      if (this._isInPresenceBubble(gx, gy, view)) continue;
       if (dist(gx, gy, px, py) < AMBIENT.PLAYER_CLEARANCE) continue;
       const ship = this._makeShip(classId, role, gx, gy, leadHeading, groupId, asPolice);
       if (ship) {
@@ -867,7 +905,7 @@ export class AmbientTrafficSystem {
       const ang = Math.random() * Math.PI * 2;
       const x = sx + Math.cos(ang) * spawnR;
       const y = sy + Math.sin(ang) * spawnR;
-      if (this._isVisible(x, y, view)) continue;
+      if (this._isInPresenceBubble(x, y, view)) continue;
       if (dist(x, y, px, py) < AMBIENT.PLAYER_CLEARANCE) continue;
       return { x, y, r: spawnR, orbitAng: ang };
     }
@@ -1010,7 +1048,7 @@ export class AmbientTrafficSystem {
     }
 
     if (ship.pendingCull || ship.state === 'leave') {
-      if (view && this._isVisible(ship.x, ship.y, view)) {
+      if (view && this._isInPresenceBubble(ship.x, ship.y, view)) {
         if (!ship._leaveTarget) this._steerOffCamera(ship, view);
         const t = ship._leaveTarget;
         if (t) {
@@ -1524,11 +1562,11 @@ export class AmbientTrafficSystem {
   }
 
   /**
-   * Cull only when off-screen. Age / distance alone never removes a visible ship.
+   * Cull only past the presence bubble (off-camera AND past max scan from player).
+   * Age / distance alone never removes a ship still on radar or on screen.
    */
   _shouldCull(ship, px, py, sx, sy, view) {
-    const visible = this._isVisible(ship.x, ship.y, view);
-    if (visible) return false;
+    if (this._isInPresenceBubble(ship.x, ship.y, view)) return false;
 
     if (ship.age > ship.maxAge || ship.pendingCull) return true;
 

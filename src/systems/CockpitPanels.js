@@ -4,7 +4,7 @@
  * this draws live data on top each frame and registers clickable hit-regions
  * (tabs, list rows, pip buttons, POI toggles, comms buttons).
  *
- * Panel order (from CockpitFrame layout): 0 CONTACT, 1 CONTACTS, 2 COMMS,
+ * Panel order (from CockpitFrame layout): 0 CONTACT DETAILS, 1 CONTACTS, 2 COMMS,
  * 3 DESTINATION, 4 SECTOR MAP, 5 POWER.
  */
 
@@ -201,7 +201,7 @@ export class CockpitPanels {
     ctx.restore();
   }
 
-  // ---- 0 CONTACT ---------------------------------------------------------
+  // ---- 0 CONTACT DETAILS ------------------------------------------------
   _contact(ctx, box, engine) {
     const c = engine.scannerSystem.getSelected();
     if (!c) {
@@ -257,22 +257,72 @@ export class CockpitPanels {
 
   // ---- 1 CONTACTS --------------------------------------------------------
   _contactsList(ctx, box, engine) {
-    const list = engine.scannerSystem.contacts;
-    if (!engine.scannerSystem.on) {
-      this._text(ctx, 'SENSOR OFFLINE', box.x, box.y + 16, { color: DIM, size: 13 });
+    const scan = engine.scannerSystem;
+    const f = scan.contactFilters;
+    const allOn = f.ship && f.station && f.other;
+
+    // Filter chip row — also gates scanner blips / pick / selection.
+    const chips = [
+      { key: 'all', label: 'ALL', on: allOn },
+      { key: 'ship', label: 'SHIP', on: f.ship },
+      { key: 'station', label: 'STN', on: f.station },
+      { key: 'other', label: 'OTHER', on: f.other },
+    ];
+    const gap = 3;
+    const chipH = 16;
+    const chipW = (box.w - gap * (chips.length - 1)) / chips.length;
+    chips.forEach((chip, i) => {
+      const bx = box.x + i * (chipW + gap);
+      const by = box.y;
+      ctx.fillStyle = chip.on ? 'rgba(40, 70, 100, 0.85)' : 'rgba(20, 32, 48, 0.7)';
+      ctx.fillRect(bx, by, chipW, chipH);
+      ctx.strokeStyle = chip.on ? 'rgba(120, 200, 255, 0.55)' : 'rgba(80, 110, 140, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(bx, by, chipW, chipH);
+      this._text(ctx, chip.label, bx + chipW / 2, by + 12, {
+        size: 10,
+        align: 'center',
+        weight: 600,
+        color: chip.on ? ACCENT : DIM,
+      });
+      const key = chip.key;
+      this._region(bx, by, chipW, chipH, () => {
+        if (key === 'all') {
+          const next = !(f.ship && f.station && f.other);
+          f.ship = next;
+          f.station = next;
+          f.other = next;
+        } else {
+          f[key] = !f[key];
+        }
+      });
+    });
+
+    const listY = box.y + chipH + 6;
+    const listH = box.h - chipH - 6;
+    if (!scan.on) {
+      this._text(ctx, 'SENSOR OFFLINE', box.x, listY + 16, { color: DIM, size: 13 });
       return;
     }
+    const list = scan.contacts.filter((c) => scan.passesContactFilter(c));
     if (!list.length) {
-      this._text(ctx, 'NO CONTACTS IN RANGE', box.x, box.y + 16, { color: DIM, size: 13 });
+      this._text(
+        ctx,
+        scan.contacts.length ? 'NO MATCHING CONTACTS' : 'NO CONTACTS IN RANGE',
+        box.x,
+        listY + 16,
+        { color: DIM, size: 13 }
+      );
       return;
     }
     const rowH = 18;
-    const max = Math.floor(box.h / rowH);
-    this._clip(ctx, box, () => {
+    const max = Math.floor(listH / rowH);
+    const listBox = { x: box.x, y: listY, w: box.w, h: listH };
+    this._clip(ctx, listBox, () => {
       for (let i = 0; i < Math.min(list.length, max); i++) {
         const c = list[i];
-        const ry = box.y + i * rowH;
-        const sel = c.id === engine.scannerSystem.selectedId;
+        const ry = listY + i * rowH;
+        const sel = c.id === scan.selectedId;
         if (sel) {
           ctx.fillStyle = 'rgba(120, 200, 255, 0.14)';
           ctx.fillRect(box.x - 4, ry, box.w + 8, rowH);
@@ -456,12 +506,18 @@ export class CockpitPanels {
         ctx.arc(sx, sy, poi.id === engine.poiSystem.selectedId ? 4 : 2.5, 0, Math.PI * 2);
         ctx.fill();
       }
-      // Live contacts.
-      for (const c of engine.scannerSystem.contacts) {
-        const sx = ccx + (c.x - ship.position.x) * scale;
-        const sy = ccy + (c.y - ship.position.y) * scale;
+      // Scanner contacts — last radar-ping world pos (not live).
+      const scan = engine.scannerSystem;
+      for (const c of scan.contacts) {
+        if (!scan.passesContactFilter(c)) continue;
+        if (c.scanX == null || c.scanY == null) continue;
+        const sx = ccx + (c.scanX - ship.position.x) * scale;
+        const sy = ccy + (c.scanY - ship.position.y) * scale;
+        ctx.save();
+        ctx.globalAlpha = c.alpha != null ? c.alpha : 1;
         ctx.fillStyle = IFF[c.iff] || IFF.yellow;
         ctx.fillRect(sx - 1, sy - 1, 2, 2);
+        ctx.restore();
       }
       // Ship marker.
       ctx.save();
