@@ -73,8 +73,14 @@ export const CAMERA = {
   MAX_OFFSET_RATIO: 0.32,
   OFFSET_SMOOTHING: 4,
   STATIONARY_THRESHOLD: 15,
-  ZOOM_MIN: 0.4,
+  ZOOM_MIN: 0.1,
   ZOOM_MAX: 2.0,
+  /**
+   * HUD label anchor: the internal zoom that should read as "0x" to the player.
+   * Zoom below this maps linearly to [0,1] on the label; at/above 1x the label
+   * matches the internal value (1x=1x, 2x=2x). See CameraSystem.displayZoom().
+   */
+  ZOOM_LABEL_ZERO: 0.1,
   ZOOM_WHEEL_STEP: 0.1,
   ZOOM_SMOOTHING: 6,
   SPEED_ZOOM_MAX: 1.0,

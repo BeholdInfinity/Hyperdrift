@@ -144,7 +144,7 @@ src/
 - `SHIP.SPAWN_ANGLE` — north (−π/2)
 - `HANGAR.ZOOM_*` / `SIDE_PAD_X` / `PAD_R` — Home Base hangar camera + pad layout (pad disc r=38); player bay via `hangarPadX(i)`
 - `PAD_MK_RADIUS` — Mk1/Mk2/Mk3 pad discs (Mk2 = hangar; Blueprint background rings)
-- `CAMERA.ZOOM_MIN/MAX` — 0.4 / 2.0
+- `CAMERA.ZOOM_MIN/MAX` — 0.1 / 2.0 (HUD label decoupled via `CameraSystem.displayZoom()`: internal `ZOOM_LABEL_ZERO`=0.1 shows as 0x, 1x=1x, 2x=2x)
 - `BLUEPRINT.ZOOM_MIN/MAX` — 1.2 / 22 (dev ship sandbox)
 - `WORLD.CHUNK_SIZE` — 2000
 - `WORLD.LOAD_RADIUS` / `UNLOAD_RADIUS` — 3 / 5

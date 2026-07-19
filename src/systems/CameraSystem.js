@@ -18,8 +18,13 @@ export class CameraSystem {
     this.position.copy(shipPosition);
 
     if (zoomWheelDelta !== 0) {
+      // Step in HUD-label space so each wheel click is a flat 0.1 on the
+      // displayed number, even across the sub-1x remap (see displayZoom()).
+      const nextLabel =
+        CameraSystem.zoomToLabel(this.targetUserZoom) +
+        zoomWheelDelta * CAMERA.ZOOM_WHEEL_STEP;
       this.targetUserZoom = clamp(
-        this.targetUserZoom + zoomWheelDelta * CAMERA.ZOOM_WHEEL_STEP,
+        CameraSystem.labelToZoom(nextLabel),
         CAMERA.ZOOM_MIN,
         CAMERA.ZOOM_MAX
       );
@@ -58,6 +63,29 @@ export class CameraSystem {
     const t = 1 - Math.exp(-CAMERA.OFFSET_SMOOTHING * deltaTime);
     this.offset.x = lerp(this.offset.x, this.targetOffset.x, t);
     this.offset.y = lerp(this.offset.y, this.targetOffset.y, t);
+  }
+
+  /**
+   * Internal zoom → HUD label. Internal ZOOM_LABEL_ZERO reads as 0x; at/above
+   * 1x the label matches the internal value (1x=1x, 2x=2x). Below the anchor it
+   * maps linearly to [0,1].
+   */
+  static zoomToLabel(z) {
+    if (z >= 1) return z;
+    const zero = CAMERA.ZOOM_LABEL_ZERO;
+    return Math.max(0, (z - zero) / (1 - zero));
+  }
+
+  /** Inverse of zoomToLabel: HUD label → internal zoom. */
+  static labelToZoom(d) {
+    if (d >= 1) return d;
+    const zero = CAMERA.ZOOM_LABEL_ZERO;
+    return d * (1 - zero) + zero;
+  }
+
+  /** Space-mode HUD zoom label, decoupled from the internal zoom scale. */
+  displayZoom() {
+    return CameraSystem.zoomToLabel(this.effectiveZoom);
   }
 
   /**

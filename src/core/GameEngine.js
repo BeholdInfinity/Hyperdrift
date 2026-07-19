@@ -3239,7 +3239,7 @@ export class GameEngine {
           this.ship.position.y
         )}`,
       },
-      ZOOM: { text: `${this.camera.effectiveZoom.toFixed(2)}x` },
+      ZOOM: { text: `${this.camera.displayZoom().toFixed(2)}x` },
     });
   }
 
@@ -3877,7 +3877,7 @@ export class GameEngine {
       this._hudCoords.textContent = `${Math.round(this.ship.position.x)}, ${Math.round(this.ship.position.y)}`;
     }
     if (this._hudZoom) {
-      this._hudZoom.textContent = this.camera.effectiveZoom.toFixed(2);
+      this._hudZoom.textContent = this.camera.displayZoom().toFixed(2);
     }
     if (this._hudPrecision) {
       if (this.precisionActive) {
