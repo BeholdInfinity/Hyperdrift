@@ -17,11 +17,11 @@ export const SERVICE_BOARD_LABELS = {
 };
 
 export const SERVICE_BOARD_LABEL_WIDEST = 'Install:';
-/** Labeled row — max 5 pips in the rightmost slots of the shared grid. */
+/** Labeled row — max 5 pips in the job’s primary grid band. */
 export const SERVICE_BOARD_PIPS_PER_ROW = 5;
-/** Shared pip grid width (primary uses the rightmost 5; continuation rows may span all 9). */
+/** Shared pip grid width (labeled row uses the rightmost 5 slots; continuation up to 9). */
 export const SERVICE_BOARD_GRID_SLOTS = 9;
-/** Label-less overflow rows — up to 9 pips, right-aligned in the grid. */
+/** Label-less overflow rows — up to 9 pips per continuation row. */
 export const SERVICE_BOARD_CONTINUATION_PIPS = 9;
 /** Gap after the row's own `Label:` before continuation pips (bulleted-list tab). */
 export const SERVICE_BOARD_LABEL_TAB = 1.1;
@@ -51,8 +51,30 @@ export const SERVICE_BOARD_COLORS = {
 };
 
 /**
- * @typedef {{ label: string, type?: string, units: Array<{ color: string, status?: string, serviceItemId?: number, targetHardpointKey?: string|null }>, complete?: boolean, showLabel?: boolean, pipGridStart?: number, color?: string, status?: string }} ServiceBoardRow
+ * @typedef {{ color: string, status?: string, serviceItemId?: number, targetHardpointKey?: string|null, pipSlot: number }} ServiceBoardUnit
+ * @typedef {{ label: string, type?: string, units: ServiceBoardUnit[], complete?: boolean, showLabel?: boolean, color?: string, status?: string }} ServiceBoardRow
  */
+
+/** Fixed grid slot for one pip in its job layout (stable across reveal and color changes). */
+export function pipSlotForJobIndex(globalIndex, totalInType) {
+  if (globalIndex < SERVICE_BOARD_PIPS_PER_ROW) {
+    const chunkTotal = Math.min(SERVICE_BOARD_PIPS_PER_ROW, totalInType);
+    const rowStart =
+      SERVICE_BOARD_GRID_SLOTS -
+      SERVICE_BOARD_PIPS_PER_ROW +
+      (SERVICE_BOARD_PIPS_PER_ROW - chunkTotal);
+    return rowStart + globalIndex;
+  }
+  const contGlobal = globalIndex - SERVICE_BOARD_PIPS_PER_ROW;
+  const contRowStart =
+    Math.floor(contGlobal / SERVICE_BOARD_CONTINUATION_PIPS) *
+    SERVICE_BOARD_CONTINUATION_PIPS;
+  const remaining = totalInType - SERVICE_BOARD_PIPS_PER_ROW - contRowStart;
+  const chunkTotal = Math.min(SERVICE_BOARD_CONTINUATION_PIPS, remaining);
+  const gridStart = SERVICE_BOARD_CONTINUATION_PIPS - chunkTotal;
+  const localIndex = contGlobal - contRowStart;
+  return gridStart + localIndex;
+}
 
 /**
  * Fixed board geometry at a northern lip Y.
@@ -113,8 +135,8 @@ export function sortServiceDisplayRows(rows) {
 }
 
 /**
- * Build service-column rows — max 5 pips on the labeled row (rightmost grid slots);
- * overflow reflows on label-less continuation rows (up to 9 pips, right-aligned).
+ * Build service-column rows — max 5 pips on the labeled row; overflow on label-less
+ * continuation rows (up to 9). Each pip keeps a fixed slot in its job grid layout.
  * @param {Array<{ id: number, type: string, status?: string, targetHardpointKey?: string }>} items
  * @param {{ shownIds?: Set<number>|null, unitColorOf: (item: object) => string }} opts
  * @returns {ServiceBoardRow[]}
@@ -129,50 +151,57 @@ export function buildServiceBoardRows(items, opts) {
     SERVICE_BOARD_LABELS[it.type] || String(it.type || '?').slice(0, 7);
 
   const order = [];
-  /** @type {Map<string, { type: string, label: string, units: ServiceBoardRow['units'] }>} */
+  /** @type {Map<string, { type: string, label: string, items: typeof items }>} */
   const byType = new Map();
 
   for (const it of items) {
     if (it.type === 'elevatorTransfer') continue;
-    if (shownIds && !shownIds.has(it.id)) continue;
     if (!byType.has(it.type)) {
-      byType.set(it.type, { type: it.type, label: labelOf(it), units: [] });
+      byType.set(it.type, { type: it.type, label: labelOf(it), items: [] });
       order.push(it.type);
     }
-    byType.get(it.type).units.push({
-      color: unitColorOf(it),
-      status: it.status,
-      serviceItemId: it.id,
-      targetHardpointKey: it.targetHardpointKey || null,
-    });
+    byType.get(it.type).items.push(it);
   }
 
   /** @type {ServiceBoardRow[]} */
   const rows = [];
-  const primaryGridStart = SERVICE_BOARD_GRID_SLOTS - SERVICE_BOARD_PIPS_PER_ROW;
   for (const type of order) {
     const group = byType.get(type);
+    const allItems = group.items;
+    const totalInType = allItems.length;
     const typeComplete =
-      group.units.length > 0 && group.units.every((u) => u.color === 'green');
-    let i = 0;
-    let firstRow = true;
-    while (i < group.units.length) {
-      const maxChunk = firstRow
-        ? SERVICE_BOARD_PIPS_PER_ROW
-        : SERVICE_BOARD_CONTINUATION_PIPS;
-      const units = group.units.slice(i, i + maxChunk);
-      rows.push({
-        label: group.label,
-        type: group.type,
-        units,
-        complete: typeComplete,
-        showLabel: firstRow,
-        pipGridStart: firstRow ? primaryGridStart : SERVICE_BOARD_GRID_SLOTS - units.length,
-        color: typeComplete ? 'green' : 'white',
-        status: typeComplete ? 'done' : 'pending',
-      });
-      i += maxChunk;
-      firstRow = false;
+      totalInType > 0 &&
+      allItems.every((it) => unitColorOf(it) === 'green');
+    let gi = 0;
+    while (gi < totalInType) {
+      const maxChunk =
+        gi === 0 ? SERVICE_BOARD_PIPS_PER_ROW : SERVICE_BOARD_CONTINUATION_PIPS;
+      const chunkEnd = Math.min(gi + maxChunk, totalInType);
+      /** @type {ServiceBoardUnit[]} */
+      const units = [];
+      for (let j = gi; j < chunkEnd; j++) {
+        const it = allItems[j];
+        if (shownIds && !shownIds.has(it.id)) continue;
+        units.push({
+          color: unitColorOf(it),
+          status: it.status,
+          serviceItemId: it.id,
+          targetHardpointKey: it.targetHardpointKey || null,
+          pipSlot: pipSlotForJobIndex(j, totalInType),
+        });
+      }
+      if (units.length > 0) {
+        rows.push({
+          label: group.label,
+          type: group.type,
+          units,
+          complete: typeComplete,
+          showLabel: gi === 0,
+          color: typeComplete ? 'green' : 'white',
+          status: typeComplete ? 'done' : 'pending',
+        });
+      }
+      gi = chunkEnd;
     }
   }
 
@@ -341,10 +370,9 @@ export function offsetFromScrollbarY(wy, sb) {
 
 function drawRowPips(ctx, row, ty, layout, colorMap) {
   const cy = ty - 1.0;
-  const gridStart = row.pipGridStart ?? layout.primaryGridStart;
   for (let i = 0; i < row.units.length; i++) {
     const u = row.units[i];
-    const cxDot = layout.gridSlotX(gridStart + i);
+    const cxDot = layout.gridSlotX(u.pipSlot);
     ctx.fillStyle = colorMap[u.color] || colorMap.dim;
     ctx.beginPath();
     ctx.arc(cxDot, cy, CIRC_R, 0, Math.PI * 2);
