@@ -11,7 +11,10 @@ import { CockpitFrame } from '../systems/CockpitFrame.js';
 import { CockpitPanels } from '../systems/CockpitPanels.js';
 import { PipSystem } from '../systems/PipSystem.js';
 import { PoiSystem } from '../world/PoiSystem.js';
-import { SectorMap } from '../world/SectorMap.js';
+import { SectorMap, trailDistance } from '../world/SectorMap.js';
+import { TravelLog } from '../world/TravelLog.js';
+import { loadNavProfile, saveNavProfile } from '../world/NavPersistence.js';
+import { SectorMapView } from '../systems/SectorMapView.js';
 import { WeaponSystem } from '../systems/WeaponSystem.js';
 import { AsteroidSystem } from '../systems/AsteroidSystem.js';
 import { PhysicsSystem } from '../systems/PhysicsSystem.js';
@@ -114,6 +117,12 @@ export class GameEngine {
     this.pipSystem = new PipSystem();
     this.poiSystem = new PoiSystem();
     this.sectorMap = new SectorMap();
+    this.travelLog = new TravelLog();
+    this.sectorMapView = new SectorMapView();
+    this.nextExpeditionId = 1;
+    this.expeditionStartedAt = 0;
+    this._expeditionActive = false;
+    this._archiveExpeditionOnSettle = false;
     this.cockpitFrame = new CockpitFrame();
     this.cockpitPanels = new CockpitPanels();
     this.input = new InputSystem(canvas);
@@ -258,6 +267,94 @@ export class GameEngine {
     window.addEventListener('resize', () => this.renderer.resize());
     this.renderer.resize();
     this._setTitleFade(0);
+    this._loadNavProfile();
+  }
+
+  _loadNavProfile() {
+    const data = loadNavProfile();
+    if (!data) return;
+    if (data.nextExpeditionId) this.nextExpeditionId = data.nextExpeditionId;
+    if (data.pois?.length) this.poiSystem.hydrateFromSave(data.pois);
+    if (data.travelLog) this.travelLog.fromJSON(data.travelLog);
+  }
+
+  persistNavProfile() {
+    saveNavProfile({
+      nextExpeditionId: this.nextExpeditionId,
+      pois: this.poiSystem.exportForSave(),
+      travelLog: this.travelLog.toJSON(),
+    });
+  }
+
+  beginExpedition() {
+    this.expeditionStartedAt = Date.now();
+    this._expeditionActive = true;
+    this._expeditionDiscoveredPoiCount = this.poiSystem.discovered().length;
+    this.sectorMap.reset();
+    this.sectorMapView.recenter(this.ship);
+  }
+
+  endExpedition() {
+    if (!this._expeditionActive) return;
+    const poisNow = this.poiSystem.discovered().length;
+    const poisStart = this._expeditionDiscoveredPoiCount ?? poisNow;
+    this.travelLog.archiveExpedition({
+      trail: this.sectorMap.trail,
+      startedAt: this.expeditionStartedAt,
+      endedAt: Date.now(),
+      expeditionNumber: this.nextExpeditionId++,
+      distanceTraveled: trailDistance(this.sectorMap.trail),
+      poisEncountered: Math.max(0, poisNow - poisStart),
+    });
+    this.sectorMap.reset();
+    this._expeditionActive = false;
+    this.persistNavProfile();
+  }
+
+  selectContact(id) {
+    if (id) this.scannerSystem.select(id);
+    else this.scannerSystem.clearSelection();
+  }
+
+  selectPoi(id) {
+    if (id) this.poiSystem.select(id);
+    else this.poiSystem.clearSelection();
+  }
+
+  pickOnSectorMap(worldX, worldY) {
+    const tolWorld = 1200 / Math.max(0.25, this.sectorMapView.zoom);
+    let bestPoi = null;
+    let bestPd = tolWorld;
+    for (const poi of this.poiSystem.mapPois()) {
+      const d = Math.hypot(poi.x - worldX, poi.y - worldY);
+      if (d < bestPd) {
+        bestPd = d;
+        bestPoi = poi;
+      }
+    }
+    if (bestPoi) {
+      this.selectPoi(bestPoi.id);
+      return;
+    }
+    const scan = this.scannerSystem;
+    let bestC = null;
+    let bestCd = tolWorld;
+    for (const c of scan.contacts) {
+      if (!scan.passesContactFilter(c)) continue;
+      if (c.scanX == null || c.scanY == null) continue;
+      const d = Math.hypot(c.scanX - worldX, c.scanY - worldY);
+      if (d < bestCd) {
+        bestCd = d;
+        bestC = c;
+      }
+    }
+    if (bestC) this.selectContact(bestC.id);
+  }
+
+  dropMapWaypoint(worldX, worldY) {
+    const poi = this.poiSystem.addManualPin(worldX, worldY);
+    this.poiSystem.select(poi.id);
+    this.persistNavProfile();
   }
 
   /** Dev tool: scale simulation clock (0 pauses sim; render still runs). */
@@ -542,6 +639,7 @@ export class GameEngine {
     this.camera.effectiveZoom = 1;
     this.asteroidSystem.update(spawn.x, spawn.y);
     this._setDockHud(false);
+    this.beginExpedition();
   }
 
   /**
@@ -556,6 +654,9 @@ export class GameEngine {
     entryTurret = null,
     targetBay = null,
   } = {}) {
+    if (landing && this._expeditionActive) {
+      this._archiveExpeditionOnSettle = true;
+    }
     this.camera.rotation = 0;
     this._spaceCam.x = this.camera.position.x;
     this._spaceCam.y = this.camera.position.y;
@@ -1441,6 +1542,7 @@ export class GameEngine {
     if (this._hangarHud) this._hangarHud.classList.add('hidden');
     this._setLaunchBtnVisible(false);
     if (typeof this.onLaunchComplete === 'function') this.onLaunchComplete();
+    this.beginExpedition();
   }
 
   _finishLanding() {
@@ -1467,6 +1569,10 @@ export class GameEngine {
     }
     this._hangarSeqZoomPlayer = false;
     this._setLaunchBtnVisible(true);
+    if (this._archiveExpeditionOnSettle) {
+      this.endExpedition();
+      this._archiveExpeditionOnSettle = false;
+    }
   }
 
   _setLaunchBtnVisible(show) {
@@ -2614,6 +2720,15 @@ export class GameEngine {
       this.scannerSystem.stepPlotZoom(zoomWheel);
       camZoomWheel = 0;
     }
+    if (
+      this.mode === 'playing' &&
+      zoomWheel !== 0 &&
+      this.cockpitPanels.processSectorMapInput(this, this.input, zoomWheel)
+    ) {
+      camZoomWheel = 0;
+    } else if (this.mode === 'playing') {
+      this.cockpitPanels.processSectorMapInput(this, this.input, 0);
+    }
 
     this.asteroidSystem.update(this.ship.position.x, this.ship.position.y);
 
@@ -2642,6 +2757,7 @@ export class GameEngine {
 
     this._ensureShipStatus();
     this._processCockpitClicks();
+    this._processCockpitRightClicks();
 
     // Cockpit MODES keybinds: R flips ORIENT (ship/north), V flips VIEW (ship/scan).
     if (this.input.consumeTap('r')) this.toggleViewMode();
@@ -3222,22 +3338,12 @@ export class GameEngine {
   /** Live ship metadata in the cockpit frame's four corner screens. */
   _renderCornerReadouts() {
     if (!this.cockpitFrame.layout || !this.ship) return;
-    const speed = Math.round(
-      Math.hypot(this.ship.velocity.x, this.ship.velocity.y)
-    );
-    // PREC corner is now the MODES switch stack, drawn by CockpitPanels.
     const kmScale = SCANNER.KM_SCALE || 100;
     const scanZoomText =
       this.scanView === 'scan' && this.scannerSystem?.on
         ? `${Math.round((this.scannerSystem.plotRange || 0) / kmScale)}km`
         : `${this.camera.displayZoom().toFixed(2)}x`;
     this.cockpitFrame.drawCorners(this.renderer.ctx, {
-      SPD: { text: `${speed}` },
-      POS: {
-        text: `${Math.round(this.ship.position.x)}, ${Math.round(
-          this.ship.position.y
-        )}`,
-      },
       ZOOM: { text: scanZoomText },
     });
   }
@@ -3329,6 +3435,8 @@ export class GameEngine {
 
     if (this.cockpitPanels.handleClick(x, y, this)) return;
 
+    if (this.cockpitPanels.trySectorMapClick(this, x, y, !!click.shiftKey)) return;
+
     if (distC <= this.renderer.scannerOuterRadius) {
       if (this.scannerSystem.on) {
         const tol = this.scanView === 'scan'
@@ -3342,6 +3450,18 @@ export class GameEngine {
     if (distC <= this.renderer.poiOuterRadius) {
       this._selectPoiAt(x, y);
     }
+  }
+
+  /** Route space-cockpit RMB on cockpit panels (travel log rename menu). */
+  _processCockpitRightClicks() {
+    const click = this.input.consumeRightClickPos();
+    if (!click) return;
+    const { x, y } = click;
+    const dx = x - this.renderer.centerX;
+    const dy = y - this.renderer.centerY;
+    const distC = Math.hypot(dx, dy);
+    if (this.scanView !== 'scan' && distC <= this.renderer.viewportRadius) return;
+    this.cockpitPanels.handleRightClick(x, y, this);
   }
 
   _selectPoiAt(x, y) {
@@ -3361,10 +3481,9 @@ export class GameEngine {
         best = poi;
       }
     }
-    this.poiSystem.selectedId = best ? best.id : null;
+    this.selectPoi(best ? best.id : null);
   }
 
-  /** Scanner Output Screen ring: model update + radar render. */
   _renderScanner() {
     const r = this.renderer;
     if (!r.scannerBand || !this.ship) return;
@@ -3392,14 +3511,11 @@ export class GameEngine {
     // POI discovery (proximity) + sector-map fog reveal ride the scan.
     this.poiSystem.update({
       ship: this.ship,
-      station: this.station,
-      scanRange: this.scannerSystem.on ? this.scannerSystem.range : 0,
+      onDiscover: () => this.persistNavProfile(),
     });
     this.sectorMap.update({
       ship: this.ship,
       scanRange: this.scannerSystem.on ? this.scannerSystem.range : 0,
-      contacts: this.scannerSystem.contacts,
-      pois: this.poiSystem.list,
     });
 
     this.scanner.render(r.ctx, {

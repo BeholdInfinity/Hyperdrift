@@ -2,12 +2,14 @@ import { Entity } from './Entity.js';
 import { Vec2 } from '../utils/MathUtils.js';
 
 export class Asteroid extends Entity {
-  constructor(x, y, radius, hp, seed) {
+  constructor(x, y, radius, hp, seed, composition = 'silicate') {
     super(x, y);
     this.radius = radius;
     this.maxHp = hp;
     this.hp = hp;
     this.seed = seed;
+    /** Harvest tag: iron | ice | silicate | carbonaceous | rare | volatile | … */
+    this.composition = composition;
     this.vertices = this._generateVertices();
     this.rotationSpeed = (seed % 100) / 100 * 0.8 - 0.4;
     this.mass = radius * radius * 0.01;

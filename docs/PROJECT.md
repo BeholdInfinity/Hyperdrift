@@ -64,6 +64,8 @@ src/
     Scanner.js            Scanner ring/scope renderer (silhouettes, IFF, sweep, nose/tail, chevrons)
     CockpitFrame.js       Cached 16:9 steel/copper HUD chrome + POI rim dots + corners (CONTACT DETAILS / CONTACTS / …)
     CockpitPanels.js      Live content for the 6 cockpit screens + CONTACTS filters (list + scanner blips) + status alert overlay
+    SectorMapView.js      Sector map pan/zoom/follow + screen↔world mapping
+    SectorMapPanel.js     LIVE / TRAVEL LOG map draw + travel log UI
     PipSystem.js          Global power-pip pool (per-channel allocation)
   entities/
     Ship.js, ShipController.js, ShipHardpoints.js (legacy mount fallback; starter matches)
@@ -74,7 +76,7 @@ src/
     data/visualTuning.js, data/mountLayouts.js   Dev bake targets
     index.js              Modular ship public API
   dev/
-    DevTools.js, DevSave.js, DevOverlay.js, DevPanelDrag.js, BlueprintAuthoring.js, HangarLayoutEditor.js
+    DevTools.js, DevSave.js, DevOverlay.js, DevPanelDrag.js, BlueprintAuthoring.js, HangarLayoutEditor.js, DevSectorEditor.js
   world/
     hangar-layout.js      Flavor props / linger / gossip (Dev bake target)
     place/                Place → Area → Feature registry (stations, ships, outposts, vessels)
@@ -87,7 +89,11 @@ src/
     NpcPilot.js           Shared Newtonian thruster pilot (holds, police hex, ambient burns)
     Station.js            Jennings Station overworld exterior + dock zones
     PoiSystem.js          POI address book + waypoint tracker (4 discovery sources)
-    SectorMap.js          Dual-level fog-of-war grid + scan trail for the sector map
+    SectorMap.js          Expedition fog-of-war + trail sampling
+    TravelLog.js          Archived expedition trails (rename, lock, map overlays)
+    NavPersistence.js     localStorage POI Book + Travel Log
+    SectorLayout.js       Ring sampling + composition for proc gen
+    data/sectorLayout.js  Baked planet + rings + fixed POIs (Dev save target)
   utils/
     MathUtils.js, SeededRandom.js
 ```
@@ -184,9 +190,7 @@ src/
 - Ambient miner asteroid damage (visual cue only today)
 
 ### Scanner → Cockpit HUD follow-ups (v0.1.283 slice)
-The Scanner → Pilot Cockpit HUD vertical slice shipped and runs clean, but several plan items were only scaffolded or partially done. **Design decision:** blip encoding is **color = IFF, shape = contact type** (we intentionally dropped the plan's "IFF is color AND shape" accessibility rule — ship contacts share the ship silhouette and differ only by IFF color).
-
-Quick wins first:
+Many v0.1.283 scanner/cockpit items are **done** (sector map pan/zoom, Travel Log, expedition persistence, map pick, waypoints, telemetry move). Remaining polish:
 - **Thicken sensor-ring inner border** so visual contacts ride a thicker border matching the outer POI rim (today dots sit on the thin `viewportRadius` edge) — `src/systems/Scanner.js` `_drawBand`, maybe `src/systems/Renderer.js`
 - **In-world highlight of the selected contact** — selection highlights only the scanner blip; the in-world ship isn't highlighted, and the highlight should hand off blip ↔ ship as the contact crosses visual range — `src/core/GameEngine.js` render path + `AmbientTrafficSystem.render`
 - **Selected-POI distance in the viewport** — a selected POI's distance shows only in the Destination panel; draw it in-viewport like contacts — `src/systems/Scanner.js` `_drawSelection` (POI variant) or `GameEngine._renderScanner`
@@ -195,12 +199,12 @@ Quick wins first:
 Scaffolds that are API-only / stubs:
 - **Highlight-sync API** (pilot/science/weapons) — not built; selection is local (`ScannerSystem.selectedId`), no broadcast/subscribe hook for future officer/multiplayer screens
 - **Comms panel** — HAIL/DOCK/TRADE/END buttons are no-ops (no call/receive/deny/hang-up); plan tags comms future, low priority — `src/systems/CockpitPanels.js` `_comms`
-- **POI discovery channels** — only **proximity** auto-fires; `mission` / `manual` / `purchase` exist as `PoiSystem` API (`register(..., source)`, `addManualWaypoint`) but nothing triggers them in-game (e.g. no manual waypoint-drop input) — `src/world/PoiSystem.js` + a UI/input trigger
+- **POI discovery channels** — proximity + **Shift+click** manual waypoints on Sector Map; `mission` / `purchase` still API-only
 - **Dev SCANNER "bake to constants" + fake-contacts toggle** — drawer has live sliders/toggles + readout, but no bake-to-`Constants.js` button and no placeholder-contact spawner — `index.html` (dev-drawer SCANNER), `src/main.js`, `src/dev/DevTools.js`
 
 Cosmetic / lower priority:
 - **Ship Status is a list, not a schematic** — plan preferred a small ship-schematic damage map; `ship.status` is a stub (systems list, fuel, fires[], weapons) with placeholder values; nothing writes real damage/fuel/ammo yet — `src/systems/CockpitPanels.js` `_shipStatus`, `GameEngine._ensureShipStatus`
-- **Sector map doesn't emphasize the selected contact** (selected POI is highlighted; contacts are plain dots) — `src/systems/CockpitPanels.js` `_sectorMap`
+- **Sector map doesn't emphasize the selected contact** — partial: map halos added; in-world highlight still open
 - **No "objects"/debris contact type** — only asteroids fill the non-AI object slot (off by default; dev toggle on)
 - **Station selection shows no top-down render** (station has no `shipDef`) — expected; add a station glyph if desired
 

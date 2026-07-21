@@ -1,6 +1,7 @@
 import { SeededRandom, hashCoords } from '../utils/SeededRandom.js';
 import { WORLD } from '../core/Constants.js';
 import { Asteroid } from '../entities/Asteroid.js';
+import { ringAt, pickCompositionTag, ringDensityMultiplier, isInsidePlayableSector } from '../world/SectorLayout.js';
 
 export class ProceduralGeneration {
   constructor(seed = WORLD.SEED) {
@@ -17,11 +18,18 @@ export class ProceduralGeneration {
       starDensity: rng.range(0.5, 1.5),
     };
 
+    const cx = chunk.x * WORLD.CHUNK_SIZE + WORLD.CHUNK_SIZE / 2;
+    const cy = chunk.y * WORLD.CHUNK_SIZE + WORLD.CHUNK_SIZE / 2;
+    if (!isInsidePlayableSector(cx, cy)) {
+      return chunk;
+    }
+
+    const densityMult = ringDensityMultiplier(cx, cy);
     const regionType = rng.next();
 
-    if (regionType < 0.15) {
+    if (regionType < 0.15 * densityMult) {
       this._generateDenseAsteroidField(chunk, rng);
-    } else if (regionType < 0.45) {
+    } else if (regionType < 0.45 * densityMult) {
       this._generateSparseAsteroidField(chunk, rng);
     }
 
@@ -44,7 +52,9 @@ export class ProceduralGeneration {
       const radius = rng.range(12, 40);
       const hp = Math.ceil(radius / 5);
       const seed = rng.int(1, 99999);
-      chunk.asteroids.push(new Asteroid(x, y, radius, hp, seed));
+      const ring = ringAt(x, y);
+      const composition = pickCompositionTag(rng, ring);
+      chunk.asteroids.push(new Asteroid(x, y, radius, hp, seed, composition));
     }
   }
 
@@ -66,7 +76,9 @@ export class ProceduralGeneration {
         const radius = rng.range(8, 35);
         const hp = Math.ceil(radius / 4);
         const seed = rng.int(1, 99999);
-        chunk.asteroids.push(new Asteroid(x, y, radius, hp, seed));
+        const ring = ringAt(x, y);
+        const composition = pickCompositionTag(rng, ring);
+        chunk.asteroids.push(new Asteroid(x, y, radius, hp, seed, composition));
       }
     }
   }

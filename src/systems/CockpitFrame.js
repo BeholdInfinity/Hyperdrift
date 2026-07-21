@@ -53,7 +53,7 @@ const PANEL_LABELS = {
   left: ['CONTACT DETAILS', 'CONTACTS', 'COMMS'],
   right: ['DESTINATION', 'SECTOR MAP', 'POWER'],
 };
-const CORNER_LABELS = ['SPD', 'POS', 'ZOOM', 'MODES'];
+const CORNER_LABELS = ['', '', 'ZOOM', 'MODES'];
 
 export class CockpitFrame {
   constructor() {
@@ -71,7 +71,7 @@ export class CockpitFrame {
    */
   render(ctx, r) {
     if (!r.hudRect || !r.scannerBand) return;
-    const key = `${r.width}x${r.height}|${Math.round(r.scannerOuterRadius)}|cd2`;
+    const key = `${r.width}x${r.height}|${Math.round(r.scannerOuterRadius)}|cd13`;
     if (key !== this._key || !this.cache) {
       this._build(r);
       this._key = key;
@@ -138,13 +138,14 @@ export class CockpitFrame {
     for (const rect of this.layout.corners) {
       const v = values[rect.title];
       if (!v || !v.text) continue;
-      const pad = Math.max(4, Math.min(rect.w, rect.h) * 0.06);
-      const x = rect.x + pad;
-      const w = rect.w - pad * 2;
+      const g = rect.screen || rect;
+      const pad = Math.max(4, Math.min(g.w, g.h) * 0.06);
+      const x = g.x + pad;
+      const w = g.w - pad * 2;
       const cxv = x + w / 2;
-      const yv = rect.y + pad + (rect.h - pad * 2) * 0.64;
+      const yv = g.y + pad + (g.h - pad * 2) * 0.64;
       // Auto-fit so long values (e.g. POS coords) stay inside the screen.
-      let fs = Math.max(12, Math.min(rect.h * 0.26, 22));
+      let fs = Math.max(12, Math.min(g.h * 0.26, 22));
       ctx.font = `700 ${fs}px 'Barlow Condensed', 'Segoe UI', sans-serif`;
       let tw = ctx.measureText(v.text).width;
       const maxW = w * 0.9;
@@ -174,39 +175,107 @@ export class CockpitFrame {
     const leftW = colLX - hud.x;
     const rightW = hud.x + hud.w - colRX;
     const third = hud.h / 3;
+    const cell = Math.min(leftW, rightW, third);
+    const screwInset = Math.max(4, Math.round(cell * 0.024));
+    const screwR = Math.max(3.5, cell * 0.022);
+    const screwGap = 2;
+    const screenInset = Math.round(screwInset + screwR + screwGap);
+
+    const addPanel = (x, y, w, h, title) => {
+      const region = { x, y, w, h, title, screwR };
+      const s = {
+        x: x + screenInset,
+        y: y + screenInset,
+        w: w - screenInset * 2,
+        h: h - screenInset * 2,
+      };
+      region.screen = s;
+      region.screwPts = this._screwCentersForPanel(x, y, w, h, s);
+      return region;
+    };
 
     const panels = [];
     for (let i = 0; i < 3; i++) {
-      panels.push({
-        x: hud.x,
-        y: hud.y + i * third,
-        w: leftW,
-        h: third,
-        title: PANEL_LABELS.left[i],
-      });
+      panels.push(addPanel(hud.x, hud.y + i * third, leftW, third, PANEL_LABELS.left[i]));
     }
     for (let i = 0; i < 3; i++) {
-      panels.push({
-        x: colRX,
-        y: hud.y + i * third,
-        w: rightW,
-        h: third,
-        title: PANEL_LABELS.right[i],
-      });
+      panels.push(
+        addPanel(colRX, hud.y + i * third, rightW, third, PANEL_LABELS.right[i]),
+      );
     }
 
-    // Four corner screens tucked into the corners of the center square, sized
-    // to stay fully outside the ring circle (s ≤ circleR·(1 − 1/√2)).
-    const cs = circleR * 0.26;
-    const m = Math.max(6, circleR * 0.03);
-    const corners = [
-      { x: colLX + m, y: hud.y + m, w: cs, h: cs, title: CORNER_LABELS[0] },
-      { x: colRX - m - cs, y: hud.y + m, w: cs, h: cs, title: CORNER_LABELS[1] },
-      { x: colLX + m, y: hud.y + hud.h - m - cs, w: cs, h: cs, title: CORNER_LABELS[2] },
-      { x: colRX - m - cs, y: hud.y + hud.h - m - cs, w: cs, h: cs, title: CORNER_LABELS[3] },
-    ];
+    // Four corner readouts in the center column — same metal band as side panels.
+    const corners = this._layoutCornerScreens(
+      hud,
+      cx,
+      cy,
+      colLX,
+      colRX,
+      circleR,
+      screenInset,
+    );
 
-    return { cx, cy, hud, circleR, scannerOuterR, colLX, colRX, panels, corners };
+    return {
+      cx,
+      cy,
+      hud,
+      circleR,
+      scannerOuterR,
+      colLX,
+      colRX,
+      panels,
+      corners,
+      screenInset,
+    };
+  }
+
+  /**
+   * Max square glass size in a center-column quadrant with `band` inset from
+   * area borders and from the POI ring (outer radius `circleR`).
+   */
+  _maxCornerScreenSize(circleR, band) {
+    const byBox = circleR - band * 2;
+    const byRing = circleR - band - (circleR + band) / Math.SQRT2;
+    return Math.max(8, Math.floor(Math.min(byBox, byRing)));
+  }
+
+  _layoutCornerScreens(hud, cx, cy, colLX, colRX, circleR, band) {
+    const S = this._maxCornerScreenSize(circleR, band);
+    const bottom = hud.y + hud.h;
+    const mk = (regionX, regionY, screen, title) => ({
+      x: regionX,
+      y: regionY,
+      w: circleR,
+      h: circleR,
+      title,
+      screen,
+    });
+    return [
+      mk(
+        colLX,
+        hud.y,
+        { x: colLX + band, y: hud.y + band, w: S, h: S },
+        CORNER_LABELS[0],
+      ),
+      mk(
+        cx,
+        hud.y,
+        { x: colRX - band - S, y: hud.y + band, w: S, h: S },
+        CORNER_LABELS[1],
+      ),
+      mk(
+        colLX,
+        cy,
+        { x: colLX + band, y: bottom - band - S, w: S, h: S },
+        CORNER_LABELS[2],
+      ),
+      mk(
+        cx,
+        cy,
+        { x: colRX - band - S, y: bottom - band - S, w: S, h: S },
+        CORNER_LABELS[3],
+      ),
+    ];
   }
 
   _build(r) {
@@ -229,27 +298,30 @@ export class CockpitFrame {
     this._plate(c, hud.x, hud.y, hud.w, hud.h, STEEL.plate0, STEEL.plate1, STEEL.plate2);
     this._brush(c, hud.x, hud.y, hud.w, hud.h);
 
-    // 3. Recessed screens for the six side panels + four corner readouts.
-    for (const p of L.panels) this._screen(c, p, 0.1);
-    for (const q of L.corners) this._screen(c, q, 0.06, true);
+    // 3. Side panel glass (max size, thin brushed-metal margin).
+    for (const p of L.panels) this._panelScreen(c, p);
+    for (const q of L.corners) this._panelScreen(c, q);
 
-    // 4. Structural seams: column dividers + horizontal thirds (drawn once).
+    // 4. Structural seams between panel regions (no extra inset from viewport).
     const third = hud.h / 3;
     for (let i = 1; i < 3; i++) {
       const y = hud.y + i * third;
-      this._seam(c, hud.x, y, L.colLX - hud.x, 0); // left column
-      this._seam(c, L.colRX, y, hud.x + hud.w - L.colRX, 0); // right column
+      this._seam(c, hud.x, y, L.colLX - hud.x, 0);
+      this._seam(c, L.colRX, y, hud.x + hud.w - L.colRX, 0);
     }
-    this._seam(c, L.colLX, hud.y, 0, hud.h); // left divider
-    this._seam(c, L.colRX, hud.y, 0, hud.h); // right divider
+    this._seam(c, L.colLX, hud.y, 0, hud.h);
+    this._seam(c, L.colRX, hud.y, 0, hud.h);
 
     // 5. POI waypoint rim (annulus scannerOuterR → circleR) with a dot track.
     this._poiRim(c, cx, cy, scannerOuterR, circleR);
 
-    // 6. Outer 16:9 border frame with copper inlay + corner rivets.
-    this._border(c, hud);
+    // 6. Outer 16:9 copper stroke (disabled — may revert).
+    // this._border(c, hud);
 
-    // 7. Punch the scanner/viewport hole so the live radar shows through.
+    // 7. Thumb screws on the four corners of each side panel region (on top of seams).
+    for (const p of L.panels) this._panelThumbScrews(c, p);
+
+    // 8. Punch the scanner/viewport hole so the live radar shows through.
     c.save();
     c.globalCompositeOperation = 'destination-out';
     c.beginPath();
@@ -257,7 +329,7 @@ export class CockpitFrame {
     c.fill();
     c.restore();
 
-    // 8. Copper bezel around the punched hole — stroke fully outside so it
+    // 9. Copper bezel around the punched hole — stroke fully outside so it
     // does not eat the outer scanner band (outermost pip range / divider).
     const bezelW = Math.max(2, circleR * 0.012);
     c.beginPath();
@@ -295,7 +367,188 @@ export class CockpitFrame {
     c.restore();
   }
 
-  /** Inset recessed glass screen with cyan glow + copper title tab. */
+  /** Match `_panelScreen` corner radius so layout tracks visible glass. */
+  _panelScreenRadius(s) {
+    return Math.min(8, s.w * 0.04, s.h * 0.04);
+  }
+
+  /**
+   * Shortest distance from (x,y) to the outline of an axis-aligned round-rect
+   * (exterior — point is assumed outside the glass).
+   */
+  _distToRoundRectBoundary(x, y, sx, sy, sw, sh, rad) {
+    const rr = Math.min(rad, sw / 2, sh / 2);
+    const left = sx;
+    const right = sx + sw;
+    const top = sy;
+    const bottom = sy + sh;
+
+    if (x < left + rr && y < top + rr) {
+      return Math.hypot(x - (left + rr), y - (top + rr)) - rr;
+    }
+    if (x > right - rr && y < top + rr) {
+      return Math.hypot(x - (right - rr), y - (top + rr)) - rr;
+    }
+    if (x < left + rr && y > bottom - rr) {
+      return Math.hypot(x - (left + rr), y - (bottom - rr)) - rr;
+    }
+    if (x > right - rr && y > bottom - rr) {
+      return Math.hypot(x - (right - rr), y - (bottom - rr)) - rr;
+    }
+    if (x < left && y >= top + rr && y <= bottom - rr) return left - x;
+    if (x > right && y >= top + rr && y <= bottom - rr) return x - right;
+    if (y < top && x >= left + rr && x <= right - rr) return top - y;
+    if (y > bottom && x >= left + rr && x <= right - rr) return y - bottom;
+    return 0;
+  }
+
+  /**
+   * Screw center: equal distance to the two area border lines and to the
+   * rounded screen outline (bisector of the two borders, not square midpoint).
+   */
+  _screwEquidistant(corner, px, py, pw, ph, s) {
+    const rad = this._panelScreenRadius(s);
+    const rx = px + pw;
+    const by = py + ph;
+    let maxD;
+    /** @param {number} d */
+    const at = (d) => {
+      switch (corner) {
+        case 'tl':
+          return [px + d, py + d];
+        case 'tr':
+          return [rx - d, py + d];
+        case 'bl':
+          return [px + d, by - d];
+        default:
+          return [rx - d, by - d];
+      }
+    };
+    switch (corner) {
+      case 'tl':
+        maxD = Math.min(s.x - px, s.y - py);
+        break;
+      case 'tr':
+        maxD = Math.min(rx - (s.x + s.w), s.y - py);
+        break;
+      case 'bl':
+        maxD = Math.min(s.x - px, by - (s.y + s.h));
+        break;
+      default:
+        maxD = Math.min(rx - (s.x + s.w), by - (s.y + s.h));
+        break;
+    }
+    maxD = Math.max(0.5, maxD * 0.98);
+    const distAt = (d) => {
+      const [x, y] = at(d);
+      return this._distToRoundRectBoundary(x, y, s.x, s.y, s.w, s.h, rad);
+    };
+    let lo = 0;
+    let hi = maxD;
+    for (let i = 0; i < 28; i++) {
+      const mid = (lo + hi) * 0.5;
+      if (distAt(mid) - mid > 0) lo = mid;
+      else hi = mid;
+    }
+    const d = (lo + hi) * 0.5;
+    return at(d);
+  }
+
+  _screwCentersForPanel(px, py, pw, ph, s) {
+    return [
+      this._screwEquidistant('tl', px, py, pw, ph, s),
+      this._screwEquidistant('tr', px, py, pw, ph, s),
+      this._screwEquidistant('bl', px, py, pw, ph, s),
+      this._screwEquidistant('br', px, py, pw, ph, s),
+    ];
+  }
+
+  /** Large centered glass for one of the six side panel regions. */
+  _panelScreen(c, panel) {
+    const s = panel.screen;
+    if (!s || s.w <= 8 || s.h <= 8) return;
+    const x = s.x;
+    const y = s.y;
+    const w = s.w;
+    const h = s.h;
+    const rad = this._panelScreenRadius(s);
+
+    const g = c.createLinearGradient(0, y, 0, y + h);
+    g.addColorStop(0, SCREEN.glass0);
+    g.addColorStop(1, SCREEN.glass1);
+    this._roundRect(c, x, y, w, h, rad);
+    c.fillStyle = g;
+    c.fill();
+
+    c.save();
+    this._roundRect(c, x, y, w, h, rad);
+    c.clip();
+    const rg = c.createRadialGradient(x + w / 2, y, 0, x + w / 2, y, h * 1.1);
+    rg.addColorStop(0, SCREEN.glow);
+    rg.addColorStop(1, 'rgba(0,0,0,0)');
+    c.fillStyle = rg;
+    c.fillRect(x, y, w, h);
+    c.strokeStyle = SCREEN.scan;
+    c.lineWidth = 1;
+    for (let yy = y + 3; yy < y + h; yy += 4) {
+      c.beginPath();
+      c.moveTo(x, yy + 0.5);
+      c.lineTo(x + w, yy + 0.5);
+      c.stroke();
+    }
+    c.restore();
+
+    this._roundRect(c, x, y, w, h, rad);
+    c.strokeStyle = SCREEN.edge;
+    c.lineWidth = 1;
+    c.stroke();
+
+    if (panel.title) {
+      const fs = Math.max(10, Math.min(14, w * (panel.title.length > 12 ? 0.07 : 0.085)));
+      c.font = `600 ${fs}px 'Barlow Condensed', 'Segoe UI', sans-serif`;
+      c.fillStyle = SCREEN.label;
+      c.shadowColor = COPPER.glow;
+      c.shadowBlur = 3;
+      c.textAlign = 'left';
+      c.textBaseline = 'top';
+      c.fillText(panel.title, x + 8, y + 5);
+      c.shadowBlur = 0;
+    }
+  }
+
+  _panelThumbScrews(c, panel) {
+    const r = panel.screwR ?? Math.max(3.5, Math.min(panel.w, panel.h) * 0.022);
+    let pts = panel.screwPts;
+    if (!pts?.length && panel.screen) {
+      pts = this._screwCentersForPanel(panel.x, panel.y, panel.w, panel.h, panel.screen);
+    }
+    if (!pts?.length) return;
+    for (const [px, py] of pts) this._thumbScrew(c, px, py, r);
+  }
+
+  _thumbScrew(c, x, y, r) {
+    const g = c.createRadialGradient(x - r * 0.35, y - r * 0.35, 0, x, y, r);
+    g.addColorStop(0, '#d8dde3');
+    g.addColorStop(0.45, '#7a848e');
+    g.addColorStop(1, '#2a3038');
+    c.fillStyle = g;
+    c.beginPath();
+    c.arc(x, y, r, 0, TWO_PI);
+    c.fill();
+    c.strokeStyle = 'rgba(0,0,0,0.55)';
+    c.lineWidth = 1;
+    c.stroke();
+    c.strokeStyle = 'rgba(0,0,0,0.65)';
+    c.lineWidth = Math.max(1, r * 0.22);
+    c.beginPath();
+    c.moveTo(x - r * 0.55, y);
+    c.lineTo(x + r * 0.55, y);
+    c.moveTo(x, y - r * 0.55);
+    c.lineTo(x, y + r * 0.55);
+    c.stroke();
+  }
+
+  /** Inset recessed glass screen with cyan glow + copper title tab (corner readouts). */
   _screen(c, rect, inset, compact = false) {
     const pad = Math.max(4, Math.min(rect.w, rect.h) * inset);
     const x = rect.x + pad;
@@ -418,37 +671,15 @@ export class CockpitFrame {
   }
 
   _border(c, hud) {
-    const t = Math.max(10, Math.round(hud.h * 0.018));
-    // Beveled steel frame: bright top/left plate, dark bottom/right.
-    c.save();
-    // Outer dark line.
-    c.strokeStyle = STEEL.housing1;
-    c.lineWidth = t + 4;
-    c.strokeRect(hud.x, hud.y, hud.w, hud.h);
-    // Steel plate frame.
-    c.strokeStyle = STEEL.plate0;
-    c.lineWidth = t;
-    c.strokeRect(hud.x, hud.y, hud.w, hud.h);
-    // Highlight + shadow bevel lines.
-    c.strokeStyle = STEEL.edgeHi;
-    c.lineWidth = 1.5;
-    c.strokeRect(hud.x + t / 2, hud.y + t / 2, hud.w - t, hud.h - t);
-    // Copper inlay just inside the frame.
+    const copperW = 2;
     c.strokeStyle = COPPER.line;
-    c.lineWidth = 2;
-    c.strokeRect(hud.x + t + 2, hud.y + t + 2, hud.w - 2 * (t + 2), hud.h - 2 * (t + 2));
-    c.restore();
-
-    // Corner rivets.
-    const rv = Math.max(3, t * 0.32);
-    const off = t * 0.9;
-    const pts = [
-      [hud.x + off, hud.y + off],
-      [hud.x + hud.w - off, hud.y + off],
-      [hud.x + off, hud.y + hud.h - off],
-      [hud.x + hud.w - off, hud.y + hud.h - off],
-    ];
-    for (const [px, py] of pts) this._rivet(c, px, py, rv);
+    c.lineWidth = copperW;
+    c.strokeRect(
+      hud.x + copperW / 2,
+      hud.y + copperW / 2,
+      hud.w - copperW,
+      hud.h - copperW,
+    );
   }
 
   _rivet(c, x, y, r) {

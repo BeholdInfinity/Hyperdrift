@@ -3,6 +3,11 @@ import { Settings } from './core/Settings.js';
 import { SCANNER } from './core/Constants.js';
 import { DevTools } from './dev/DevTools.js';
 import {
+  sectorEditorDraft,
+  randomizePlanetLook,
+  bakeSectorLayout,
+} from './dev/DevSectorEditor.js';
+import {
   enableDevPanelDrag,
   saveDevPanelPositions,
   restoreDevPanelPositions,
@@ -943,6 +948,18 @@ document.getElementById('dev-scan-mk')?.addEventListener('input', (e) => {
 });
 document.getElementById('dev-scan-range')?.addEventListener('input', (e) => {
   if (engine.scannerSystem) engine.scannerSystem.rangeScale = Number(e.target.value) || 1;
+});
+
+document.getElementById('dev-sector-planet-r')?.addEventListener('input', (e) => {
+  sectorEditorDraft.planet.radius = Number(e.target.value) || 12000;
+});
+document.getElementById('dev-sector-randomize')?.addEventListener('click', () => {
+  randomizePlanetLook();
+  DevTools.status = `Sector: seed ${sectorEditorDraft.planet.visualSeed}`;
+});
+document.getElementById('dev-sector-save')?.addEventListener('click', async () => {
+  const res = await bakeSectorLayout();
+  DevTools.status = res.ok ? 'Sector layout saved' : res.error || 'Sector save failed';
 });
 
 function wireTuneSlider(id, key) {

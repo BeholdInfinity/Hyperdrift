@@ -17,8 +17,9 @@
  * contacts (inner-ring dots, PORT only) track live every frame — no sweep wait.
  * Arms scale with tier up to `SWEEP_ARM_MAX` (3); pips 4–5 raise sweep speed.
  *
- * Full SCAN wheel zoom steps `plotZoom` (1…tier): the scope remaps to that many
- * pip rings while detection still uses the full sensor tier.
+ * Full SCAN wheel zoom steps `plotZoom` (1…tier); PORT ring uses the same
+ * plot zoom so VIEW toggles keep the local range. Detection still uses full
+ * sensor tier.
  *
  * Plot radius uses a piecewise pip map (near space gets more display radius).
  */
@@ -243,8 +244,8 @@ export class ScannerSystem {
       this.plotZoom = this.tier;
     }
     this._prevTier = this.tier;
-    const plotN = ctx.fullScope ? this.plotZoom : this.tier;
-    this._rebuildRangeBreaks(plotN);
+    // Shared plot zoom for PORT ring and full SCAN (wheel only steps it in SCAN).
+    this._rebuildRangeBreaks(this.plotZoom);
 
     this._prevSweep = this.sweepAngle;
     if (this.on) this.sweepAngle = (this.sweepAngle + this.sweepSpeed() * dt) % TWO_PI;

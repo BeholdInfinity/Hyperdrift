@@ -88,6 +88,9 @@ export class Scanner {
     );
     this._drawChevrons(ctx, cx, cy, innerR, outerR, telemetryBand, ship, cameraRotation, false, fullScope);
     this._drawChevrons(ctx, cx, cy, innerR, outerR, telemetryBand, ship, cameraRotation, true, fullScope);
+    this._drawSpeedLabel(
+      ctx, cx, cy, innerR, outerR, telemetryBand, ship, cameraRotation, fullScope
+    );
 
     if (model?.on) {
       if (!fullScope && innerR > 0.5) {
@@ -526,6 +529,43 @@ export class Scanner {
       ctx.stroke();
       ctx.restore();
     }
+  }
+
+  /** Speed on the velocity ray, just inside the inner blue ring — leads into the chevron stack. */
+  _drawSpeedLabel(ctx, cx, cy, innerR, outerR, band, ship, rot, fullScope = false) {
+    const vx = ship.velocity?.x ?? 0;
+    const vy = ship.velocity?.y ?? 0;
+    const speed = Math.hypot(vx, vy);
+    if (speed < 1) return;
+
+    const vb = Math.atan2(vy, vx) + rot;
+    const cs = Math.min(band * 0.085, 12);
+    const gap = cs * 2.1;
+    const fs = Math.max(11, Math.min(14, cs * 1.05));
+    const label = `${Math.round(speed)}`;
+
+    let r;
+    if (fullScope || innerR <= 0.5) {
+      const r0 = Math.max(0, outerR - band * 0.76);
+      r = Math.max(22, r0 - gap * 0.55);
+    } else {
+      // Same ray as forward chevrons (r0 = innerR + band * 0.24); tuck label barely inside the blue stroke.
+      const ringStroke = 1.5;
+      r = innerR - ringStroke - gap * 0.12 - fs * 0.38;
+      r = Math.max(innerR * 0.38, r);
+    }
+
+    const px = cx + Math.cos(vb) * r;
+    const py = cy + Math.sin(vb) * r;
+    ctx.save();
+    ctx.font = `700 ${fs}px 'Barlow Condensed', 'Segoe UI', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(240, 248, 255, 0.88)';
+    ctx.shadowColor = 'rgba(210, 232, 255, 0.6)';
+    ctx.shadowBlur = 3;
+    ctx.fillText(label, px, py);
+    ctx.restore();
   }
 
   _drawOffline(ctx, cx, cy, innerR, outerR, band) {

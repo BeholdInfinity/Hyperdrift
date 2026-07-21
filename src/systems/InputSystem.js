@@ -33,6 +33,8 @@ export class InputSystem {
     this._clickPending = false;
     /** Space cockpit: last LMB-up screen point (consumed via consumeClickPos). */
     this._clickPos = null;
+    /** Space cockpit: last RMB-up screen point (consumed via consumeRightClickPos). */
+    this._rightClickPos = null;
 
     this._burst = Object.fromEntries(
       BURST_KEYS.map((k) => [k, { lastPress: -Infinity, armed: false }])
@@ -217,12 +219,15 @@ export class InputSystem {
         this._clickPending = true;
       }
       if (this.enabled && !this.paused && !this._pan.dragged) {
-        this._clickPos = { x: e.clientX, y: e.clientY };
+    this._clickPos = { x: e.clientX, y: e.clientY, shiftKey: e.shiftKey };
       }
       this.mouseDown = false;
       this._pan.tracking = false;
     }
     if (e.button === 2) this.mouseRightDown = false;
+    if (e.button === 2 && this.enabled && !this.paused) {
+      this._rightClickPos = { x: e.clientX, y: e.clientY };
+    }
   }
 
   _onMouseMove(e) {
@@ -317,6 +322,13 @@ export class InputSystem {
   consumeClickPos() {
     const v = this._clickPos;
     this._clickPos = null;
+    return v;
+  }
+
+  /** Space cockpit: consume the last RMB-up screen point (or null). */
+  consumeRightClickPos() {
+    const v = this._rightClickPos;
+    this._rightClickPos = null;
     return v;
   }
 

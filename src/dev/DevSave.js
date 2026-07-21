@@ -8,6 +8,7 @@ const ALLOWED = new Set([
   'src/ships/data/mountLayouts.js',
   'src/world/hangar-layout.js',
   'src/ui/title-layout.js',
+  'src/world/data/sectorLayout.js',
 ]);
 
 /**
@@ -65,4 +66,5 @@ export const SAVE_PATHS = {
   mountLayouts: 'src/ships/data/mountLayouts.js',
   hangarLayout: 'src/world/hangar-layout.js',
   titleLayout: 'src/ui/title-layout.js',
+  sectorLayout: 'src/world/data/sectorLayout.js',
 };

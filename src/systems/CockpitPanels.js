@@ -11,6 +11,14 @@
 import { IFF, PIPS } from '../core/Constants.js';
 import { drawModularShip } from '../ships/ShipRenderer.js';
 import { topDownView } from '../ships/ShipViews.js';
+import {
+  drawSectorMapPanel,
+  sectorMapClick,
+  sectorMapRightClick,
+  drawPoiPinContextMenu,
+  travelLogArchiveRowSlots,
+} from './SectorMapPanel.js';
+import { stepTravelLogListScroll } from '../world/TravelLogTable.js';
 
 const FONT = "'Barlow Condensed', 'Segoe UI', sans-serif";
 const TXT = 'rgba(200, 224, 246, 0.9)';
@@ -20,15 +28,24 @@ const ACCENT = 'rgba(120, 200, 255, 0.85)';
 
 export class CockpitPanels {
   constructor() {
-    this.tabs = { destination: 0, power: 0 };
+    this.tabs = { destination: 0, power: 0, sector: 0 };
+    this._mapDragTracking = false;
     /** @type {Array<{x:number,y:number,w:number,h:number,action:Function}>} */
     this._regions = [];
+    /** @type {Array<{x:number,y:number,w:number,h:number,entryId:string}>} */
+    this._travelLogRightRegions = [];
+    /** @type {Array<{x:number,y:number,w:number,h:number,poiId:string}>} */
+    this._poiBookRightRegions = [];
+    /** @type {null | { poiId: string, x: number, y: number }} */
+    this.poiBookMenu = null;
   }
 
   render(ctx, engine) {
     const layout = engine.cockpitFrame.layout;
     if (!layout || !layout.panels || layout.panels.length < 6) return;
     this._regions = [];
+    this._travelLogRightRegions = [];
+    this._poiBookRightRegions = [];
     const p = layout.panels;
     this._contact(ctx, this._content(p[0]), engine);
     this._contactsList(ctx, this._content(p[1]), engine);
@@ -50,13 +67,14 @@ export class CockpitPanels {
   _modeSwitches(ctx, engine) {
     const corner = engine.cockpitFrame?.layout?.corners?.[3];
     if (!corner) return;
+    const g = corner.screen || corner;
 
-    const pad = Math.max(6, Math.min(corner.w, corner.h) * 0.09);
-    const ix = corner.x + pad;
-    const iw = corner.w - pad * 2;
+    const pad = Math.max(6, Math.min(g.w, g.h) * 0.09);
+    const ix = g.x + pad;
+    const iw = g.w - pad * 2;
     // Rows fill the area below the baked "MODES" title (top ~40%).
-    const top = corner.y + corner.h * 0.42;
-    const bottom = corner.y + corner.h - pad;
+    const top = g.y + g.h * 0.42;
+    const bottom = g.y + g.h - pad;
     const rowH = Math.max(20, Math.min(30, (bottom - top) / 4));
 
     // PREC is a two-position switch: OFF ↔ ON (instant engage).
@@ -159,6 +177,15 @@ export class CockpitPanels {
 
   /** Inner content box of a panel screen (below its baked title header). */
   _content(rect) {
+    const s = rect.screen;
+    if (s) {
+      return {
+        x: s.x + 6,
+        y: s.y + 22,
+        w: s.w - 12,
+        h: s.h - 28,
+      };
+    }
     const pad = Math.max(4, Math.min(rect.w, rect.h) * 0.1);
     return {
       x: rect.x + pad + 8,
@@ -168,12 +195,51 @@ export class CockpitPanels {
     };
   }
 
-  _region(x, y, w, h, action) {
-    this._regions.push({ x, y, w, h, action });
+  _region(x, y, w, h, action, opts = {}) {
+    this._regions.push({
+      x,
+      y,
+      w,
+      h,
+      action,
+      travelLogMenu: !!opts.travelLogMenu,
+      sectorMapMenu: !!opts.sectorMapMenu,
+      poiBookMenu: !!opts.poiBookMenu,
+    });
+  }
+
+  _dismissContextMenus(engine, x, y) {
+    const view = engine.sectorMapView;
+    const menuTags = [
+      { open: view?.sectorMapMenu, key: 'sectorMapMenu', clear: () => {
+        view.sectorMapMenu = null;
+      } },
+      { open: view?.travelLogMenu, key: 'travelLogMenu', clear: () => {
+        view.travelLogMenu = null;
+      } },
+      { open: this.poiBookMenu, key: 'poiBookMenu', clear: () => {
+        this.poiBookMenu = null;
+      } },
+    ];
+    for (const m of menuTags) {
+      if (!m.open) continue;
+      for (let i = this._regions.length - 1; i >= 0; i--) {
+        const r = this._regions[i];
+        if (!r[m.key]) continue;
+        if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+          r.action(engine);
+          m.clear();
+          return true;
+        }
+      }
+      m.clear();
+    }
+    return false;
   }
 
   /** Route a screen-space click; returns true if consumed. */
   handleClick(x, y, engine) {
+    if (this._dismissContextMenus(engine, x, y)) return true;
     for (let i = this._regions.length - 1; i >= 0; i--) {
       const r = this._regions[i];
       if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
@@ -182,6 +248,53 @@ export class CockpitPanels {
       }
     }
     return false;
+  }
+
+  /** Right-click on travel log rows opens rename menu. */
+  handleRightClick(x, y, engine) {
+    if (engine.sectorMapView?.tabs?.sector === 1) {
+      for (const r of this._travelLogRightRegions) {
+        if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+          engine.sectorMapView.sectorMapMenu = null;
+          engine.sectorMapView.travelLogMenu = { entryId: r.entryId, x, y };
+          this.poiBookMenu = null;
+          return true;
+        }
+      }
+    }
+    if (sectorMapRightClick(engine, x, y)) {
+      engine.sectorMapView.travelLogMenu = null;
+      this.poiBookMenu = null;
+      return true;
+    }
+    if (this._tryPoiBookRightClick(engine, x, y)) {
+      engine.sectorMapView.sectorMapMenu = null;
+      engine.sectorMapView.travelLogMenu = null;
+      return true;
+    }
+    if (engine.sectorMapView?.sectorMapMenu) engine.sectorMapView.sectorMapMenu = null;
+    if (engine.sectorMapView?.travelLogMenu) engine.sectorMapView.travelLogMenu = null;
+    if (this.poiBookMenu) this.poiBookMenu = null;
+    return false;
+  }
+
+  _tryPoiBookRightClick(engine, x, y) {
+    if (this.tabs.destination !== 1) return false;
+    for (const r of this._poiBookRightRegions) {
+      if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
+        this.poiBookMenu = { poiId: r.poiId, x, y };
+        return true;
+      }
+    }
+    return false;
+  }
+
+  registerPoiBookRowRightClick(x, y, w, h, poiId) {
+    this._poiBookRightRegions.push({ x, y, w, h, poiId });
+  }
+
+  registerTravelLogRowRightClick(x, y, w, h, entryId) {
+    this._travelLogRightRegions.push({ x, y, w, h, entryId });
   }
 
   _text(ctx, s, x, y, { size = 14, color = TXT, align = 'left', weight = 600 } = {}) {
@@ -340,7 +453,7 @@ export class CockpitPanels {
           weight: 400,
         });
         const id = c.id;
-        this._region(box.x - 4, ry, box.w + 8, rowH, (e) => e.scannerSystem.select(id));
+        this._region(box.x - 4, ry, box.w + 8, rowH, (e) => e.selectContact(id));
       }
     });
   }
@@ -415,7 +528,8 @@ export class CockpitPanels {
     } else {
       const pois = engine.poiSystem.discovered();
       const rowH = 18;
-      this._clip(ctx, body, () => {
+      const bodyClip = { ...body };
+      this._clip(ctx, bodyClip, () => {
         pois.forEach((poi, i) => {
           const ry = body.y + i * rowH;
           const sel = poi.id === engine.poiSystem.selectedId;
@@ -429,13 +543,33 @@ export class CockpitPanels {
           ctx.arc(body.x + 4, ry + rowH / 2, 3, 0, Math.PI * 2);
           ctx.fill();
           this._text(ctx, poi.name, body.x + 14, ry + 13, { size: 12, weight: 500 });
-          // Ring / Map toggles.
-          this._toggle(ctx, body.x + body.w - 44, ry + 3, 'R', poi.onRing, (e) => e.poiSystem.toggleRing(poi.id));
-          this._toggle(ctx, body.x + body.w - 22, ry + 3, 'M', poi.onMap, (e) => e.poiSystem.toggleMap(poi.id));
-          const id = poi.id;
-          this._region(body.x - 4, ry, body.w - 50, rowH, (e) => e.poiSystem.select(id));
+          const userPin = engine.poiSystem.isUserPin(poi);
+          if (userPin) {
+            this.registerPoiBookRowRightClick(body.x, ry, body.w - 78, rowH, poi.id);
+            this._btnPadlock(ctx, body.x + body.w - 62, ry + 1, poi.locked, (e) => {
+              e.poiSystem.togglePoiLock(poi.id);
+              e.persistNavProfile();
+            });
+            if (!poi.locked) {
+              this._btnDanger(ctx, body.x + body.w - 44, ry + 1, 'X', (e) => {
+                if (e.poiSystem.deletePoi(poi.id)) e.persistNavProfile();
+              });
+            }
+          }
+          this._toggle(ctx, body.x + body.w - 26, ry + 3, 'R', poi.onRing, (e) => {
+            e.poiSystem.toggleRing(poi.id);
+            e.persistNavProfile();
+          });
+          this._toggle(ctx, body.x + body.w - 12, ry + 3, 'M', poi.onMap, (e) => {
+            e.poiSystem.toggleMap(poi.id);
+            e.persistNavProfile();
+          });
+          this._region(body.x - 4, ry, body.w - 78, rowH, (e) => e.selectPoi(poi.id));
         });
       });
+      if (this.poiBookMenu) {
+        drawPoiPinContextMenu(ctx, body, engine, this, this.poiBookMenu, this.poiBookMenu.poiId, 'poiBook');
+      }
     }
   }
 
@@ -457,81 +591,70 @@ export class CockpitPanels {
 
   // ---- 4 SECTOR MAP ------------------------------------------------------
   _sectorMap(ctx, box, engine) {
-    const map = engine.sectorMap;
-    const ship = engine.ship;
-    const span = 70000; // world units across the panel
-    const scale = Math.min(box.w, box.h) / span;
-    const ccx = box.x + box.w / 2;
-    const ccy = box.y + box.h / 2;
-    const cell = map.cellSize;
-    this._clip(ctx, box, () => {
-      // Fog cells.
-      const half = span / 2;
-      const c0x = Math.floor((ship.position.x - half) / cell);
-      const c1x = Math.floor((ship.position.x + half) / cell);
-      const c0y = Math.floor((ship.position.y - half) / cell);
-      const c1y = Math.floor((ship.position.y + half) / cell);
-      const cs = cell * scale;
-      for (let cx = c0x; cx <= c1x; cx++) {
-        for (let cy = c0y; cy <= c1y; cy++) {
-          const lvl = map.cellLevel(cx, cy);
-          if (!lvl) continue;
-          const wx = cx * cell;
-          const wy = cy * cell;
-          const sx = ccx + (wx - ship.position.x) * scale;
-          const sy = ccy + (wy - ship.position.y) * scale;
-          ctx.fillStyle = lvl === 2 ? 'rgba(60, 120, 170, 0.28)' : 'rgba(50, 70, 90, 0.16)';
-          ctx.fillRect(sx, sy, cs + 0.5, cs + 0.5);
-        }
+    drawSectorMapPanel(ctx, box, engine, this);
+  }
+
+  /** @returns {boolean} true if wheel was consumed for map zoom */
+  processSectorMapInput(engine, input, zoomWheel) {
+    const view = engine.sectorMapView;
+    const mx = input.mouseScreen.x;
+    const my = input.mouseScreen.y;
+    if (
+      zoomWheel !== 0 &&
+      view.tabs.sector === 1 &&
+      view.containsTravelLogList(mx, my)
+    ) {
+      const slots = travelLogArchiveRowSlots(view.travelLogListBox, engine);
+      stepTravelLogListScroll(engine, zoomWheel, slots);
+      return true;
+    }
+    if (view.mapBody && view.containsMapPoint(mx, my)) {
+      view.hoverWorld = view.screenToWorld(mx, my, view.mapBody);
+      if (zoomWheel !== 0) {
+        view.stepZoom(zoomWheel);
+        return true;
       }
-      // Trail.
-      if (map.trail.length > 1) {
-        ctx.strokeStyle = 'rgba(120, 200, 255, 0.4)';
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        map.trail.forEach((pt, i) => {
-          const sx = ccx + (pt.x - ship.position.x) * scale;
-          const sy = ccy + (pt.y - ship.position.y) * scale;
-          if (i === 0) ctx.moveTo(sx, sy);
-          else ctx.lineTo(sx, sy);
-        });
-        ctx.stroke();
+    } else {
+      view.hoverWorld = null;
+    }
+    if (engine.mode !== 'playing' || !view.mapBody || view.modal) {
+      if (!input.mouseDown) this._mapDragTracking = false;
+      return false;
+    }
+    const over = view.containsMapPoint(mx, my);
+    if (input.mouseDown && over) {
+      if (!this._mapDragTracking) {
+        view.beginPointer(mx, my);
+        this._mapDragTracking = true;
+      } else {
+        view.movePointer(mx, my, view.mapBody);
       }
-      // POIs on map.
-      for (const poi of engine.poiSystem.mapPois()) {
-        const sx = ccx + (poi.x - ship.position.x) * scale;
-        const sy = ccy + (poi.y - ship.position.y) * scale;
-        ctx.fillStyle = engine.poiSystem.color(poi);
-        ctx.beginPath();
-        ctx.arc(sx, sy, poi.id === engine.poiSystem.selectedId ? 4 : 2.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      // Scanner contacts — last radar-ping world pos (not live).
-      const scan = engine.scannerSystem;
-      for (const c of scan.contacts) {
-        if (!scan.passesContactFilter(c)) continue;
-        if (c.scanX == null || c.scanY == null) continue;
-        const sx = ccx + (c.scanX - ship.position.x) * scale;
-        const sy = ccy + (c.scanY - ship.position.y) * scale;
-        ctx.save();
-        ctx.globalAlpha = c.alpha != null ? c.alpha : 1;
-        ctx.fillStyle = IFF[c.iff] || IFF.yellow;
-        ctx.fillRect(sx - 1, sy - 1, 2, 2);
-        ctx.restore();
-      }
-      // Ship marker.
-      ctx.save();
-      ctx.translate(ccx, ccy);
-      ctx.rotate((ship.angle || 0) + Math.PI / 2);
-      ctx.fillStyle = '#fff';
-      ctx.beginPath();
-      ctx.moveTo(0, -5);
-      ctx.lineTo(3.5, 4);
-      ctx.lineTo(-3.5, 4);
-      ctx.closePath();
-      ctx.fill();
-      ctx.restore();
-    });
+    } else if (!input.mouseDown && this._mapDragTracking) {
+      view.endPointer();
+      this._mapDragTracking = false;
+    }
+    return false;
+  }
+
+  /** Map click after panels; returns true if handled. */
+  trySectorMapClick(engine, sx, sy, shiftKey) {
+    const view = engine.sectorMapView;
+    if (!view.mapBody || !view.containsMapPoint(sx, sy)) return false;
+    if (view.suppressClick || view.pointerDragging()) return false;
+    const w = view.screenToWorld(sx, sy, view.mapBody);
+    sectorMapClick(engine, w.x, w.y, shiftKey);
+    return true;
+  }
+
+  _btnWide(ctx, x, y, w, label, action) {
+    const h = 16;
+    ctx.fillStyle = 'rgba(30, 54, 76, 0.8)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = 'rgba(120, 200, 255, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, w, h);
+    this._text(ctx, label, x + w / 2, y + 12, { size: 9, align: 'center', weight: 700 });
+    this._region(x, y, w, h, action);
   }
 
   // ---- 5 POWER (pips + ship status) --------------------------------------
@@ -579,6 +702,54 @@ export class CockpitPanels {
     ctx.strokeRect(x, y, s, s);
     this._text(ctx, label, x + s / 2, y + 12, { size: 13, align: 'center', weight: 700 });
     this._region(x, y, s, s, action);
+  }
+
+  _btnDanger(ctx, x, y, label, action) {
+    const s = 16;
+    ctx.fillStyle = 'rgba(80, 24, 28, 0.92)';
+    ctx.fillRect(x, y, s, s);
+    ctx.strokeStyle = 'rgba(255, 100, 100, 0.65)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, s, s);
+    this._text(ctx, label, x + s / 2, y + 12, {
+      size: 13,
+      align: 'center',
+      weight: 700,
+      color: 'rgba(255, 120, 120, 0.95)',
+    });
+    this._region(x, y, s, s, action);
+  }
+
+  _btnPadlock(ctx, x, y, locked, action) {
+    const s = 16;
+    ctx.fillStyle = 'rgba(30, 54, 76, 0.8)';
+    ctx.fillRect(x, y, s, s);
+    ctx.strokeStyle = locked ? 'rgba(95, 224, 138, 0.55)' : 'rgba(150, 178, 202, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, s, s);
+    this._drawPadlockIcon(ctx, x + s / 2, y + s / 2 - 1, locked, 7);
+    this._region(x, y, s, s, action);
+  }
+
+  _drawPadlockIcon(ctx, cx, cy, locked, size) {
+    const bodyW = size * 0.9;
+    const bodyH = size * 0.65;
+    const bodyY = cy + size * 0.05;
+    ctx.strokeStyle = locked ? 'rgba(95, 224, 138, 0.9)' : 'rgba(180, 200, 220, 0.75)';
+    ctx.fillStyle = locked ? 'rgba(40, 90, 60, 0.5)' : 'rgba(40, 54, 68, 0.4)';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.rect(cx - bodyW / 2, bodyY, bodyW, bodyH);
+    ctx.fill();
+    ctx.stroke();
+    ctx.beginPath();
+    const r = bodyW * 0.38;
+    if (locked) {
+      ctx.arc(cx, bodyY, r, Math.PI, 0);
+    } else {
+      ctx.arc(cx + r * 0.35, bodyY, r, Math.PI * 1.05, Math.PI * 1.55);
+    }
+    ctx.stroke();
   }
 
   _shipStatus(ctx, box, engine) {

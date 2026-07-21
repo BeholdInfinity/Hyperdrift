@@ -205,6 +205,18 @@ Hangar pad status boards still show display Mk stubs; modular catalog now define
 
 ---
 
+## 9. Prototype sector map & harvesting (direction set — details TBD)
+
+**Direction (2026-07):** Play space becomes a **planet + asteroid rings** layout authored in `src/world/data/sectorLayout.js`. Sector Map shows planet/rings; proc gen weights asteroids by ring **composition** tags (`iron`, `ice`, `silicate`, `carbonaceous`, `rare`, …). Mining/harvest loop still prototype — `Asteroid.composition` is scaffold only.
+
+| # | Question | Why it matters |
+|---|----------|----------------|
+| 9.1 | Move Jennings off world origin to an authored orbit slot? | Saved POI coords, approach vectors, sector map center |
+| 9.2 | Water-from-ice: cargo unit, consumable, or station commodity first? | Ties ice-rich outer rings to gameplay |
+| 9.3 | Full **Dev sector editor** (ring handles, POI drag, composition sliders) vs drawer-only? | Content authoring throughput |
+
+---
+
 ## Notes
 
 - Strongest campaign hook: **labor-first fantasy** + station as proof of belonging

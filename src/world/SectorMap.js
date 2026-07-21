@@ -13,6 +13,16 @@
 
 const CELL = 1500;
 
+/** Sum segment lengths along a downsampled trail (world units). */
+export function trailDistance(trail) {
+  if (!trail || trail.length < 2) return 0;
+  let d = 0;
+  for (let i = 1; i < trail.length; i++) {
+    d += Math.hypot(trail[i].x - trail[i - 1].x, trail[i].y - trail[i - 1].y);
+  }
+  return d;
+}
+
 export class SectorMap {
   constructor() {
     /** Ever-revealed cell keys → { cx, cy } (stale once out of range). */
