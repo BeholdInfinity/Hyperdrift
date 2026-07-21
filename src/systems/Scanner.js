@@ -10,6 +10,7 @@
 
 import { IFF, SCANNER } from '../core/Constants.js';
 import { drawShipSilhouette } from '../ships/ShipRenderer.js';
+import { drawCornerBrackets } from './ContactSelectionDraw.js';
 
 const TWO_PI = Math.PI * 2;
 
@@ -101,12 +102,12 @@ export class Scanner {
         ctx.arc(cx, cy, innerR, 0, TWO_PI, true);
         ctx.clip();
         this._drawContacts(ctx, model);
-        this._drawSelection(ctx, cx, cy, innerR, model, cameraRotation, fullScope);
+        this._drawSelection(ctx, cx, cy, innerR, outerR, model, cameraRotation, fullScope);
         ctx.restore();
         this._strokeBandEdges(ctx, cx, cy, innerR, outerR);
       } else {
         this._drawContacts(ctx, model);
-        this._drawSelection(ctx, cx, cy, innerR, model, cameraRotation, fullScope);
+        this._drawSelection(ctx, cx, cy, innerR, outerR, model, cameraRotation, fullScope);
       }
     } else {
       this._drawOffline(ctx, cx, cy, innerR, outerR, Math.max(band, 40));
@@ -410,26 +411,28 @@ export class Scanner {
     ctx.restore();
   }
 
-  _drawSelection(ctx, cx, cy, innerR, model, rot, fullScope = false) {
+  _drawSelection(ctx, cx, cy, innerR, outerR, model, rot, fullScope = false) {
     const c = model.getSelected();
     if (!c) return;
-    this._drawBlip(ctx, c);
-    const r = Math.max(9, c.size * 1.9);
-    ctx.save();
-    ctx.translate(c.screenX, c.screenY);
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.9)';
-    ctx.lineWidth = 1.6;
-    ctx.shadowColor = 'rgba(200, 230, 255, 0.7)';
-    ctx.shadowBlur = 4;
-    const g = r * 0.5;
-    for (const [sx, sy] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) {
-      ctx.beginPath();
-      ctx.moveTo(sx * r, sy * r - sy * g);
-      ctx.lineTo(sx * r, sy * r);
-      ctx.lineTo(sx * r - sx * g, sy * r);
-      ctx.stroke();
+    const pulse = model.selectionPulse || 0;
+    if (pulse > 0.02) {
+      this._drawSelectionSweepHit(ctx, cx, cy, innerR, outerR, c, pulse);
     }
-    ctx.restore();
+    this._drawBlip(ctx, c);
+    const r = Math.max(9, c.size * 1.9) * (1 + pulse * 0.12);
+    drawCornerBrackets(ctx, c.screenX, c.screenY, r, r, { pulse });
+    if (pulse > 0.04) {
+      ctx.save();
+      ctx.translate(c.screenX, c.screenY);
+      ctx.beginPath();
+      ctx.arc(0, 0, r * (0.55 + (1 - pulse) * 0.35), 0, TWO_PI);
+      ctx.strokeStyle = `rgba(90, 210, 255, ${(pulse * 0.55).toFixed(3)})`;
+      ctx.lineWidth = 1 + pulse;
+      ctx.shadowColor = `rgba(120, 220, 255, ${(0.35 + pulse * 0.55).toFixed(3)})`;
+      ctx.shadowBlur = 6 + pulse * 8;
+      ctx.stroke();
+      ctx.restore();
+    }
 
     const km = (c.dist / 100).toFixed(1);
     let tx;
@@ -451,6 +454,35 @@ export class Scanner {
     ctx.shadowColor = 'rgba(0,0,0,0.8)';
     ctx.shadowBlur = 3;
     ctx.fillText(`${km} km`, tx, ty);
+    ctx.restore();
+  }
+
+  /** Radial lock beam + hub flash when a sweep arm crosses the selected contact. */
+  _drawSelectionSweepHit(ctx, cx, cy, innerR, outerR, c, pulse) {
+    const rHub = Math.max(0, innerR <= 0.5 ? 0 : innerR);
+    const bx = c.screenX;
+    const by = c.screenY;
+    const beamA = pulse * 0.72;
+    ctx.save();
+    ctx.strokeStyle = `rgba(90, 220, 255, ${beamA.toFixed(3)})`;
+    ctx.lineWidth = 1.2 + pulse * 1.4;
+    ctx.shadowColor = `rgba(140, 230, 255, ${(pulse * 0.65).toFixed(3)})`;
+    ctx.shadowBlur = 6 + pulse * 12;
+    ctx.beginPath();
+    ctx.moveTo(cx + Math.cos(c.bearing) * rHub, cy + Math.sin(c.bearing) * rHub);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(cx, cy, rHub + pulse * 6, c.bearing - 0.07, c.bearing + 0.07);
+    ctx.strokeStyle = `rgba(160, 235, 255, ${(pulse * 0.5).toFixed(3)})`;
+    ctx.lineWidth = 2 + pulse * 2;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(bx, by, c.size * (0.9 + (1 - pulse) * 0.6), 0, TWO_PI);
+    ctx.strokeStyle = `rgba(200, 245, 255, ${(pulse * 0.45).toFixed(3)})`;
+    ctx.lineWidth = 1.5;
+    ctx.shadowBlur = 8;
+    ctx.stroke();
     ctx.restore();
   }
 

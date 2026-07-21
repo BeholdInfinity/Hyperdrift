@@ -191,9 +191,9 @@ src/
 - Ambient miner asteroid damage (visual cue only today)
 
 ### Scanner → Cockpit HUD follow-ups (v0.1.283 slice)
-Many v0.1.283 scanner/cockpit items are **done** (sector map pan/zoom, Travel Log, expedition persistence, map pick, waypoints, telemetry move). Remaining polish:
+Many v0.1.283 scanner/cockpit items are **done** (sector map pan/zoom, Travel Log, expedition persistence, map pick, waypoints, telemetry move, selected-contact sweep lock FX). Remaining polish:
 - **Thicken sensor-ring inner border** so visual contacts ride a thicker border matching the outer POI rim (today dots sit on the thin `viewportRadius` edge) — `src/systems/Scanner.js` `_drawBand`, maybe `src/systems/Renderer.js`
-- **In-world highlight of the selected contact** — selection highlights only the scanner blip; the in-world ship isn't highlighted, and the highlight should hand off blip ↔ ship as the contact crosses visual range — `src/core/GameEngine.js` render path + `AmbientTrafficSystem.render`
+- **In-world highlight of the selected contact** — visual-range contacts get viewport corner brackets **and** keep inner-ring dot brackets; band contacts ring-only — `ContactSelectionDraw.js`, `GameEngine._renderSelectedContactViewport`, `Scanner._drawSelection`
 - **Selected-POI distance in the viewport** — a selected POI's distance shows only in the Destination panel; draw it in-viewport like contacts — `src/systems/Scanner.js` `_drawSelection` (POI variant) or `GameEngine._renderScanner`
 - **Tier-based icon shrink** — blips shrink with distance only; also shrink per tier so more range bands fit — `src/systems/ScannerSystem.js` (fold tier factor into `c.size`)
 

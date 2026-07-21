@@ -202,6 +202,7 @@ export class CockpitPanels {
       w,
       h,
       action,
+      anyPointer: !!opts.anyPointer,
       travelLogMenu: !!opts.travelLogMenu,
       sectorMapMenu: !!opts.sectorMapMenu,
       poiBookMenu: !!opts.poiBookMenu,
@@ -239,9 +240,19 @@ export class CockpitPanels {
 
   /** Route a screen-space click; returns true if consumed. */
   handleClick(x, y, engine) {
+    return this._handlePointer(x, y, engine, 'primary');
+  }
+
+  /** Route a middle-click on contact-list rows (and other anyPointer regions). */
+  handleMiddleClick(x, y, engine) {
+    return this._handlePointer(x, y, engine, 'middle');
+  }
+
+  _handlePointer(x, y, engine, pointer) {
     if (this._dismissContextMenus(engine, x, y)) return true;
     for (let i = this._regions.length - 1; i >= 0; i--) {
       const r = this._regions[i];
+      if (pointer === 'middle' && !r.anyPointer) continue;
       if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
         r.action(engine);
         return true;
@@ -319,7 +330,7 @@ export class CockpitPanels {
     const c = engine.scannerSystem.getSelected();
     if (!c) {
       this._text(ctx, 'NO CONTACT SELECTED', box.x, box.y + 16, { color: DIM, size: 13 });
-      this._text(ctx, 'Click a blip on the scanner', box.x, box.y + 34, {
+      this._text(ctx, 'LMB/MMB blip or list; MMB hull', box.x, box.y + 34, {
         color: DIM,
         size: 12,
         weight: 400,
@@ -453,7 +464,9 @@ export class CockpitPanels {
           weight: 400,
         });
         const id = c.id;
-        this._region(box.x - 4, ry, box.w + 8, rowH, (e) => e.selectContact(id));
+        this._region(box.x - 4, ry, box.w + 8, rowH, (e) => e.toggleContact(id), {
+          anyPointer: true,
+        });
       }
     });
   }

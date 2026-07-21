@@ -25,6 +25,7 @@
  */
 
 import { SCANNER } from '../core/Constants.js';
+import { pickContactAtScreen } from './ContactSelectionDraw.js';
 
 const TWO_PI = Math.PI * 2;
 
@@ -65,6 +66,8 @@ export class ScannerSystem {
     this._time = 0;
     /** @type {string|null} */
     this.selectedId = null;
+    /** 0→1 decay when a sweep arm crosses the selected contact's bearing. */
+    this.selectionPulse = 0;
     /** @type {Array<object>} */
     this.contacts = [];
     /** id → last painted { r, worldBearing, worldAngle, pingAt } */
@@ -249,6 +252,8 @@ export class ScannerSystem {
 
     this._prevSweep = this.sweepAngle;
     if (this.on) this.sweepAngle = (this.sweepAngle + this.sweepSpeed() * dt) % TWO_PI;
+    const pulseDecay = SCANNER.SELECTION_PULSE_DECAY ?? 2.8;
+    this.selectionPulse = Math.max(0, this.selectionPulse - dt * pulseDecay);
 
     if (!this.on) {
       this.contacts = [];
@@ -402,8 +407,11 @@ export class ScannerSystem {
         const moved =
           shortestArc(prev.worldBearing, worldBearing) > bearingEps ||
           Math.abs(prev.r - wantR) > 2;
-        if (moved && !crossedTruth) clear = true;
-        else paint = true;
+        if (moved && !crossedTruth) {
+          // Locked contacts replot to truth on stale clear — don't drop off contacts.
+          if (c.id === this.selectedId) paint = true;
+          else clear = true;
+        } else paint = true;
       } else if (crossedTruth) {
         paint = true;
       }
@@ -465,8 +473,10 @@ export class ScannerSystem {
       const ageT = Math.min(1, age / fadePeriod);
       const ageAlpha = 1 - (1 - fadeFloor) * ageT;
       // Visual-range dots stay full strength (live); band blips age between pings.
-      const alpha =
+      // Selected contacts stay locked bright between sweep refreshes.
+      let alpha =
         state === 'visual' ? 1 : Math.min(ageAlpha, state === 'edge' ? 0.5 : 1);
+      if (c.id === this.selectedId) alpha = 1;
 
       const dispBearing = dispWorldBearing + rot;
       const tWorld = Math.min(1, dist / (this.range || 1));
@@ -522,7 +532,7 @@ export class ScannerSystem {
         screenX: ctx.centerX + Math.cos(dispBearing) * prev.r,
         screenY: ctx.centerY + Math.sin(dispBearing) * prev.r,
         size: prev.size ?? maxSize * 0.5,
-        alpha: ageAlpha,
+        alpha: id === this.selectedId ? 1 : ageAlpha,
         age,
         closing: 0,
         ghost: true,
@@ -558,8 +568,20 @@ export class ScannerSystem {
       out.push(c);
       kept.add(c.id);
     }
+    // Keep the locked contact visible even if cap truncation would drop it.
+    if (this.selectedId && liveIds.has(this.selectedId) && !kept.has(this.selectedId)) {
+      const sel = candidates.find((c) => c.id === this.selectedId && !c.ghost);
+      if (sel) {
+        out.push(sel);
+        kept.add(sel.id);
+      }
+    }
     out.sort((a, b) => a.dist - b.dist);
     this.contacts = out;
+
+    if (this.selectedId && this._sweepCrossed(this._selectedSweepBearing(out, rot))) {
+      this.selectionPulse = 1;
+    }
 
     // Drop display only for paints that lost their slot (cap) and are not live —
     // never wipe a live wait-for-sweep or a ghost still awaiting arm clear.
@@ -568,12 +590,21 @@ export class ScannerSystem {
       // Ghost not kept due to cap: still retain until sweep clear (handled next frames).
       // If it wasn't even emitted as ghost (shouldn't happen), leave it.
     }
-    if (this.selectedId && !kept.has(this.selectedId) && !this._display.has(this.selectedId)) {
+    if (this.selectedId && !liveIds.has(this.selectedId) && !this._display.has(this.selectedId)) {
       this.selectedId = null;
     }
   }
 
+  /** Screen bearing for sweep-hit FX on the locked contact (live truth when in view). */
+  _selectedSweepBearing(contacts, rot) {
+    const sel = contacts.find((c) => c.id === this.selectedId);
+    if (!sel) return null;
+    if (sel.state === 'visual' && sel.trueBearing != null) return sel.trueBearing;
+    return sel.bearing;
+  }
+
   _sweepCrossed(bearing) {
+    if (bearing == null) return false;
     const n = this.sweepArmCount();
     const step = TWO_PI / n;
     for (let i = 0; i < n; i++) {
@@ -608,6 +639,51 @@ export class ScannerSystem {
 
   clearSelection() {
     this.selectedId = null;
+  }
+
+  /**
+   * Middle-click toggle in the space viewport: pick hull under cursor, switch
+   * target, click same again or empty space to clear.
+   */
+  toggleViewportSelect(sx, sy, camera, screenCx, screenCy) {
+    const hit = pickContactAtScreen(
+      this.contacts,
+      camera,
+      screenCx,
+      screenCy,
+      sx,
+      sy,
+      (c) => this.passesContactFilter(c)
+    );
+    if (!hit || hit.id === this.selectedId) {
+      this.selectedId = null;
+      return null;
+    }
+    this.selectedId = hit.id;
+    return hit;
+  }
+
+  /**
+   * Toggle the nearest visible (filter-passing) blip to a screen point
+   * (within maxPx): switch target, click same again or empty space to clear.
+   */
+  toggleNearestScreen(sx, sy, maxPx) {
+    let best = null;
+    let bestD = maxPx;
+    for (const c of this.contacts) {
+      if (!this.passesContactFilter(c)) continue;
+      const d = Math.hypot(c.screenX - sx, c.screenY - sy);
+      if (d < bestD) {
+        bestD = d;
+        best = c;
+      }
+    }
+    if (!best || best.id === this.selectedId) {
+      this.selectedId = null;
+      return null;
+    }
+    this.selectedId = best.id;
+    return best;
   }
 
   /**

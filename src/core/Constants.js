@@ -481,6 +481,8 @@ export const SCANNER = {
   SWEEP_TIER_MULT: 0,
   /** Residual blip alpha after one full sweep without a re-ping. */
   BLIP_FADE_FLOOR: 0.22,
+  /** Selected-contact sweep pulse fade rate (1 → 0, per second). */
+  SELECTION_PULSE_DECAY: 2.8,
   /** Shortest-arc epsilon (rad) when deciding a painted contact has moved. */
   BLIP_BEARING_EPS: 0.04,
   /** Asteroids/objects on by default (dev drawer can disable). */

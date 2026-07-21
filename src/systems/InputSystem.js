@@ -35,6 +35,8 @@ export class InputSystem {
     this._clickPos = null;
     /** Space cockpit: last RMB-up screen point (consumed via consumeRightClickPos). */
     this._rightClickPos = null;
+    /** Space cockpit: last MMB-up screen point (consumed via consumeMiddleClickPos). */
+    this._middleClickPos = null;
 
     this._burst = Object.fromEntries(
       BURST_KEYS.map((k) => [k, { lastPress: -Infinity, armed: false }])
@@ -64,6 +66,7 @@ export class InputSystem {
       this._taps.clear();
       this.mouseDown = false;
       this.mouseRightDown = false;
+      this._middleClickPos = null;
       this._resetPan();
       this._clearBurstArms();
     });
@@ -84,6 +87,7 @@ export class InputSystem {
     this.pauseToggle = false;
     this.hangarPanEnabled = false;
     this._clickPos = null;
+    this._middleClickPos = null;
     this._taps.clear();
     this._resetPan();
     this._clearBurstArms();
@@ -211,6 +215,7 @@ export class InputSystem {
       }
     }
     if (e.button === 2) this.mouseRightDown = true;
+    if (e.button === 1) e.preventDefault();
   }
 
   _onMouseUp(e) {
@@ -227,6 +232,9 @@ export class InputSystem {
     if (e.button === 2) this.mouseRightDown = false;
     if (e.button === 2 && this.enabled && !this.paused) {
       this._rightClickPos = { x: e.clientX, y: e.clientY };
+    }
+    if (e.button === 1 && this.enabled && !this.paused) {
+      this._middleClickPos = { x: e.clientX, y: e.clientY };
     }
   }
 
@@ -329,6 +337,13 @@ export class InputSystem {
   consumeRightClickPos() {
     const v = this._rightClickPos;
     this._rightClickPos = null;
+    return v;
+  }
+
+  /** Space cockpit: consume the last MMB-up screen point (or null). */
+  consumeMiddleClickPos() {
+    const v = this._middleClickPos;
+    this._middleClickPos = null;
     return v;
   }
 

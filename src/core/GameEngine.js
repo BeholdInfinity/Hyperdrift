@@ -7,6 +7,10 @@ import { CameraSystem } from '../systems/CameraSystem.js';
 import { Renderer } from '../systems/Renderer.js';
 import { Scanner } from '../systems/Scanner.js';
 import { ScannerSystem } from '../systems/ScannerSystem.js';
+import {
+  contactScreenAabb,
+  drawCornerBrackets,
+} from '../systems/ContactSelectionDraw.js';
 import { CockpitFrame } from '../systems/CockpitFrame.js';
 import { CockpitPanels } from '../systems/CockpitPanels.js';
 import { PipSystem } from '../systems/PipSystem.js';
@@ -309,6 +313,15 @@ export class GameEngine {
     this.sectorMap.reset();
     this._expeditionActive = false;
     this.persistNavProfile();
+  }
+
+  toggleContact(id) {
+    if (!this.scannerSystem) return;
+    if (!id || id === this.scannerSystem.selectedId) {
+      this.scannerSystem.clearSelection();
+      return;
+    }
+    this.scannerSystem.select(id);
   }
 
   selectContact(id) {
@@ -2774,6 +2787,7 @@ export class GameEngine {
 
     this._ensureShipStatus();
     this._processCockpitClicks();
+    this._processCockpitMiddleClicks();
     this._processCockpitRightClicks();
 
     // Cockpit MODES keybinds: R flips ORIENT (ship/north), V flips VIEW (ship/scan).
@@ -3337,6 +3351,22 @@ export class GameEngine {
         });
       }, this.camera);
     }
+
+    this._renderSelectedContactViewport();
+  }
+
+  /** Corner brackets on the in-viewport hull when a contact is in visual range. */
+  _renderSelectedContactViewport() {
+    if (this.scanView === 'scan' || !this.scannerSystem?.on) return;
+    const sel = this.scannerSystem.getSelected();
+    if (!sel || sel.state !== 'visual') return;
+
+    const r = this.renderer;
+    const box = contactScreenAabb(sel, this.camera, r.centerX, r.centerY);
+    if (!box) return;
+
+    const pulse = this.scannerSystem.selectionPulse || 0;
+    drawCornerBrackets(r.ctx, box.cx, box.cy, box.halfW, box.halfH, { pulse });
   }
 
   /** Dark radar-scope backdrop that fills the viewport disc in SCAN view. */
@@ -3446,8 +3476,7 @@ export class GameEngine {
     const dx = x - this.renderer.centerX;
     const dy = y - this.renderer.centerY;
     const distC = Math.hypot(dx, dy);
-    // PORT view: the inner disc is the world → leave clicks to gameplay. SCAN
-    // view: the whole disc is the scope → let clicks fall through to blip pick.
+    // PORT view: the inner disc is the world — leave LMB to gameplay.
     if (this.scanView !== 'scan' && distC <= this.renderer.viewportRadius) return;
 
     if (this.cockpitPanels.handleClick(x, y, this)) return;
@@ -3455,12 +3484,7 @@ export class GameEngine {
     if (this.cockpitPanels.trySectorMapClick(this, x, y, !!click.shiftKey)) return;
 
     if (distC <= this.renderer.scannerOuterRadius) {
-      if (this.scannerSystem.on) {
-        const tol = this.scanView === 'scan'
-          ? Math.max(18, this.renderer.viewportRadius * 0.12)
-          : Math.max(18, this.renderer.scannerBand);
-        this.scannerSystem.selectNearestScreen(x, y, tol);
-      }
+      this._selectContactScannerClick(x, y);
       return;
     }
 
@@ -3479,6 +3503,53 @@ export class GameEngine {
     const distC = Math.hypot(dx, dy);
     if (this.scanView !== 'scan' && distC <= this.renderer.viewportRadius) return;
     this.cockpitPanels.handleRightClick(x, y, this);
+  }
+
+  /** Middle-click — contacts list rows + viewport hull + scanner blips. */
+  _processCockpitMiddleClicks() {
+    const click = this.input.consumeMiddleClickPos();
+    if (!click) return;
+    const { x, y } = click;
+    const dx = x - this.renderer.centerX;
+    const dy = y - this.renderer.centerY;
+    const distC = Math.hypot(dx, dy);
+
+    if (this.cockpitPanels.handleMiddleClick(x, y, this)) return;
+
+    if (this.scanView !== 'scan' && distC <= this.renderer.viewportRadius) {
+      this._selectContactViewportClick(x, y);
+      return;
+    }
+
+    if (distC <= this.renderer.scannerOuterRadius) {
+      this._selectContactScannerClick(x, y);
+    }
+  }
+
+  _selectContactScannerClick(sx, sy) {
+    if (!this.scannerSystem?.on) {
+      this.selectContact(null);
+      return;
+    }
+    const tol =
+      this.scanView === 'scan'
+        ? Math.max(18, this.renderer.viewportRadius * 0.12)
+        : Math.max(18, this.renderer.scannerBand);
+    this.scannerSystem.toggleNearestScreen(sx, sy, tol);
+  }
+
+  _selectContactViewportClick(sx, sy) {
+    if (!this.scannerSystem?.on) {
+      this.selectContact(null);
+      return;
+    }
+    this.scannerSystem.toggleViewportSelect(
+      sx,
+      sy,
+      this.camera,
+      this.renderer.centerX,
+      this.renderer.centerY
+    );
   }
 
   _selectPoiAt(x, y) {
