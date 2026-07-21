@@ -1791,8 +1791,25 @@ export class GameEngine {
     // While dragging a layout item, pan is suppressed. Enter/exit sequences lock pan
     // (but still allow scroll zoom).
     this.input.hangarPanEnabled =
-      !seqLock && (!editing || !HangarLayoutEditor.drag);
-    const zoomWheel = this.input.consumeZoomDelta();
+      !seqLock &&
+      (!editing || !HangarLayoutEditor.drag) &&
+      !this.hangarBay.isServiceScrollDragging();
+    const mw = this._mouseWorld();
+    if (!editing && !seqLock) {
+      if (this.hangarBay.handleServiceScrollPointer(this.input.mouseDown, mw.x, mw.y)) {
+        this.input.cancelHangarPan();
+      }
+    }
+    const zoomPending = this.input.zoomDelta;
+    const svcBay =
+      !editing && !seqLock ? this.hangarBay.pickServiceColumnAt(mw.x, mw.y) : -1;
+    let zoomWheel = 0;
+    if (svcBay >= 0 && Math.abs(zoomPending) > 0) {
+      this.hangarBay.applyServiceWheel(svcBay, zoomPending);
+      this.input.consumeZoomDelta();
+    } else {
+      zoomWheel = this.input.consumeZoomDelta();
+    }
     // Scroll during a sequence = player takes zoom; stop cinematic zoom overrides
     if (seqLock && Math.abs(zoomWheel) > 0) {
       this._hangarSeqZoomPlayer = true;

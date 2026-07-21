@@ -56,6 +56,20 @@ import {
   lingerAllowsBay,
 } from './hangar-layout.js';
 import {
+  applyServiceScrollWheel,
+  buildServiceBoardRows,
+  createServiceScrollState,
+  drawServiceChecklistColumn,
+  hitServiceColumn,
+  hitServiceScrollbar,
+  hitServiceScrollbarThumb,
+  notifyServiceScrollUser,
+  offsetFromScrollbarY,
+  serviceBoardFixedMetrics,
+  sortServiceDisplayRows,
+  tickServiceBoardScroll,
+} from './ServiceBoard.js';
+import {
   placeRegistry,
   resolveHangarSkin,
   hasModule,
@@ -105,7 +119,7 @@ const ROW_Y = [-78, 8, 118];
 const DANGER_ZONE_SOUTH = (ROW_Y[1] + ROW_Y[2]) / 2;
 /**
  * Service display boards behind each pad.
- * Northern lip is fixed (must not grow into the pad); extra height lowers the bottom.
+ * Northern lip is fixed (must not grow into the pad); checklist scrolls inside the column.
  */
 const SERVICE_BOARD_TOP = DANGER_ZONE_SOUTH + 14 - 28; // was BACKSPLASH_Y - old H
 const BACKSPLASH_HALF_W = 62;
@@ -875,21 +889,6 @@ const SERVICE_STAGING_TYPES = [
   'upgrade',
 ];
 
-/** Compact service-board labels (colon added when drawn). Widest locks the circle column. */
-const SERVICE_BOARD_LABELS = {
-  repair: 'Hull',
-  refuel: 'Fuel',
-  reloadBullets: 'Bullet',
-  reloadShells: 'Shells',
-  upgrade: 'Install',
-  loadCargo: 'Load',
-  unloadCargo: 'Unload',
-};
-/** Includes colon — circle column starts after this width for every row. */
-const SERVICE_BOARD_LABEL_WIDEST = 'Install:';
-/** Max status pips per checklist row; overflow repeats the label on the next row. */
-const SERVICE_BOARD_PIPS_PER_ROW = 5;
-
 let _serviceSeq = 1;
 
 function smoothstep(t) {
@@ -1072,6 +1071,9 @@ export class HangarBay {
      * mouth approaches against a frozen sim.
      */
     this.spaceTrafficActive = true;
+    /** Per-bay service-column hit boxes (world space; refreshed each draw). */
+    this._serviceColumnHit = [null, null, null];
+    this._serviceScrollDragBay = null;
   }
 
   isPlayerBay(bayIndex) {
@@ -2274,62 +2276,129 @@ export class HangarBay {
     }
   }
 
+  _ensurePadServiceScroll(pad) {
+    if (!pad) return null;
+    if (!pad.serviceScroll) pad.serviceScroll = createServiceScrollState();
+    return pad.serviceScroll;
+  }
+
   /**
-   * Service column rows — one row per job type (chunks of ≤5 pips; overflow repeats label).
-   * Install pips share the "Install" label; each unit still maps to a backend service item
-   * with targetHardpointKey / catalogItemId for strip→install simulation.
-   * During boardReveal, only pips already "ordered" (shownIds) appear.
+   * Build sorted service-column rows for one bay.
+   * @param {number} bayIndex
+   * @param {CanvasRenderingContext2D} [ctx]
+   * @param {number} [colW]
    */
-  _boardTaskRows(bayIndex) {
+  _serviceDisplayRows(bayIndex, ctx = null, colW = null) {
     const pad = this._servicePad(bayIndex);
     const svc = pad?.service;
-    if (!this._bayHasShip(bayIndex) || !svc?.items?.length) {
-      return [{ label: 'STANDBY', color: 'dim', status: 'idle', units: [], complete: false }];
-    }
-    const labelOf = (it) =>
-      SERVICE_BOARD_LABELS[it.type] || String(it.type || '?').slice(0, 7);
 
+    if (!this._bayHasShip(bayIndex) || !svc?.items?.length) {
+      return buildServiceBoardRows([], { unitColorOf: () => 'dim' });
+    }
     const revealing = svc.phase === 'boardReveal' && svc.reveal && svc.reveal.stage !== 'done';
     const shown = revealing ? svc.reveal.shownIds : null;
+    const rows = buildServiceBoardRows(svc.items, {
+      shownIds: shown,
+      unitColorOf: (it) => this._boardUnitColor(bayIndex, svc, it),
+    });
+    return sortServiceDisplayRows(rows);
+  }
 
-    const order = [];
-    const byType = new Map();
-    for (const it of svc.items) {
-      if (it.type === 'elevatorTransfer') continue;
-      if (shown && !shown.has(it.id)) continue;
-      if (!byType.has(it.type)) {
-        byType.set(it.type, { type: it.type, label: labelOf(it), units: [] });
-        order.push(it.type);
-      }
-      byType.get(it.type).units.push({
-        color: this._boardUnitColor(bayIndex, svc, it),
-        status: it.status,
-        serviceItemId: it.id,
-        targetHardpointKey: it.targetHardpointKey || null,
-      });
+  _boardTaskRows(bayIndex) {
+    return this._serviceDisplayRows(bayIndex);
+  }
+
+  _tickServiceBoardScrolls(dt) {
+    const metrics = serviceBoardFixedMetrics(SERVICE_BOARD_TOP);
+    for (let bay = 0; bay < 3; bay++) {
+      if (!this._bayHasShip(bay)) continue;
+      const pad = this._servicePad(bay);
+      if (!pad?.service) continue;
+      const scroll = this._ensurePadServiceScroll(pad);
+      const rows = this._serviceDisplayRows(bay);
+      tickServiceBoardScroll(scroll, rows, metrics.visibleRowSlots, this.time, dt);
     }
+  }
 
-    const rows = [];
-    const chunk = SERVICE_BOARD_PIPS_PER_ROW;
-    for (const type of order) {
-      const group = byType.get(type);
-      for (let i = 0; i < group.units.length; i += chunk) {
-        const units = group.units.slice(i, i + chunk);
-        const complete = units.length > 0 && units.every((u) => u.color === 'green');
-        rows.push({
-          label: group.label,
-          type: group.type,
-          units,
-          complete,
-          color: complete ? 'green' : 'white',
-          status: complete ? 'done' : 'pending',
-        });
+  /** World-space bay index under the service column checklist, or -1. */
+  pickServiceColumnAt(wx, wy) {
+    for (let bay = 0; bay < 3; bay++) {
+      const hit = this._serviceColumnHit[bay];
+      if (!hit) continue;
+      if (hitServiceColumn(wx, wy, hit.colX, hit.colW, hit.listTop, hit.listH)) {
+        return bay;
       }
     }
-    if (!rows.length) {
-      return [{ label: 'STANDBY', color: 'dim', status: 'idle', units: [], complete: false }];
+    return -1;
+  }
+
+  /** Wheel over service column — scroll checklist; returns true if consumed. */
+  applyServiceWheel(bayIndex, zoomDelta) {
+    if (!zoomDelta) return false;
+    const pad = this._servicePad(bayIndex);
+    if (!pad?.service) return false;
+    const scroll = this._ensurePadServiceScroll(pad);
+    const metrics = serviceBoardFixedMetrics(SERVICE_BOARD_TOP);
+    const rows = this._serviceDisplayRows(bayIndex);
+    const maxOffset = Math.max(0, rows.length - metrics.visibleRowSlots);
+    applyServiceScrollWheel(scroll, -Math.sign(zoomDelta), this.time, maxOffset);
+    return true;
+  }
+
+  /**
+   * Scrollbar pointer — call each hangar frame with world coords.
+   * @returns {boolean} true when consuming pointer (blocks pan / select)
+   */
+  handleServiceScrollPointer(mouseDown, wx, wy) {
+    if (this._serviceScrollDragBay != null) {
+      const pad = this._servicePad(this._serviceScrollDragBay);
+      const scroll = pad?.serviceScroll;
+      if (mouseDown && scroll?.drag) {
+        const thumbTop = wy - scroll.drag.grabDy;
+        scroll.offset = clamp(
+          offsetFromScrollbarY(thumbTop, scroll.drag.sb),
+          0,
+          scroll.drag.sb.maxOffset
+        );
+        notifyServiceScrollUser(scroll, this.time);
+        return true;
+      }
+      if (scroll?.drag) notifyServiceScrollUser(scroll, this.time);
+      if (scroll) scroll.drag = null;
+      this._serviceScrollDragBay = null;
+      return false;
     }
-    return rows;
+
+    if (!mouseDown) return false;
+
+    for (let bay = 0; bay < 3; bay++) {
+      const hit = this._serviceColumnHit[bay];
+      if (!hit?.sb) continue;
+      const pad = this._servicePad(bay);
+      if (!pad?.service) continue;
+      if (!hitServiceScrollbar(wx, wy, hit.sb)) continue;
+      const scroll = this._ensurePadServiceScroll(pad);
+      notifyServiceScrollUser(scroll, this.time);
+      if (hitServiceScrollbarThumb(wx, wy, hit.sb)) {
+        scroll.drag = { sb: hit.sb, grabDy: wy - hit.sb.thumbY };
+      } else {
+        scroll.offset = offsetFromScrollbarY(wy, hit.sb);
+        const thumbTravel = Math.max(0, hit.sb.trackH - hit.sb.thumbH);
+        const thumbY =
+          hit.sb.maxOffset <= 0
+            ? hit.sb.trackY
+            : hit.sb.trackY + (scroll.offset / hit.sb.maxOffset) * thumbTravel;
+        scroll.drag = { sb: hit.sb, grabDy: wy - thumbY };
+      }
+      this._serviceScrollDragBay = bay;
+      return true;
+    }
+    return false;
+  }
+
+  /** True while service scrollbar drag is active. */
+  isServiceScrollDragging() {
+    return this._serviceScrollDragBay != null;
   }
 
   _boardHeaderLight(bayIndex) {
@@ -4065,6 +4134,7 @@ export class HangarBay {
       ),
       elevatorOnly: items.length === 1 && items[0].type === 'elevatorTransfer',
     };
+    pad.serviceScroll = createServiceScrollState();
   }
 
   /** Pre-scan → stats → cargo → captain-pick pip order for the service board. */
@@ -6527,6 +6597,7 @@ export class HangarBay {
     this._updateBayClearing();
     this._syncDoorBeacons();
     this._syncBayTickers();
+    this._tickServiceBoardScrolls(deltaTime);
 
     for (const b of this._opsBays) this.tickEvac(b);
 
@@ -15940,14 +16011,14 @@ export class HangarBay {
   }
 
   /**
-   * Per-bay pad status boards — fixed northern lip; height grows south into apron.
+   * Per-bay pad status boards — fixed northern lip; service checklist scrolls inside the column.
    * Columns: ship stats | cargo grid | service checklist + bay footer.
    */
   _drawServiceDisplayBoards(ctx) {
     const top = SERVICE_BOARD_TOP;
     const hw = BACKSPLASH_HALF_W;
-    const wallH = SERVICE_BOARD_H;
-    const bottom = SERVICE_BOARD_BOTTOM;
+    const layout = serviceBoardFixedMetrics(top);
+    const { bottom, wallH, bodyTop, bodyBot, bodyH } = layout;
     const colorMap = {
       green: '#3ce070',
       blue: '#4aa8ff',
@@ -15993,10 +16064,6 @@ export class HangarBay {
       const contentW = w - padInner * 2;
       const colGap = 2;
       const colW = (contentW - colGap * 2) / 3;
-      const footerH = 7;
-      const bodyTop = faceY + 3;
-      const bodyBot = bottom - footerH - 2;
-      const bodyH = bodyBot - bodyTop;
 
       const col0 = contentX;
       const col1 = contentX + colW + colGap;
@@ -16120,75 +16187,26 @@ export class HangarBay {
         }
       }
 
-      const hl = this._boardHeaderLight(bay);
-      let hc = '80,90,100';
-      let hg = 0.15;
-      if (hl === 'yellow') {
-        hc = '232,192,64';
-        hg = 0.7;
-      } else if (hl === 'green') {
-        hc = '60,224,112';
-        hg = 0.75;
-      } else if (hl === 'redFlash') {
-        hc = '255,60,50';
-        hg = Math.sin(this.time * 10 + bay) > 0 ? 0.9 : 0.15;
-      }
-      ctx.fillStyle = `rgba(${hc}, ${hg})`;
-      ctx.beginPath();
-      ctx.arc(col2 + 4, bodyTop + 3.5, 2.2, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.fillStyle = colorMap.white;
-      ctx.font = '3.2px monospace';
-      ctx.textAlign = 'left';
-      ctx.fillText('Service', col2 + 8, bodyTop + 4.5);
-
-      const rows = this._boardTaskRows(bay);
-      const maxRows = Math.max(1, Math.floor((bodyH - 10) / 4.5));
-      // Tight left so ≥5 pips fit; label column locked to widest name
-      const circR = 1.2;
-      const circGap = 2.85;
-      const checkW = 3.2;
-      const rowFont = '3px monospace';
-      ctx.font = rowFont;
-      const labelColW = ctx.measureText(SERVICE_BOARD_LABEL_WIDEST).width;
-      const nameX = col2 + checkW;
-      const circStart = nameX + labelColW + 1.1;
-
-      rows.slice(0, maxRows).forEach((row, ri) => {
-        const ty = bodyTop + 11 + ri * 4.5;
-        ctx.font = rowFont;
-        ctx.textAlign = 'left';
-
-        if (!row.units?.length) {
-          ctx.fillStyle = colorMap[row.color] || colorMap.dim;
-          ctx.fillText(row.label, col2 + 1, ty);
-          return;
-        }
-
-        if (row.complete) {
-          ctx.fillStyle = colorMap.green;
-          ctx.fillText('✓', col2 + 0.4, ty);
-        }
-
-        ctx.fillStyle = row.complete ? colorMap.green : colorMap.white;
-        ctx.fillText(`${row.label}:`, nameX, ty);
-
-        const cy = ty - 1.0;
-        const n = Math.min(row.units.length, SERVICE_BOARD_PIPS_PER_ROW);
-        for (let i = 0; i < n; i++) {
-          const u = row.units[i];
-          const cxDot = circStart + circR + i * circGap;
-          ctx.fillStyle = colorMap[u.color] || colorMap.dim;
-          ctx.beginPath();
-          ctx.arc(cxDot, cy, circR, 0, Math.PI * 2);
-          ctx.fill();
-          if (u.color === 'grey' || u.color === 'yellow') {
-            ctx.strokeStyle = 'rgba(180, 200, 220, 0.35)';
-            ctx.lineWidth = 0.4;
-            ctx.stroke();
-          }
-        }
+      const rows = this._serviceDisplayRows(bay, ctx, colW);
+      const scroll = pad?.serviceScroll || { offset: 0 };
+      const sb = drawServiceChecklistColumn(ctx, col2, colW, layout, rows, {
+        headerLight: this._boardHeaderLight(bay),
+        headerFlash:
+          this._boardHeaderLight(bay) === 'redFlash'
+            ? Math.sin(this.time * 10 + bay) > 0
+              ? 0.9
+              : 0.15
+            : undefined,
+        colorMap,
+        scroll,
       });
+      this._serviceColumnHit[bay] = {
+        colX: col2,
+        colW,
+        listTop: layout.listTop,
+        listH: layout.listH,
+        sb,
+      };
 
       // Corner ship-scanners are permanent board hardware (glow while scanning)
       const scanAmp =

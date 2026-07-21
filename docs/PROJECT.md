@@ -84,6 +84,7 @@ src/
     NebulaField.js        3 depth layers + ambient procedural nebulae
     SpeedStreaks.js       Velocity-opposed foreground streaks (screen-space)
     HangarBay.js          Hangar sim hydrated from active Place hangar area
+    ServiceBoard.js       Pad status board service checklist (row layout, scroll, column draw)
     HangarVisitorShips.js Modular hangar visitors (generateVisitor + ShipRenderer; locked shipDef)
     AmbientTrafficSystem.js Near-station traffic + always-on cops; off-screen spawn/despawn
     NpcPilot.js           Shared Newtonian thruster pilot (holds, police hex, ambient burns)
