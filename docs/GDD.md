@@ -143,8 +143,23 @@ Each hardpoint holds up to **4** items in a 2×2 slot grid. Freight is drawn as 
 - Cursor always visible (no pointer lock)
 - Mouse aims weapons only while the pointer is **inside the circular viewport** (disabled in **SCAN** view, where the disc is a radar scope)
 - **ORIENT** (cockpit MODES switch / `R`): **SHIP**-up (head-up, default) locks the hull pointing screen-up and rotates the world around it; **NORTH**-up keeps world-north up and rotates the ship inside it (marine "Head-Up vs North-Up" convention)
-- **VIEW** (cockpit MODES switch / `V`): **SHIP** (default) shows the world through the viewport with the thin scanner ring; **SCAN** replaces both with one full-disc radar scope (ship centered, blips by piecewise pip range, own-ship silhouette at center). Scanner reach follows `min(scannerMk, scannerPips)` through **Mk5 / 5 pips** with fixed rings at **50 / 100 / 150 / 200 / 250 km**. Sweep arms max at **3**; the 4th and 5th pips increase sweep speed. In SCAN, mouse wheel zooms the scope one pip-ring at a time; that plot zoom carries over to the PORT ring. Prototype ships may not ship with Mk5 — Dev Mk override and Pip Control can force it for testing. The outer POI rim ring is unchanged. **LMB or MMB** on scanner blips and CONTACTS list rows selects a contact (toggle off on same target or empty pick); **MMB** on a hull in the space viewport also selects.
-- **SECTOR MAP** (cockpit panel): **LIVE** fog + expedition trail; **TRAVEL LOG** tab lists archived trips in a sortable/filterable table. Drag to pan; wheel zoom over the map; **RECENTER** at the map’s bottom-right when not following the ship. **Right-click** the map to **DROP PIN** (or right-click an existing pin for rename/lock/delete); pins live in **POI BOOK** with the same controls. **Shift+click** still drops a pin. Click to select POI or contact; speed on viewport inner rim. Expedition archives on dock; POI Book + logs persist in `localStorage`.
+- **VIEW** (cockpit MODES switch / `V`): **SHIP** (default) shows the world through the viewport with the thin **radar** ring; **SCAN** replaces both with one full-disc radar scope (ship centered, blips by piecewise pip range, own-ship silhouette at center). **Radar** reach follows `min(scannerMk, radarPips)` through **Mk5 / 5 pips** with fixed rings at **50 / 100 / 150 / 200 / 250 km**. Sweep arms max at **3**; the 4th and 5th pips increase sweep speed. In SCAN, mouse wheel zooms the scope one pip-ring at a time; that plot zoom carries over to the PORT ring. Prototype ships may not ship with Mk5 — Dev Mk override and Pip Control can force it for testing. The outer POI rim ring is unchanged. **LMB or MMB** on radar blips and CONTACTS list rows selects a contact (toggle off on same target or empty pick); **MMB** on a hull in the space viewport also selects.
+- **POWER panel** — tabs **`PIPS | LOADOUTS`**. **PIPS**: bar-setter slot clicks set per-channel allocation; row **X** clears a channel; **CLEAR ALL**; linked loadout bar when active (name, lock, **Clear** disconnects link only); **SAVE (NEW)** / **UPDATE** (grayed with no active loadout or when locked). **LOADOUTS**: Travel Log pattern — click row applies immediately; hover shows red/green diff grid; rename (right-click), lock, delete with canvas modal; max **12** presets persisted in **`NavPersistence` v2**. Partial apply when generator pool is too small: inline warning + synchronized flash on missed slots. Ship Status (systems/fuel/weapons stub) lives in the **bottom-right corner** screen (`STATUS`), not POWER. Corner readouts: **ZOOM** top-right, **MODES** bottom-left, top-left reserved.
+- **SECTOR MAP** (cockpit panel): **LIVE** fog + expedition trail; **TRAVEL LOG** tab lists archived trips in a sortable/filterable table. Drag to pan; wheel zoom over the map; **RECENTER** at the map’s bottom-right when not following the ship. Hover near a POI, pin, contact, or (future) waypoint marker to see its name in a canvas tooltip. **Right-click** the map to **DROP PIN** (or right-click an existing pin for rename/lock/delete); pins live in **POI BOOK** with the same controls. **Shift+click** still drops a pin. Click to select POI or contact; speed on viewport inner rim. Expedition archives on dock; POI Book + logs persist in `localStorage`.
+
+### Navigation waypoints (planned — owner intent)
+
+**Not built.** Separate from POI Book pins (persistent address book) and from “selected POI on the rim” (today’s Destination panel highlight).
+
+Target behavior is **Google Maps–style multi-stop routing**:
+
+- Pilot queues one or more **ephemeral nav stops** (world position and/or a POI/contact/pin target).
+- The **active stop** is the head of the queue — bearing/distance on the scanner rim, sector-map marker, and Destination panel should all agree on “go here next.”
+- **Add stop** appends to the route (like Maps “Add destination” / multiple stops).
+- When the ship **reaches** the active stop (proximity threshold TBD), that stop **auto-clears** and the next queued stop becomes active — no manual dismiss.
+- Reaching the last stop clears the route entirely.
+
+Open UX/detail questions live in [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) §9.7. Implementation hooks reserved today (e.g. sector-map tooltip “waypoint hook”, `PoiSystem` tracker scaffold).
 
 ### Translation
 
@@ -316,12 +331,14 @@ Sparse NPC ships in open space (modular catalog defs). Density falls off with di
 | Home Base hangar (Jennings Station) | Docked bay + B2 launch/land; industrial set; danger lights; B1–B3 captain checklists | Done (B2 request queue later) |
 | Jennings Station (overworld) | Industrial exterior (~4× hull); approach lights + Enter / auto edge dock | Done |
 | Settings / controls | Ship-only sandbox viewport with live bindings | Done |
-| Top-left | Radar | Placeholder |
-| Top-right | Systems (+ fullscreen); FPS counter | Partial |
+| Top-left | (reserved) | Placeholder |
+| Top-right | Ship Status (systems/fuel/weapons stub) + FPS counter | Partial |
 | Bottom-left | Weapons | Placeholder |
 | Bottom-right | Navigation | Placeholder |
 | Center HUD | Speed, position, zoom | Done |
 | Pause (ESC) | Resume, fullscreen, settings, main menu | Done |
+
+**Modal policy:** During flight, confirms and text entry (pip loadout rename, Travel Log rename, POI pin rename, delete confirms) use **in-game canvas modals** on the active cockpit panel — not `window.prompt` / browser dialogs. Title, pause, and settings may keep DOM UI.
 
 ---
 
@@ -353,6 +370,7 @@ Sandbox build order: narrative stub → ship interior slice → derelict slice �
 
 ### Prototype backlog (not built)
 
+- [ ] **Navigation waypoint queue** — Google Maps–style multi-stop route: ephemeral stops (not POI Book pins); active stop drives rim/map/DEST readouts; **add stop**; auto-advance and remove each stop on arrival (see `GDD.md` Navigation waypoints)
 - [ ] Multiple ships
 - [ ] AI enemies
 - [ ] Trading economy
@@ -387,8 +405,7 @@ Sandbox build order: narrative stub → ship interior slice → derelict slice �
 - [ ] Economy / progression loop
 - [x] Home Base as start-of-run and between-mission hub
 - [x] Combat variety: dorsal turret + mining laser (loot roles deferred)
-- [ ] Meaningful navigation UI
-
+- [ ] Meaningful navigation UI — **waypoint queue** (Google Maps multi-stop: active stop on rim/map; auto-clear on arrival; see Navigation waypoints above)
 ---
 
 ## Changelog reference

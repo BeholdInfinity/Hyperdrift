@@ -122,10 +122,12 @@
             <label class="dev-check"><input type="checkbox" id="dev-ov-axes" /> Axes</label>
           </div>
           <div class="dev-drawer-section" data-dev-modes="playing">
-            <span class="dev-drawer-label">SCANNER</span>
+            <span class="dev-drawer-label">RADAR</span>
             <label class="dev-check"><input type="checkbox" id="dev-scan-asteroids" checked /> Asteroid blips</label>
             <label class="dev-check">Mk <input type="number" id="dev-scan-mk" min="0" max="5" value="5" class="dev-num-input" /></label>
             <label class="dev-check">Range <input type="range" id="dev-scan-range" min="0.25" max="3" step="0.05" value="1" /></label>
+            <label class="dev-check">Generator <input type="range" id="dev-gen-pips" min="1" max="12" step="1" value="6" /></label>
+            <button type="button" class="hangar-dev-btn" id="dev-gen-save">Save generator default</button>
             <span id="dev-scan-readout" class="dev-drawer-status">tier — · — km</span>
           </div>
           <div class="dev-drawer-section" data-dev-modes="playing">
@@ -579,6 +581,7 @@
         });
     })();
   </script>
+  <script src="src/loadErrorOverlay.js"></script>
   <script type="module" src="src/main.js"></script>
 </body>
 </html>

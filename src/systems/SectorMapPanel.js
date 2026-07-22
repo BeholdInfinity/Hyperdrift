@@ -61,6 +61,8 @@ export function drawSectorMapPanel(ctx, box, engine, panels) {
 
   if (view.modal) {
     drawConfirmModal(ctx, box, engine, panels, view.modal);
+  } else if (engine.poiBookModal?.surface === 'sectorMap') {
+    drawPoiBookModal(ctx, box, engine, panels);
   }
 }
 
@@ -274,35 +276,205 @@ function drawRecenterButton(ctx, mapBox, view, panels) {
 function drawMapOverlays(ctx, mapBox, engine, panels) {
   const view = engine.sectorMapView;
   drawRecenterButton(ctx, mapBox, view, panels);
+  drawMapMarkerTooltip(ctx, mapBox, view, panels);
   if (view.sectorMapMenu) {
     drawSectorMapContextMenu(ctx, mapBox, engine, panels, view.sectorMapMenu);
   }
 }
 
 export function pickMapPoiAtScreen(engine, sx, sy, mapBox, view) {
-  const tol = 10;
+  const hit = pickSectorMapMarkerAtScreen(engine, sx, sy, mapBox, view);
+  if (!hit || hit.kind !== 'pin') return null;
+  return engine.poiSystem.list.find((p) => p.id === hit.id) || null;
+}
+
+/** Nearest map marker under the cursor (POI, pin, contact; waypoints when added). */
+export function pickSectorMapMarkerAtScreen(engine, sx, sy, mapBox, view) {
   let best = null;
-  let bestD = tol;
+  let bestD = Infinity;
+
+  const tryHit = (anchorX, anchorY, radius, name, kind, id = null) => {
+    const d = Math.hypot(sx - anchorX, sy - anchorY);
+    if (d > radius || d >= bestD) return;
+    bestD = d;
+    best = { name, anchorX, anchorY, kind, id };
+  };
+
   for (const poi of engine.poiSystem.mapPois()) {
-    if (!engine.poiSystem.isUserPin(poi)) continue;
     const s = view.worldToScreen(poi.x, poi.y, mapBox);
-    const d = Math.hypot(sx - s.x, sy - (s.y - 3));
-    if (d < bestD) {
-      bestD = d;
-      best = poi;
+    const isPin = engine.poiSystem.isUserPin(poi);
+    if (isPin) {
+      tryHit(s.x, s.y - 3, 12, poi.name, 'pin', poi.id);
+    } else {
+      const sel = poi.id === engine.poiSystem.selectedId;
+      tryHit(s.x, s.y, sel ? 10 : 8, poi.name, 'poi', poi.id);
     }
   }
+
+  const scan = engine.scannerSystem;
+  for (const c of scan.contacts) {
+    if (!scan.passesContactFilter(c)) continue;
+    if (c.scanX == null || c.scanY == null) continue;
+    const s = view.worldToScreen(c.scanX, c.scanY, mapBox);
+    const sel = c.id === scan.selectedId;
+    tryHit(s.x, s.y, sel ? 10 : 8, c.name || 'Contact', 'contact', c.id);
+  }
+
+  // Future: dedicated flight waypoints (distinct from manual POI pins).
+  const waypoints = engine.sectorWaypoints;
+  if (Array.isArray(waypoints)) {
+    for (const wp of waypoints) {
+      if (wp.x == null || wp.y == null) continue;
+      const s = view.worldToScreen(wp.x, wp.y, mapBox);
+      tryHit(s.x, s.y, wp.hitRadius ?? 10, wp.name || 'Waypoint', 'waypoint', wp.id);
+    }
+  }
+
   return best;
 }
 
-export function promptRenamePoi(engine, poiId) {
+export function updateSectorMapMarkerHover(engine, sx, sy) {
+  const view = engine.sectorMapView;
+  const box = view.mapBody;
+  if (!box || !view.containsMapPoint(sx, sy) || view.modal || view.pointerDragging()) {
+    view.mapHoverTooltip = null;
+    return;
+  }
+  if (engine.poiBookModal?.surface === 'sectorMap') {
+    view.mapHoverTooltip = null;
+    return;
+  }
+  const hit = pickSectorMapMarkerAtScreen(engine, sx, sy, box, view);
+  view.mapHoverTooltip = hit
+    ? { text: hit.name, sx: hit.anchorX, sy: hit.anchorY }
+    : null;
+}
+
+function drawMapMarkerTooltip(ctx, mapBox, view, panels) {
+  const tip = view.mapHoverTooltip;
+  if (!tip?.text) return;
+  const maxLabelW = Math.min(140, mapBox.w - 16);
+  ctx.font = `600 10px ${FONT}`;
+  const label = truncateText(ctx, tip.text, maxLabelW);
+  const tw = ctx.measureText(label).width;
+  const padX = 6;
+  const bw = tw + padX * 2;
+  const bh = 18;
+  let tx = tip.sx + 10;
+  let ty = tip.sy - bh - 6;
+  if (tx + bw > mapBox.x + mapBox.w - 2) tx = mapBox.x + mapBox.w - bw - 2;
+  if (tx < mapBox.x + 2) tx = mapBox.x + 2;
+  if (ty < mapBox.y + 2) ty = tip.sy + 10;
+  if (ty + bh > mapBox.y + mapBox.h - 2) ty = mapBox.y + mapBox.h - bh - 2;
+
+  ctx.fillStyle = 'rgba(10, 20, 32, 0.96)';
+  ctx.fillRect(tx, ty, bw, bh);
+  ctx.strokeStyle = COPPER;
+  ctx.lineWidth = 1;
+  ctx.strokeRect(tx, ty, bw, bh);
+  panels._text(ctx, label, tx + padX, ty + 13, { size: 10, weight: 600, color: TXT });
+}
+
+export function closePoiBookModal(engine) {
+  engine.poiBookModal = null;
+  engine.input?.endModalTextCapture?.();
+}
+
+/** @param {'poiBook'|'sectorMap'} surface */
+export function openRenamePoiModal(engine, poiId, surface) {
   const poi = engine.poiSystem.list.find((p) => p.id === poiId);
   if (!poi || !engine.poiSystem.isUserPin(poi)) return;
-  const def = poi.defaultName || poi.name;
-  const name = window.prompt('Pin name', poi.name);
-  if (name == null) return;
-  engine.poiSystem.setPoiName(poiId, name);
+  engine.poiBookMenu = null;
+  engine.sectorMapView.sectorMapMenu = null;
+  engine.sectorMapView.travelLogMenu = null;
+  engine.poiBookModal = {
+    phase: 'rename',
+    surface,
+    poiId,
+    draft: poi.name,
+  };
+  engine.input?.beginModalTextCapture?.();
+}
+
+function commitRenamePoi(engine) {
+  const modal = engine.poiBookModal;
+  if (!modal || modal.phase !== 'rename') return;
+  engine.poiSystem.setPoiName(modal.poiId, modal.draft);
   engine.persistNavProfile();
+  closePoiBookModal(engine);
+}
+
+const POI_RENAME_MAX_LEN = 32;
+
+/** @returns {boolean} */
+export function processPoiBookModalInput(engine) {
+  const modal = engine.poiBookModal;
+  if (!modal || modal.phase !== 'rename' || !engine.input) return false;
+  let consumed = false;
+  for (const ev of engine.input.consumeModalTextEvents()) {
+    consumed = true;
+    if (ev.type === 'escape') {
+      closePoiBookModal(engine);
+    } else if (ev.type === 'enter') {
+      commitRenamePoi(engine);
+    } else if (ev.type === 'backspace') {
+      modal.draft = String(modal.draft || '').slice(0, -1);
+    } else if (ev.type === 'char' && ev.char) {
+      const draft = String(modal.draft || '');
+      if (draft.length < POI_RENAME_MAX_LEN) modal.draft = draft + ev.char;
+    }
+  }
+  return consumed;
+}
+
+export function drawPoiBookModal(ctx, box, engine, panels) {
+  const modal = engine.poiBookModal;
+  if (!modal || modal.phase !== 'rename') return;
+  ctx.fillStyle = 'rgba(8, 14, 22, 0.5)';
+  ctx.fillRect(box.x, box.y, box.w, box.h);
+  panels._region(box.x, box.y, box.w, box.h, () => {});
+
+  const w = Math.min(240, box.w - 12);
+  const h = 108;
+  const x = box.x + (box.w - w) / 2;
+  const y = box.y + (box.h - h) / 2;
+  ctx.fillStyle = 'rgba(12, 24, 36, 0.96)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = COPPER;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+  panels._text(ctx, 'RENAME PIN', x + 8, y + 16, { size: 12, weight: 700, color: COPPER });
+  panels._text(ctx, 'ENTER / OK · ESC / CANCEL', x + 8, y + 30, { size: 8, color: DIM, weight: 500 });
+
+  const fieldX = x + 8;
+  const fieldY = y + 40;
+  const fieldW = w - 16;
+  const fieldH = 18;
+  ctx.fillStyle = 'rgba(30, 54, 76, 0.85)';
+  ctx.fillRect(fieldX, fieldY, fieldW, fieldH);
+  ctx.strokeStyle = 'rgba(120, 200, 255, 0.45)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(fieldX, fieldY, fieldW, fieldH);
+
+  const draft = String(modal.draft || '');
+  ctx.font = `600 11px ${FONT}`;
+  const display = truncateText(ctx, draft, fieldW - 14);
+  panels._text(ctx, display, fieldX + 6, fieldY + 13, { size: 11, weight: 600, color: TXT });
+  const blinkOn = Math.floor((engine.gameTime || 0) * 2.5) % 2 === 0;
+  if (blinkOn) {
+    const tw = ctx.measureText(display).width;
+    const cx = fieldX + 6 + Math.min(tw, fieldW - 14);
+    ctx.fillStyle = ACCENT;
+    ctx.fillRect(cx + 1, fieldY + 4, 1, fieldH - 8);
+  }
+
+  const by = y + h - 22;
+  panels._btnWide(ctx, x + 8, by, w / 2 - 12, 'CANCEL', (e) => {
+    closePoiBookModal(e);
+  });
+  panels._btnWide(ctx, x + w / 2 + 4, by, w / 2 - 12, 'OK', (e) => {
+    commitRenamePoi(e);
+  });
 }
 
 export function deletePoiIfAllowed(engine, poiId) {
@@ -317,7 +489,15 @@ export function drawPoiPinContextMenu(ctx, clampBox, engine, panels, menu, poiId
   const w = 96;
   const rowH = 18;
   const items = [
-    { label: 'RENAME', color: ACCENT, action: (e) => promptRenamePoi(e, poiId) },
+    {
+      label: 'RENAME',
+      color: ACCENT,
+      action: (e) => {
+        e.poiBookMenu = null;
+        e.sectorMapView.sectorMapMenu = null;
+        openRenamePoiModal(e, poiId, menuTag);
+      },
+    },
     {
       label: poi.locked ? 'UNLOCK' : 'LOCK',
       color: TXT,
@@ -575,15 +755,52 @@ function drawTripRowCells(ctx, panels, cols, ry, row, log, { current = false, ei
   }
 }
 
-function promptRenameTrip(engine, eid) {
-  const log = engine.travelLog;
-  const ent = log.entries.find((x) => x.id === eid);
+export function closeSectorMapModal(engine) {
+  engine.sectorMapView.modal = null;
+  engine.input?.endModalTextCapture?.();
+}
+
+export function openRenameTripModal(engine, entryId) {
+  const ent = engine.travelLog.entries.find((x) => x.id === entryId);
   if (!ent) return;
-  const defaultTitle = log.defaultExpeditionTitle(ent);
-  const name = window.prompt('Expedition name (date and stats stay fixed)', defaultTitle);
-  if (name == null) return;
-  log.setCustomName(eid, name);
+  engine.sectorMapView.travelLogMenu = null;
+  engine.sectorMapView.modal = {
+    phase: 'rename',
+    entryId,
+    draft: engine.travelLog.expeditionTitle(ent),
+  };
+  engine.input?.beginModalTextCapture?.();
+}
+
+function commitRenameTrip(engine) {
+  const modal = engine.sectorMapView.modal;
+  if (!modal || modal.phase !== 'rename') return;
+  engine.travelLog.setCustomName(modal.entryId, modal.draft);
   engine.persistNavProfile();
+  closeSectorMapModal(engine);
+}
+
+const TRIP_RENAME_MAX_LEN = 32;
+
+/** @returns {boolean} */
+export function processSectorMapModalInput(engine) {
+  const modal = engine.sectorMapView?.modal;
+  if (!modal || modal.phase !== 'rename' || !engine.input) return false;
+  let consumed = false;
+  for (const ev of engine.input.consumeModalTextEvents()) {
+    consumed = true;
+    if (ev.type === 'escape') {
+      closeSectorMapModal(engine);
+    } else if (ev.type === 'enter') {
+      commitRenameTrip(engine);
+    } else if (ev.type === 'backspace') {
+      modal.draft = String(modal.draft || '').slice(0, -1);
+    } else if (ev.type === 'char' && ev.char) {
+      const draft = String(modal.draft || '');
+      if (draft.length < TRIP_RENAME_MAX_LEN) modal.draft = draft + ev.char;
+    }
+  }
+  return consumed;
 }
 
 function deleteTripEntry(engine, eid) {
@@ -607,7 +824,10 @@ function drawTravelLogContextMenu(ctx, listBox, engine, panels, menu) {
     {
       label: 'RENAME',
       color: ACCENT,
-      action: (e) => promptRenameTrip(e, menu.entryId),
+      action: (e) => {
+        e.sectorMapView.travelLogMenu = null;
+        openRenameTripModal(e, menu.entryId);
+      },
     },
     {
       label: entry.locked ? 'UNLOCK' : 'LOCK',
@@ -776,6 +996,13 @@ function drawTravelLogList(ctx, box, engine, panels) {
 }
 
 function drawConfirmModal(ctx, box, engine, panels, modal) {
+  ctx.fillStyle = 'rgba(8, 14, 22, 0.5)';
+  ctx.fillRect(box.x, box.y, box.w, box.h);
+  panels._region(box.x, box.y, box.w, box.h, () => {});
+  if (modal.phase === 'rename') {
+    drawRenameTripModal(ctx, box, engine, panels, modal);
+    return;
+  }
   const w = Math.min(280, box.w - 8);
   const h = 88;
   const x = box.x + (box.w - w) / 2;
@@ -798,7 +1025,7 @@ function drawConfirmModal(ctx, box, engine, panels, modal) {
   panels._text(ctx, body, x + 8, y + 36, { size: 11, color: TXT, weight: 400 });
   const by = y + h - 22;
   panels._btnWide(ctx, x + 8, by, w / 2 - 12, 'CANCEL', (e) => {
-    e.sectorMapView.modal = null;
+    closeSectorMapModal(e);
   });
   const okLabel = 'DELETE';
   panels._btnWide(ctx, x + w / 2 + 4, by, w / 2 - 12, okLabel, (e) => {
@@ -811,12 +1038,57 @@ function drawConfirmModal(ctx, box, engine, panels, modal) {
       e.travelLog.deleteAllUnlocked();
       e.persistNavProfile();
     }
-    e.sectorMapView.modal = null;
+    closeSectorMapModal(e);
+  });
+}
+
+function drawRenameTripModal(ctx, box, engine, panels, modal) {
+  const w = Math.min(260, box.w - 12);
+  const h = 108;
+  const x = box.x + (box.w - w) / 2;
+  const y = box.y + (box.h - h) / 2;
+  ctx.fillStyle = 'rgba(12, 24, 36, 0.96)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = COPPER;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+  panels._text(ctx, 'RENAME EXPEDITION', x + 8, y + 16, { size: 12, weight: 700, color: COPPER });
+  panels._text(ctx, 'Date and stats stay fixed', x + 8, y + 30, { size: 8, color: DIM, weight: 500 });
+  panels._text(ctx, 'ENTER / OK · ESC / CANCEL', x + 8, y + 40, { size: 8, color: DIM, weight: 500 });
+
+  const fieldX = x + 8;
+  const fieldY = y + 48;
+  const fieldW = w - 16;
+  const fieldH = 18;
+  ctx.fillStyle = 'rgba(30, 54, 76, 0.85)';
+  ctx.fillRect(fieldX, fieldY, fieldW, fieldH);
+  ctx.strokeStyle = 'rgba(120, 200, 255, 0.45)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(fieldX, fieldY, fieldW, fieldH);
+
+  const draft = String(modal.draft || '');
+  ctx.font = `600 11px ${FONT}`;
+  const display = truncateText(ctx, draft, fieldW - 14);
+  panels._text(ctx, display, fieldX + 6, fieldY + 13, { size: 11, weight: 600, color: TXT });
+  const blinkOn = Math.floor((engine.gameTime || 0) * 2.5) % 2 === 0;
+  if (blinkOn) {
+    const tw = ctx.measureText(display).width;
+    const cx = fieldX + 6 + Math.min(tw, fieldW - 14);
+    ctx.fillStyle = ACCENT;
+    ctx.fillRect(cx + 1, fieldY + 4, 1, fieldH - 8);
+  }
+
+  const by = y + h - 22;
+  panels._btnWide(ctx, x + 8, by, w / 2 - 12, 'CANCEL', (e) => {
+    closeSectorMapModal(e);
+  });
+  panels._btnWide(ctx, x + w / 2 + 4, by, w / 2 - 12, 'OK', (e) => {
+    commitRenameTrip(e);
   });
 }
 
 export function sectorMapClick(engine, worldX, worldY, shiftKey) {
-  if (engine.sectorMapView.modal) return true;
+  if (engine.sectorMapView.modal || engine.poiBookModal?.surface === 'sectorMap') return true;
   engine.sectorMapView.sectorMapMenu = null;
   if (shiftKey) {
     engine.dropMapWaypoint(worldX, worldY);

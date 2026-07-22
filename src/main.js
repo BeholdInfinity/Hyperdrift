@@ -1,12 +1,13 @@
 import { GameEngine } from './core/GameEngine.js';
 import { Settings } from './core/Settings.js';
-import { SCANNER } from './core/Constants.js';
+import { SCANNER, PIPS } from './core/Constants.js';
 import { DevTools } from './dev/DevTools.js';
 import {
   sectorEditorDraft,
   randomizePlanetLook,
   bakeSectorLayout,
 } from './dev/DevSectorEditor.js';
+import { saveToRepo, exportToClipboard, SAVE_PATHS } from './dev/DevSave.js';
 import {
   enableDevPanelDrag,
   saveDevPanelPositions,
@@ -55,8 +56,15 @@ const dockHud = document.getElementById('dock-hud');
 const devDrawer = document.getElementById('dev-drawer');
 const hangarEditPanel = document.getElementById('hangar-edit-panel');
 
-const engine = new GameEngine(canvas);
-engine.startTitle();
+let engine;
+try {
+  engine = new GameEngine(canvas);
+  engine.startTitle();
+  window.__hyperdriftMarkBootOk?.();
+} catch (err) {
+  window.__hyperdriftReportLoadError?.('Game failed to start', err);
+  throw err;
+}
 engine.onBlueprintHeadingChange = () => {
   const bp = engine.getBlueprint?.();
   if (bp) {
@@ -224,9 +232,28 @@ function syncDevScanner() {
   const s = engine.scannerSystem;
   if (!s) return;
   const km = (s.range / (SCANNER.KM_SCALE || 100)).toFixed(0);
-  el.textContent = `tier ${s.tier}${s.on ? '' : ' (off)'} · ${km} km · ${s.contacts.length} contacts`;
+  const pool = engine.pipSystem?.pool?.() ?? '—';
+  el.textContent = `tier ${s.tier}${s.on ? '' : ' (off)'} · ${km} km · ${s.contacts.length} contacts · gen ${pool}/${PIPS.BASE_POOL}`;
   const ast = document.getElementById('dev-scan-asteroids');
   if (ast && ast.checked !== !!s.includeAsteroids) ast.checked = !!s.includeAsteroids;
+  const genEl = document.getElementById('dev-gen-pips');
+  if (genEl && engine.pipSystem) {
+    const v = engine.pipSystem._fuelCellPips | 0;
+    if (Number(genEl.value) !== v) genEl.value = String(v);
+  }
+}
+
+async function bakeGeneratorDefault(value) {
+  const res = await fetch('/src/core/Constants.js');
+  let text = await res.text();
+  text = text.replace(
+    /DEFAULT_GENERATOR_PIPS:\s*\d+/,
+    `DEFAULT_GENERATOR_PIPS: ${value | 0}`
+  );
+  const save = await saveToRepo(SAVE_PATHS.constants, text);
+  if (save.ok) return save;
+  await exportToClipboard(text);
+  return { ok: false, error: save.error || 'Copied to clipboard instead' };
 }
 
 function rebuildHangarPalette() {
@@ -948,6 +975,17 @@ document.getElementById('dev-scan-mk')?.addEventListener('input', (e) => {
 });
 document.getElementById('dev-scan-range')?.addEventListener('input', (e) => {
   if (engine.scannerSystem) engine.scannerSystem.rangeScale = Number(e.target.value) || 1;
+});
+document.getElementById('dev-gen-pips')?.addEventListener('input', (e) => {
+  if (engine.pipSystem) {
+    engine.pipSystem.setFuelCellPips(Number(e.target.value) || PIPS.DEFAULT_GENERATOR_PIPS);
+  }
+});
+document.getElementById('dev-gen-save')?.addEventListener('click', async () => {
+  const el = document.getElementById('dev-gen-pips');
+  const v = Number(el?.value) || PIPS.DEFAULT_GENERATOR_PIPS;
+  const res = await bakeGeneratorDefault(v);
+  DevTools.status = res.ok ? `Generator default saved (${v})` : res.error || 'Generator save failed';
 });
 
 document.getElementById('dev-sector-planet-r')?.addEventListener('input', (e) => {

@@ -53,7 +53,8 @@ const PANEL_LABELS = {
   left: ['CONTACT DETAILS', 'CONTACTS', 'COMMS'],
   right: ['DESTINATION', 'SECTOR MAP', 'POWER'],
 };
-const CORNER_LABELS = ['', '', 'ZOOM', 'MODES'];
+/** Index: 0=TL, 1=TR, 2=BL, 3=BR. TL reserved/empty; populated corners rotated CW once. */
+const CORNER_LABELS = ['', 'ZOOM', 'MODES', 'STATUS'];
 
 export class CockpitFrame {
   constructor() {
@@ -124,8 +125,14 @@ export class CockpitFrame {
     return { cx, cy, rimR: (scannerOuterR + circleR) / 2, inner: scannerOuterR, outer: circleR };
   }
 
+  /** @param {string} title */
+  cornerScreen(title) {
+    const corner = this.layout?.corners?.find((c) => c.title === title);
+    return corner?.screen || null;
+  }
+
   /**
-   * Draw live values into the four corner readout screens (SPD/POS/ZOOM/PREC),
+   * Draw live values into the four corner readout screens (ZOOM, etc.),
    * on top of the cached chrome. Keyed by the corner title.
    * @param {CanvasRenderingContext2D} ctx
    * @param {Record<string, { text: string, color?: string }>} values

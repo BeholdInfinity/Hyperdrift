@@ -1060,7 +1060,15 @@ export class Station {
     const blink = Math.sin(time * 3) > 0;
     ctx.fillStyle = blink ? 'rgba(255, 80, 60, 0.9)' : 'rgba(80, 20, 20, 0.5)';
     const br = STATION.BEACON_R;
-    for (const a of [-0.9, -2.2, 0.4, 2.5]) {
+    // Four hull beacons: mirrored pairs on the north/south rims (±spread from pole).
+    const spread = 0.67;
+    const angles = [
+      -Math.PI / 2 + spread,
+      -Math.PI / 2 - spread,
+      Math.PI / 2 - spread,
+      Math.PI / 2 + spread,
+    ];
+    for (const a of angles) {
       ctx.beginPath();
       ctx.arc(
         Math.cos(a) * STATION.RADIUS * 0.92,

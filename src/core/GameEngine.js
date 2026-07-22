@@ -14,6 +14,9 @@ import {
 import { CockpitFrame } from '../systems/CockpitFrame.js';
 import { CockpitPanels } from '../systems/CockpitPanels.js';
 import { PipSystem } from '../systems/PipSystem.js';
+import { PipLoadouts } from '../systems/PipLoadouts.js';
+import { processPipLoadoutModalInput } from '../systems/PipLoadoutPanel.js';
+import { processSectorMapModalInput, processPoiBookModalInput } from '../systems/SectorMapPanel.js';
 import { PoiSystem } from '../world/PoiSystem.js';
 import { SectorMap, trailDistance } from '../world/SectorMap.js';
 import { TravelLog } from '../world/TravelLog.js';
@@ -119,6 +122,12 @@ export class GameEngine {
     this.scanner = new Scanner();
     this.scannerSystem = new ScannerSystem();
     this.pipSystem = new PipSystem();
+    this.pipLoadouts = new PipLoadouts();
+    this.pipLoadoutModal = null;
+    this.poiBookModal = null;
+    this.pipLoadoutHover = null;
+    this.pipLoadoutFlash = null;
+    this.pipLoadoutListScroll = 0;
     this.poiSystem = new PoiSystem();
     this.sectorMap = new SectorMap();
     this.travelLog = new TravelLog();
@@ -276,10 +285,24 @@ export class GameEngine {
 
   _loadNavProfile() {
     const data = loadNavProfile();
-    if (!data) return;
+    if (!data) {
+      this.pipLoadouts.seedDefaultIfEmpty();
+      return;
+    }
     if (data.nextExpeditionId) this.nextExpeditionId = data.nextExpeditionId;
     if (data.pois?.length) this.poiSystem.hydrateFromSave(data.pois);
     if (data.travelLog) this.travelLog.fromJSON(data.travelLog);
+    if (data.pipLoadouts) {
+      this.pipLoadouts.fromJSON(data.pipLoadouts);
+    } else {
+      this.pipLoadouts.seedDefaultIfEmpty();
+    }
+    if (data.activeLoadoutId) {
+      this.pipLoadouts.activeId = data.activeLoadoutId;
+      if (!this.pipLoadouts.find(data.activeLoadoutId)) {
+        this.pipLoadouts.activeId = null;
+      }
+    }
   }
 
   persistNavProfile() {
@@ -287,6 +310,9 @@ export class GameEngine {
       nextExpeditionId: this.nextExpeditionId,
       pois: this.poiSystem.exportForSave(),
       travelLog: this.travelLog.toJSON(),
+      pipLoadouts: this.pipLoadouts.toJSON(),
+      nextLoadoutId: this.pipLoadouts._nextId,
+      activeLoadoutId: this.pipLoadouts.activeId,
     });
   }
 
@@ -2759,11 +2785,33 @@ export class GameEngine {
     if (
       this.mode === 'playing' &&
       zoomWheel !== 0 &&
+      this.cockpitPanels.processPowerPanelInput(this, this.input, zoomWheel)
+    ) {
+      camZoomWheel = 0;
+    } else if (this.mode === 'playing') {
+      this.cockpitPanels.processPowerPanelInput(this, this.input, 0);
+    }
+    if (
+      this.mode === 'playing' &&
+      zoomWheel !== 0 &&
       this.cockpitPanels.processSectorMapInput(this, this.input, zoomWheel)
     ) {
       camZoomWheel = 0;
     } else if (this.mode === 'playing') {
       this.cockpitPanels.processSectorMapInput(this, this.input, 0);
+    }
+
+    if (
+      this.pipLoadoutFlash &&
+      (this.gameTime || 0) >= this.pipLoadoutFlash.until
+    ) {
+      this.pipLoadoutFlash = null;
+    }
+
+    if (this.mode === 'playing') {
+      processPipLoadoutModalInput(this);
+      processSectorMapModalInput(this);
+      processPoiBookModalInput(this);
     }
 
     this.asteroidSystem.update(this.ship.position.x, this.ship.position.y);
@@ -3462,10 +3510,10 @@ export class GameEngine {
         { name: 'Engines', state: 'ok' },
         { name: 'Thrusters', state: 'ok' },
         { name: 'Scanner', state: 'ok' },
-        { name: 'Weapons', state: 'ok' },
         { name: 'Life Support', state: 'ok' },
       ],
       fuel: 1,
+      hull: 1,
       fires: [],
       weapons: [
         { name: 'Turret', ammo: '\u221E', state: 'ready' },
@@ -3583,7 +3631,7 @@ export class GameEngine {
     if (!r.scannerBand || !this.ship) return;
 
     const dt = this._lastFrameDt || 1 / 60;
-    const scannerPips = this.pipSystem.get('scanner');
+    const radarPips = this.pipSystem.get('radar');
     const geo = this._scannerGeometry();
 
     this.scannerSystem.update(dt, {
@@ -3592,7 +3640,8 @@ export class GameEngine {
       ambientTraffic: this.ambientTraffic,
       asteroids: this.asteroidSystem.getActiveAsteroids(),
       camera: this.camera,
-      scannerPips,
+      radarPips,
+      scannerPips: radarPips,
       centerX: r.centerX,
       centerY: r.centerY,
       innerR: geo.innerR,

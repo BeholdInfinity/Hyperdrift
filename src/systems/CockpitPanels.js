@@ -16,15 +16,28 @@ import {
   sectorMapClick,
   sectorMapRightClick,
   drawPoiPinContextMenu,
+  drawPoiBookModal,
   travelLogArchiveRowSlots,
+  updateSectorMapMarkerHover,
 } from './SectorMapPanel.js';
 import { stepTravelLogListScroll } from '../world/TravelLogTable.js';
+import {
+  drawPipLoadoutPanel,
+  drawPipLoadoutModal,
+  PIP_LABELS,
+  processPipLoadoutInput,
+  pipLoadoutRightClick,
+} from './PipLoadoutPanel.js';
 
 const FONT = "'Barlow Condensed', 'Segoe UI', sans-serif";
 const TXT = 'rgba(200, 224, 246, 0.9)';
 const DIM = 'rgba(150, 178, 202, 0.55)';
 const COPPER = 'rgba(230, 171, 109, 0.92)';
 const ACCENT = 'rgba(120, 200, 255, 0.85)';
+const PIP_FLASH_GREEN = 'rgba(95, 224, 138, 0.95)';
+const PIP_FLASH_RED = 'rgba(255, 120, 120, 0.95)';
+/** Muted green for STATUS corner readout (less vivid than IFF.green). */
+const STATUS_OK = 'rgba(108, 158, 128, 0.9)';
 
 export class CockpitPanels {
   constructor() {
@@ -36,6 +49,10 @@ export class CockpitPanels {
     this._travelLogRightRegions = [];
     /** @type {Array<{x:number,y:number,w:number,h:number,poiId:string}>} */
     this._poiBookRightRegions = [];
+    /** @type {Array<{x:number,y:number,w:number,h:number,entryId:string}>} */
+    this._pipLoadoutRightRegions = [];
+    /** @type {Array<{x:number,y:number,w:number,h:number,entryId:string}>} */
+    this._pipLinkedLoadoutRightRegions = [];
     /** @type {null | { poiId: string, x: number, y: number }} */
     this.poiBookMenu = null;
   }
@@ -46,6 +63,8 @@ export class CockpitPanels {
     this._regions = [];
     this._travelLogRightRegions = [];
     this._poiBookRightRegions = [];
+    this._pipLoadoutRightRegions = [];
+    this._pipLinkedLoadoutRightRegions = [];
     const p = layout.panels;
     this._contact(ctx, this._content(p[0]), engine);
     this._contactsList(ctx, this._content(p[1]), engine);
@@ -53,21 +72,21 @@ export class CockpitPanels {
     this._destination(ctx, this._content(p[3]), engine);
     this._sectorMap(ctx, this._content(p[4]), engine);
     this._power(ctx, this._content(p[5]), engine);
+    this._shipStatusCorner(ctx, engine);
     this._modeSwitches(ctx, engine);
     this._alertOverlay(ctx, engine);
   }
 
-  // ---- MODES switch stack (bottom-right corner) --------------------------
+  // ---- MODES switch stack (bottom-left corner) ---------------------------
   /**
-   * A tidy stack of two-position mode switches filling the bottom-right corner
+   * A tidy stack of two-position mode switches filling the MODES corner screen
    * (baked title "MODES"). Each row is a labelled slide switch; the list is
    * built to leave headroom for future toggles. Rows register click regions
    * routed through handleClick.
    */
   _modeSwitches(ctx, engine) {
-    const corner = engine.cockpitFrame?.layout?.corners?.[3];
-    if (!corner) return;
-    const g = corner.screen || corner;
+    const g = engine.cockpitFrame?.cornerScreen('MODES');
+    if (!g) return;
 
     const pad = Math.max(6, Math.min(g.w, g.h) * 0.09);
     const ix = g.x + pad;
@@ -263,6 +282,11 @@ export class CockpitPanels {
 
   /** Right-click on travel log rows opens rename menu. */
   handleRightClick(x, y, engine) {
+    if (pipLoadoutRightClick(engine, x, y, this)) {
+      engine.sectorMapView.travelLogMenu = null;
+      this.poiBookMenu = null;
+      return true;
+    }
     if (engine.sectorMapView?.tabs?.sector === 1) {
       for (const r of this._travelLogRightRegions) {
         if (x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h) {
@@ -306,6 +330,14 @@ export class CockpitPanels {
 
   registerTravelLogRowRightClick(x, y, w, h, entryId) {
     this._travelLogRightRegions.push({ x, y, w, h, entryId });
+  }
+
+  registerPipLoadoutRowRightClick(x, y, w, h, entryId) {
+    this._pipLoadoutRightRegions.push({ x, y, w, h, entryId });
+  }
+
+  registerPipLinkedLoadoutRightClick(x, y, w, h, entryId) {
+    this._pipLinkedLoadoutRightRegions.push({ x, y, w, h, entryId });
   }
 
   _text(ctx, s, x, y, { size = 14, color = TXT, align = 'left', weight = 600 } = {}) {
@@ -368,14 +400,14 @@ export class CockpitPanels {
       });
     }
 
-    // Science-gated cargo readout.
-    const science = engine.pipSystem.get('science');
+    // Forward Looking Scanner pip gates cargo detail.
+    const scannerPips = engine.pipSystem.get('scanner');
     const y = box.y + box.h - 4;
-    if (science > 0) {
+    if (scannerPips > 0) {
       const cargo = c.type === 'civilian' ? 'ORE, ALLOY (est.)' : c.type === 'station' ? 'TRADE HUB' : '—';
       this._text(ctx, `CARGO ${cargo}`, box.x, y, { size: 12, color: ACCENT, weight: 500 });
     } else {
-      this._text(ctx, 'CARGO — science offline', box.x, y, { size: 11, color: DIM, weight: 400 });
+      this._text(ctx, 'CARGO — scanner offline', box.x, y, { size: 11, color: DIM, weight: 400 });
     }
   }
 
@@ -425,7 +457,7 @@ export class CockpitPanels {
     const listY = box.y + chipH + 6;
     const listH = box.h - chipH - 6;
     if (!scan.on) {
-      this._text(ctx, 'SENSOR OFFLINE', box.x, listY + 16, { color: DIM, size: 13 });
+      this._text(ctx, 'RADAR OFFLINE', box.x, listY + 16, { color: DIM, size: 13 });
       return;
     }
     const list = scan.contacts.filter((c) => scan.passesContactFilter(c));
@@ -583,6 +615,9 @@ export class CockpitPanels {
       if (this.poiBookMenu) {
         drawPoiPinContextMenu(ctx, body, engine, this, this.poiBookMenu, this.poiBookMenu.poiId, 'poiBook');
       }
+      if (engine.poiBookModal?.surface === 'poiBook') {
+        drawPoiBookModal(ctx, body, engine, this);
+      }
     }
   }
 
@@ -607,9 +642,19 @@ export class CockpitPanels {
     drawSectorMapPanel(ctx, box, engine, this);
   }
 
+  /** @returns {boolean} true if wheel was consumed */
+  processPowerPanelInput(engine, input, zoomWheel) {
+    if (engine.pipLoadoutModal) return zoomWheel !== 0;
+    return processPipLoadoutInput(engine, input, this, zoomWheel);
+  }
+
   /** @returns {boolean} true if wheel was consumed for map zoom */
   processSectorMapInput(engine, input, zoomWheel) {
     const view = engine.sectorMapView;
+    if (view.modal || engine.poiBookModal?.surface === 'sectorMap') {
+      view.mapHoverTooltip = null;
+      return zoomWheel !== 0;
+    }
     const mx = input.mouseScreen.x;
     const my = input.mouseScreen.y;
     if (
@@ -623,12 +668,14 @@ export class CockpitPanels {
     }
     if (view.mapBody && view.containsMapPoint(mx, my)) {
       view.hoverWorld = view.screenToWorld(mx, my, view.mapBody);
+      updateSectorMapMarkerHover(engine, mx, my);
       if (zoomWheel !== 0) {
         view.stepZoom(zoomWheel);
         return true;
       }
     } else {
       view.hoverWorld = null;
+      view.mapHoverTooltip = null;
     }
     if (engine.mode !== 'playing' || !view.mapBody || view.modal) {
       if (!input.mouseDown) this._mapDragTracking = false;
@@ -659,66 +706,329 @@ export class CockpitPanels {
     return true;
   }
 
-  _btnWide(ctx, x, y, w, label, action) {
-    const h = 16;
+  _btnWide(ctx, x, y, w, label, action, h = 16) {
     ctx.fillStyle = 'rgba(30, 54, 76, 0.8)';
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = 'rgba(120, 200, 255, 0.35)';
     ctx.lineWidth = 1;
     ctx.strokeRect(x, y, w, h);
-    this._text(ctx, label, x + w / 2, y + 12, { size: 9, align: 'center', weight: 700 });
+    const fs = h >= 20 ? 10 : 9;
+    this._text(ctx, label, x + w / 2, y + h - 4, { size: fs, align: 'center', weight: 700 });
     this._region(x, y, w, h, action);
   }
 
-  // ---- 5 POWER (pips + ship status) --------------------------------------
+  // ---- 5 POWER (pips + loadouts) -----------------------------------------
   _power(ctx, box, engine) {
     const tab = this.tabs.power;
-    this._tabBar(ctx, box, ['PIPS', 'STATUS'], tab, (i) => (this.tabs.power = i));
+    this._tabBar(ctx, box, ['PIPS', 'LOADOUTS'], tab, (i) => (this.tabs.power = i));
     const body = { x: box.x, y: box.y + 22, w: box.w, h: box.h - 22 };
     if (tab === 0) this._pips(ctx, body, engine);
-    else this._shipStatus(ctx, body, engine);
+    else drawPipLoadoutPanel(ctx, body, engine, this);
+    if (engine.pipLoadoutModal) {
+      drawPipLoadoutModal(ctx, body, engine, this);
+    }
   }
 
   _pips(ctx, box, engine) {
     const pips = engine.pipSystem;
-    this._text(ctx, `POOL ${pips.used()}/${pips.pool()}`, box.x, box.y + 12, {
-      size: 12,
+    const flash = engine.pipLoadoutFlash;
+    const flashActive = flash && (engine.gameTime || 0) < flash.until;
+    const pulse = flashActive ? 0.45 + 0.55 * Math.abs(Math.sin((engine.gameTime || 0) * 14)) : 0;
+    const active = engine.pipLoadouts?.active;
+
+    const padY = 2;
+    const footerBtnH = Math.max(18, Math.min(24, Math.floor(box.h * 0.075)));
+    const footerGap = 4;
+    const footerBlockH = footerBtnH * 2 + footerGap;
+    const loadoutH = active ? 22 : 0;
+    const headerH = 18 + loadoutH;
+    const rowsTop = box.y + padY + headerH;
+    const rowsBottom = box.y + box.h - padY - footerBlockH;
+    const rowsAreaH = Math.max(PIPS.CHANNELS.length * 18, rowsBottom - rowsTop);
+    const rowH = Math.max(20, Math.min(34, Math.floor(rowsAreaH / PIPS.CHANNELS.length)));
+    const blockH = rowH * PIPS.CHANNELS.length;
+    const blockY = rowsTop + Math.max(0, rowsBottom - rowsTop - blockH) / 2;
+
+    const pipScale = 0.7;
+    const btnS = Math.max(11, Math.floor(Math.max(16, Math.min(22, rowH - 2)) * pipScale));
+    const labelW = 58;
+    const labelSize = Math.max(10, Math.min(12, rowH - 7));
+    const xBtn = box.x + labelW;
+    const minusX = box.x + box.w - btnS * 2 - 2;
+    const plusX = box.x + box.w - btnS - 2;
+    const slotsX = xBtn + btnS + 6;
+    const slotsEnd = minusX - 6;
+    const slotCount = PIPS.MAX_PER_CHANNEL;
+    const slotGap = 1;
+    const slotsTrackW = slotsEnd - slotsX;
+    const slotW = Math.max(
+      12,
+      Math.floor((slotsTrackW - slotGap * (slotCount - 1)) / slotCount)
+    );
+    const slotH = Math.max(
+      8,
+      Math.floor(Math.min(rowH - 4, slotW) * pipScale)
+    );
+
+    // Header — pool readout + segmented availability bar (+ optional partial warning).
+    const headerY = box.y + padY;
+    const poolTotal = pips.pool();
+    const poolFree = pips.free();
+    this._text(ctx, `POOL ${poolFree}/${poolTotal}`, box.x, headerY + 13, {
+      size: 11,
       color: DIM,
-      weight: 600,
+      weight: 700,
     });
-    const rowH = 20;
+    const barX = box.x + 50;
+    const warnW = flashActive && flash.shortBy > 0 ? 88 : 0;
+    const barW = Math.max(24, box.w - 50 - warnW - 4);
+    const barY = headerY + 4;
+    const barH = 9;
+    this._drawSegmentedPoolBar(ctx, barX, barY, barW, barH, poolTotal, poolFree);
+    if (flashActive && flash.shortBy > 0) {
+      this._text(ctx, `−${flash.shortBy} SHORT`, box.x + box.w, headerY + 13, {
+        size: 9,
+        align: 'right',
+        color: PIP_FLASH_RED,
+        weight: 700,
+      });
+    }
+
+    if (active) {
+      const ly = headerY + 18;
+      ctx.fillStyle = 'rgba(30, 48, 68, 0.32)';
+      ctx.fillRect(box.x, ly, box.w, loadoutH);
+      ctx.strokeStyle = 'rgba(120, 200, 255, 0.18)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(box.x, ly, box.w, loadoutH);
+      this._btnPadlock(ctx, box.x + 2, ly + 3, active.locked, (e) => {
+        e.pipLoadouts.toggleLock(active.id);
+        e.persistNavProfile();
+      });
+      const nameX = box.x + 22;
+      const clearW = 40;
+      const nameW = box.w - 22 - clearW - 4;
+      this._text(ctx, engine.pipLoadouts.title(active), nameX, ly + 15, {
+        size: 10,
+        weight: 600,
+        color: COPPER,
+      });
+      this.registerPipLinkedLoadoutRightClick(nameX, ly + 2, nameW, loadoutH - 4, active.id);
+      this._btnWide(ctx, box.x + box.w - clearW - 2, ly + 3, clearW, 'Clear', (e) => {
+        e.pipLoadouts.clearActiveLink();
+        e.persistNavProfile();
+      }, loadoutH - 6);
+    }
+
     PIPS.CHANNELS.forEach((ch, i) => {
-      const ry = box.y + 22 + i * rowH;
-      this._text(ctx, ch.toUpperCase(), box.x, ry + 12, { size: 12, weight: 500 });
-      // pip cells
-      const n = pips.get(ch);
-      const cellX = box.x + box.w * 0.42;
-      for (let k = 0; k < PIPS.MAX_PER_CHANNEL; k++) {
-        const x = cellX + k * 12;
-        ctx.fillStyle = k < n ? ACCENT : 'rgba(60, 74, 88, 0.5)';
-        ctx.fillRect(x, ry + 2, 9, 12);
+      const ry = blockY + i * rowH;
+      if (i % 2 === 0) {
+        ctx.fillStyle = 'rgba(28, 44, 62, 0.28)';
+        ctx.fillRect(box.x, ry, box.w, rowH);
       }
-      // - / + buttons
-      const minusX = box.x + box.w - 40;
-      const plusX = box.x + box.w - 18;
-      this._btn(ctx, minusX, ry, '−', (e) => e.pipSystem.remove(ch));
-      this._btn(ctx, plusX, ry, '+', (e) => e.pipSystem.add(ch));
+      const label = PIP_LABELS[ch] || ch.toUpperCase();
+      const textY = ry + rowH / 2 + 4;
+      this._text(ctx, label, box.x + 2, textY, { size: labelSize, weight: 600 });
+      const n = pips.get(ch);
+      const rowBtnY = ry + (rowH - btnS) / 2;
+      this._btnDanger(
+        ctx,
+        xBtn,
+        rowBtnY,
+        'X',
+        (e) => {
+          e.pipSystem.clear(ch);
+        },
+        { size: btnS, compact: true, disabled: n <= 0 }
+      );
+      const maxReach = n + pips.free();
+      const slotY = ry + (rowH - slotH) / 2;
+      for (let k = 0; k < PIPS.MAX_PER_CHANNEL; k++) {
+        const sx = slotsX + k * (slotW + slotGap);
+        const target = k + 1;
+        const blocked = target > maxReach && target > n;
+        const missed = flashActive && flash.missed?.[ch] > 0 && k >= n && k < n + flash.missed[ch];
+        this._drawPipSlot(ctx, sx, slotY, slotW, slotH, k < n, blocked, missed, pulse);
+        if (!blocked) {
+          this._region(sx, slotY - 1, slotW + 1, slotH + 2, (e) => e.pipSystem.set(ch, target));
+        }
+      }
+      const stepBtnY = ry + (rowH - btnS) / 2;
+      this._btn(ctx, minusX, stepBtnY, '−', (e) => e.pipSystem.remove(ch), btnS);
+      this._btn(ctx, plusX, stepBtnY, '+', (e) => e.pipSystem.add(ch), btnS);
     });
+
+    const footerY = box.y + box.h - footerBlockH;
+    const halfW = (box.w - 4) / 2;
+    const canUpdate = active && !active.locked;
+    const canSaveNew = !engine.pipLoadouts?.atCapacity();
+    if (canSaveNew) {
+      this._btnWide(
+        ctx,
+        box.x,
+        footerY,
+        halfW,
+        'SAVE (NEW)',
+        (e) => {
+          if (e.pipLoadouts.saveNew(e.pipSystem)) e.persistNavProfile();
+        },
+        footerBtnH
+      );
+    } else {
+      this._btnWideDisabled(ctx, box.x, footerY, halfW, 'SAVE (NEW)', footerBtnH);
+    }
+    if (canUpdate) {
+      this._btnWide(
+        ctx,
+        box.x + halfW + 4,
+        footerY,
+        halfW,
+        'UPDATE',
+        (e) => {
+          if (e.pipLoadouts.updateActive(e.pipSystem)) e.persistNavProfile();
+        },
+        footerBtnH
+      );
+    } else {
+      this._btnWideDisabled(ctx, box.x + halfW + 4, footerY, halfW, 'UPDATE', footerBtnH);
+    }
+    this._btnWide(
+      ctx,
+      box.x,
+      footerY + footerBtnH + footerGap,
+      box.w,
+      'CLEAR ALL',
+      (e) => {
+        e.pipSystem.clearAll();
+      },
+      footerBtnH
+    );
   }
 
-  _btn(ctx, x, y, label, action) {
-    const s = 16;
+  _drawSegmentedPoolBar(ctx, x, y, w, h, total, available) {
+    if (w <= 0 || h <= 0) return;
+    const segments = Math.max(1, total | 0);
+    const remaining = Math.max(0, Math.min(segments, available | 0));
+    const segW = w / segments;
+    ctx.save();
+    for (let i = 0; i < segments; i++) {
+      const sx = x + i * segW;
+      const gap = i < segments - 1 ? 1 : 0;
+      const sw = Math.max(1, segW - gap);
+      ctx.fillStyle = i < remaining ? ACCENT : 'rgba(50, 64, 78, 0.55)';
+      ctx.fillRect(sx, y, sw, h);
+    }
+    ctx.strokeStyle = remaining <= 0 ? IFF.yellow : 'rgba(90, 110, 130, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    if (segments > 1) {
+      ctx.strokeStyle = 'rgba(20, 28, 38, 0.85)';
+      for (let i = 1; i < segments; i++) {
+        const lx = x + i * segW;
+        ctx.beginPath();
+        ctx.moveTo(lx, y + 1);
+        ctx.lineTo(lx, y + h - 1);
+        ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  _drawPipSlot(ctx, x, y, w, h, filled, blocked, flashMiss, pulse) {
+    if (flashMiss) {
+      ctx.fillStyle = `rgba(95, 224, 138, ${0.35 + 0.55 * pulse})`;
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = PIP_FLASH_GREEN;
+      ctx.strokeRect(x, y, w, h);
+      return;
+    }
+    if (filled) {
+      ctx.fillStyle = ACCENT;
+      ctx.fillRect(x, y, w, h);
+      return;
+    }
+    if (blocked) {
+      ctx.fillStyle = 'rgba(40, 48, 58, 0.35)';
+      ctx.fillRect(x, y, w, h);
+      return;
+    }
+    ctx.fillStyle = 'rgba(50, 64, 78, 0.45)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = 'rgba(90, 110, 130, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, w, h);
+  }
+
+  _btn(ctx, x, y, label, action, size = 16) {
+    const s = size;
     ctx.fillStyle = 'rgba(30, 54, 76, 0.8)';
     ctx.fillRect(x, y, s, s);
     ctx.strokeStyle = 'rgba(120, 200, 255, 0.35)';
     ctx.lineWidth = 1;
     ctx.strokeRect(x, y, s, s);
-    this._text(ctx, label, x + s / 2, y + 12, { size: 13, align: 'center', weight: 700 });
+    this._text(ctx, label, x + s / 2, y + s - 3, { size: size > 14 ? 13 : 11, align: 'center', weight: 700 });
     this._region(x, y, s, s, action);
   }
 
-  _btnDanger(ctx, x, y, label, action) {
-    const s = 16;
+  _btnWideDisabled(ctx, x, y, w, label, h = 16) {
+    ctx.fillStyle = 'rgba(24, 32, 42, 0.55)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = 'rgba(70, 85, 100, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, w, h);
+    const fs = h >= 20 ? 10 : 9;
+    this._text(ctx, label, x + w / 2, y + h - 4, { size: fs, align: 'center', weight: 700, color: DIM });
+  }
+
+  _shipStatusCorner(ctx, engine) {
+    const s = engine.cockpitFrame?.cornerScreen('STATUS');
+    if (!s) return;
+    const box = { x: s.x + 2, y: s.y + 14, w: s.w - 4, h: s.h - 16 };
+    this._shipStatus(ctx, box, engine, { compact: true });
+  }
+
+  /**
+   * @param {object} [opts]
+   * @param {number} [opts.size=16]
+   * @param {boolean} [opts.disabled=false]
+   * @param {boolean} [opts.compact=false] HUD blue-gray tile; muted red glyph (loadout delete)
+   */
+  _btnDanger(ctx, x, y, label, action, opts = {}) {
+    const s = opts.size ?? 16;
+    const disabled = !!opts.disabled;
+    const compact = !!opts.compact;
+
+    if (disabled) {
+      ctx.fillStyle = 'rgba(24, 32, 42, 0.55)';
+      ctx.fillRect(x, y, s, s);
+      ctx.strokeStyle = 'rgba(70, 85, 100, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, s, s);
+      this._text(ctx, label, x + s / 2, y + s - (s > 12 ? 3 : 2), {
+        size: s > 12 ? 13 : 9,
+        align: 'center',
+        weight: 700,
+        color: 'rgba(110, 120, 132, 0.45)',
+      });
+      return;
+    }
+
+    if (compact) {
+      ctx.fillStyle = 'rgba(30, 54, 76, 0.8)';
+      ctx.fillRect(x, y, s, s);
+      ctx.strokeStyle = 'rgba(120, 200, 255, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, s, s);
+      this._text(ctx, label, x + s / 2, y + s - (s > 12 ? 3 : 2), {
+        size: s > 12 ? 11 : 9,
+        align: 'center',
+        weight: 700,
+        color: 'rgba(190, 110, 110, 0.72)',
+      });
+      this._region(x, y, s, s, action);
+      return;
+    }
+
     ctx.fillStyle = 'rgba(80, 24, 28, 0.92)';
     ctx.fillRect(x, y, s, s);
     ctx.strokeStyle = 'rgba(255, 100, 100, 0.65)';
@@ -765,49 +1075,130 @@ export class CockpitPanels {
     ctx.stroke();
   }
 
-  _shipStatus(ctx, box, engine) {
+  _shipStatus(ctx, box, engine, opts = {}) {
+    const compact = !!opts.compact;
     const st = engine.ship?.status;
     if (!st) {
-      this._text(ctx, 'STATUS UNAVAILABLE', box.x, box.y + 16, { color: DIM, size: 13 });
+      this._text(ctx, 'STATUS UNAVAILABLE', box.x, box.y + box.h / 2, {
+        color: DIM,
+        size: compact ? 11 : 13,
+      });
       return;
     }
-    // Systems damage.
-    let y = box.y + 12;
-    for (const sys of st.systems) {
-      const col = sys.state === 'ok' ? IFF.green : sys.state === 'damaged' ? IFF.yellow : IFF.red;
-      ctx.fillStyle = col;
-      ctx.fillRect(box.x, y - 8, 6, 6);
-      this._text(ctx, sys.name.toUpperCase(), box.x + 12, y, { size: 11, weight: 500 });
+
+    const systems = st.systems || [];
+    const weapons = st.weapons || [];
+    const barRows = 2;
+    const rowCount = systems.length + weapons.length + barRows;
+    const padTop = compact ? 2 : 4;
+    const rowStep = Math.max(
+      compact ? 11 : 13,
+      Math.min(compact ? 16 : 18, Math.floor((box.h - padTop) / Math.max(1, rowCount)))
+    );
+    const rowSize = Math.max(compact ? 9 : 10, Math.min(compact ? 11 : 12, rowStep - 2));
+    const meterBarH = Math.max(compact ? 6 : 7, Math.min(10, rowStep - 3));
+    const meterLabelW = compact ? 28 : 34;
+
+    let y = box.y + padTop + rowSize;
+
+    for (const sys of systems) {
+      const col = this._statusStateColor(sys.state);
+      this._text(ctx, sys.name.toUpperCase(), box.x, y, { size: rowSize, weight: 600 });
       this._text(ctx, sys.state.toUpperCase(), box.x + box.w, y, {
-        size: 11,
+        size: rowSize,
         align: 'right',
         color: col,
-        weight: 600,
+        weight: 700,
       });
-      y += 14;
+      y += rowStep;
     }
-    // Fuel bar.
-    y += 4;
-    this._text(ctx, 'FUEL', box.x, y, { size: 11, weight: 500 });
-    const bx = box.x + 34;
-    const bw = box.w - 34;
+
+    for (const w of weapons) {
+      this._drawStatusWeaponRow(ctx, box, y, w, rowSize);
+      y += rowStep;
+    }
+
+    y += compact ? 1 : 2;
+    y = this._drawStatusMeterRow(
+      ctx,
+      box,
+      y,
+      'FUEL',
+      meterLabelW,
+      rowSize,
+      meterBarH,
+      st.fuel ?? 0,
+      (frac) => this._statusMeterColor(frac)
+    );
+    y += rowStep;
+    this._drawStatusMeterRow(
+      ctx,
+      box,
+      y,
+      'HULL',
+      meterLabelW,
+      rowSize,
+      meterBarH,
+      st.hull ?? st.fuel ?? 1,
+      (frac) => this._statusMeterColor(frac)
+    );
+  }
+
+  _statusStateColor(state) {
+    if (state === 'ok' || state === 'ready') return STATUS_OK;
+    if (state === 'damaged' || state === 'reloading') return IFF.yellow;
+    return IFF.red;
+  }
+
+  _statusMeterColor(frac) {
+    if (frac < 0.25) return IFF.red;
+    if (frac < 0.5) return IFF.yellow;
+    return STATUS_OK;
+  }
+
+  _drawStatusWeaponRow(ctx, box, y, w, rowSize) {
+    const col = this._statusStateColor(w.state);
+    this._text(ctx, w.name.toUpperCase(), box.x, y, { size: rowSize, weight: 600 });
+    const readyText = `${w.ammo}  ${w.state.toUpperCase()}`.replace(/\s+/g, ' ').trim();
+    const okLabel = w.state === 'ready' ? 'OK' : w.state.toUpperCase();
+    ctx.font = `${700} ${rowSize}px ${FONT}`;
+    const okW = ctx.measureText(okLabel).width;
+    const gap = 6;
+    this._text(ctx, okLabel, box.x + box.w, y, {
+      size: rowSize,
+      align: 'right',
+      color: col,
+      weight: 700,
+    });
+    this._text(ctx, readyText, box.x + box.w - okW - gap, y, {
+      size: rowSize,
+      align: 'right',
+      color: col,
+      weight: 600,
+    });
+  }
+
+  _drawStatusMeterRow(ctx, box, y, label, labelW, rowSize, barH, frac, colorFn) {
+    const n = Math.max(0, Math.min(1, Number(frac) || 0));
+    this._text(ctx, label, box.x, y, { size: rowSize, weight: 600 });
+    const bx = box.x + labelW;
+    const bw = box.w - labelW;
+    const barY = y - barH + 1;
     ctx.fillStyle = 'rgba(50, 64, 78, 0.6)';
-    ctx.fillRect(bx, y - 8, bw, 7);
-    ctx.fillStyle = st.fuel < 0.25 ? IFF.red : IFF.green;
-    ctx.fillRect(bx, y - 8, bw * st.fuel, 7);
-    y += 16;
-    // Weapons readiness.
-    for (const w of st.weapons) {
-      const col = w.state === 'ready' ? IFF.green : w.state === 'reloading' ? IFF.yellow : IFF.red;
-      this._text(ctx, w.name.toUpperCase(), box.x, y, { size: 11, weight: 500 });
-      this._text(ctx, `${w.ammo}  ${w.state.toUpperCase()}`, box.x + box.w, y, {
-        size: 11,
-        align: 'right',
-        color: col,
-        weight: 600,
-      });
-      y += 14;
-    }
+    ctx.fillRect(bx, barY, bw, barH);
+    ctx.fillStyle = colorFn(n);
+    ctx.fillRect(bx, barY, bw * n, barH);
+    ctx.strokeStyle = 'rgba(90, 110, 130, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(bx, barY, bw, barH);
+    const pct = `${Math.round(n * 100)}%`;
+    this._text(ctx, pct, bx + bw - 2, y, {
+      size: Math.max(8, rowSize - 1),
+      align: 'right',
+      weight: 700,
+      color: TXT,
+    });
+    return y;
   }
 
   _tabBar(ctx, box, labels, active, onPick) {

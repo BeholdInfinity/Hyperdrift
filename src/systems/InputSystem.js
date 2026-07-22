@@ -37,6 +37,10 @@ export class InputSystem {
     this._rightClickPos = null;
     /** Space cockpit: last MMB-up screen point (consumed via consumeMiddleClickPos). */
     this._middleClickPos = null;
+    /** When true, keydown feeds modal rename queue instead of flight / pause. */
+    this.modalTextCapture = false;
+    /** @type {Array<{type:'char'|'backspace'|'enter'|'escape', char?:string}>} */
+    this._modalTextQueue = [];
 
     this._burst = Object.fromEntries(
       BURST_KEYS.map((k) => [k, { lastPress: -Infinity, armed: false }])
@@ -145,6 +149,28 @@ export class InputSystem {
     this._syncCapsLock(e);
 
     const key = e.key.toLowerCase();
+
+    if (this.modalTextCapture) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (key === 'escape') {
+        this._modalTextQueue.push({ type: 'escape' });
+        return;
+      }
+      if (key === 'enter') {
+        this._modalTextQueue.push({ type: 'enter' });
+        return;
+      }
+      if (key === 'backspace') {
+        this._modalTextQueue.push({ type: 'backspace' });
+        return;
+      }
+      if (e.key.length === 1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        this._modalTextQueue.push({ type: 'char', char: e.key });
+      }
+      return;
+    }
+
     const flightKey = this._flightLetterKey(e);
 
     if (key === 'escape') {
@@ -354,6 +380,23 @@ export class InputSystem {
 
   isKeyDown(key) {
     return this.keys.has(key.toLowerCase());
+  }
+
+  beginModalTextCapture() {
+    this.modalTextCapture = true;
+    this._modalTextQueue = [];
+  }
+
+  endModalTextCapture() {
+    this.modalTextCapture = false;
+    this._modalTextQueue = [];
+  }
+
+  /** @returns {Array<{type:'char'|'backspace'|'enter'|'escape', char?:string}>} */
+  consumeModalTextEvents() {
+    const q = this._modalTextQueue;
+    this._modalTextQueue = [];
+    return q;
   }
 
   _burstHeld(key) {

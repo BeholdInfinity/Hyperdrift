@@ -41,6 +41,7 @@ StartStopGame/            Launchers: start-game.bat/.ps1, stop-game.bat/.ps1 (sh
 assets/branding/          Brand exports (logo PNG concept; title uses live sim + wordmark)
 InspirationImages/        Reference art (logo concept, hero shots)
 src/
+  loadErrorOverlay.js Boot failure UI (module import / GameEngine init; copy-friendly error panel)
   main.js                 Entry point, UI wiring
   version.js              Prototype semver (title stamp + build-info)
   textures/
@@ -62,11 +63,13 @@ src/
     ProceduralGeneration.js  Seeded asteroids + nebulae
     ScannerSystem.js      Scanner model: contacts, sweep-gated paints, piecewise pip range + SCAN plot-zoom, age fade, selection
     Scanner.js            Scanner ring/scope renderer (silhouettes, IFF, sweep, nose/tail, chevrons)
-    CockpitFrame.js       Cached 16:9 steel/copper HUD chrome + POI rim dots + corners (CONTACT DETAILS / CONTACTS / …)
-    CockpitPanels.js      Live content for the 6 cockpit screens + CONTACTS filters (list + scanner blips) + status alert overlay
+    CockpitFrame.js       Cached 16:9 steel/copper HUD chrome + POI rim dots + corners (TL empty · TR ZOOM · BL MODES · BR STATUS)
+    CockpitPanels.js      Live content for the 6 cockpit screens + CONTACTS filters + PIPS/LOADOUTS + status alert overlay
     SectorMapView.js      Sector map pan/zoom/follow + screen↔world mapping
     SectorMapPanel.js     LIVE / TRAVEL LOG map draw + travel log UI
-    PipSystem.js          Global power-pip pool (per-channel allocation)
+    PipSystem.js          Global power-pip pool (set/clear/apply loadout, generator cap)
+    PipLoadouts.js        Saved pip presets (max 12, active link, lock/rename)
+    PipLoadoutPanel.js    POWER LOADOUTS tab (apply, hover diff, delete modal)
   entities/
     Ship.js, ShipController.js, ShipHardpoints.js (legacy mount fallback; starter matches)
     Projectile.js, Asteroid.js, Particle.js, Entity.js, EntityManager.js
@@ -104,7 +107,7 @@ src/
     PoiSystem.js          POI address book + waypoint tracker (4 discovery sources)
     SectorMap.js          Expedition fog-of-war + trail sampling
     TravelLog.js          Archived expedition trails (rename, lock, map overlays)
-    NavPersistence.js     localStorage POI Book + Travel Log
+    NavPersistence.js     localStorage POI Book + Travel Log + Pip Loadouts (v2)
     SectorLayout.js       Ring sampling + composition for proc gen
     data/sectorLayout.js  Baked planet + rings + fixed POIs (Dev save target)
   utils/
@@ -190,6 +193,7 @@ src/
 
 - Match existing module style: one class/export per file, relative `.js` imports
 - Keep diffs minimal; don't add dependencies without discussion
+- **In-game UI over browser chrome** — player-facing confirms, renames, and text entry use **canvas HUD modals** on the relevant cockpit panel (copper frame, typed input via `InputSystem.modalTextCapture`, OK/CANCEL). Avoid `window.prompt` / `alert` / `confirm` in gameplay; title/pause DOM menus are the exception. **Boot failures** (module import / `GameEngine` init before the title loop runs) use `src/loadErrorOverlay.js`: a DOM error card + short `alert`, with **Copy error** for pasting into bug reports.
 - Update `CHANGELOG.md` for user-visible changes
 - Update `GDD.md` when design intent changes; update this file when architecture or handoff facts change
 - On **commit and push**, the agent checks whether handoff docs need a sync and asks before including those updates (see `.cursor/rules/hyperdrift.mdc`)
@@ -210,18 +214,20 @@ Many v0.1.283 scanner/cockpit items are **done** (sector map pan/zoom, Travel Lo
 - **Tier-based icon shrink** — blips shrink with distance only; also shrink per tier so more range bands fit — `src/systems/ScannerSystem.js` (fold tier factor into `c.size`)
 
 Scaffolds that are API-only / stubs:
+- **Navigation waypoint queue** — **planned (owner intent).** Google Maps–style multi-stop routing: ephemeral stops (distinct from POI Book pins); active stop on scanner rim + sector map + Destination; add/reorder stops; each stop auto-clears on arrival and advances the queue. Not built — see `GDD.md` § Navigation waypoints, `OPEN_QUESTIONS.md` §9.7.
 - **Highlight-sync API** (pilot/science/weapons) — not built; selection is local (`ScannerSystem.selectedId`), no broadcast/subscribe hook for future officer/multiplayer screens
 - **Comms panel** — HAIL/DOCK/TRADE/END buttons are no-ops (no call/receive/deny/hang-up); plan tags comms future, low priority — `src/systems/CockpitPanels.js` `_comms`
 - **POI discovery channels** — proximity + **Shift+click** manual waypoints on Sector Map; `mission` / `purchase` still API-only
-- **Dev SCANNER "bake to constants" + fake-contacts toggle** — drawer has live sliders/toggles + readout, but no bake-to-`Constants.js` button and no placeholder-contact spawner — `index.html` (dev-drawer SCANNER), `src/main.js`, `src/dev/DevTools.js`
+- **Dev RADAR drawer** — renamed from SCANNER; Mk / range / asteroid toggles + **Generator** slider (1–12 live test) + **Save generator default** bakes `PIPS.DEFAULT_GENERATOR_PIPS` to `Constants.js` via `/dev/save`. Fake-contacts spawner still not built — `index.html`, `src/main.js`
+- **RadarSystem file rename** — pip channel is `radar` and player strings say Radar; implementation still lives in `ScannerSystem.js` / `SCANNER` constants — rename follow-up
 
 Cosmetic / lower priority:
-- **Ship Status is a list, not a schematic** — plan preferred a small ship-schematic damage map; `ship.status` is a stub (systems list, fuel, fires[], weapons) with placeholder values; nothing writes real damage/fuel/ammo yet — `src/systems/CockpitPanels.js` `_shipStatus`, `GameEngine._ensureShipStatus`
+- **Ship Status is a list, not a schematic** — plan preferred a small ship-schematic damage map; `ship.status` is a stub (systems list, fuel, fires[], weapons) with placeholder values; nothing writes real damage/fuel/ammo yet — corner screen `_shipStatusCorner`, `GameEngine._ensureShipStatus`
 - **Sector map doesn't emphasize the selected contact** — partial: map halos added; in-world highlight still open
 - **No "objects"/debris contact type** — only asteroids fill the non-AI object slot (off by default; dev toggle on)
 - **Station selection shows no top-down render** (station has no `shipDef`) — expected; add a station glyph if desired
 
-**Not yet exercised live end-to-end:** clicking an in-world/band blip to select (ship kept leaving range), pip +/- add-remove, comms target population, and the fire/alert overlay (needs `ship.status.fires` populated). Recommended manual pass: hover near Jennings at low speed, select a band blip + a POI-rim dot, add/remove pips, and temporarily push a fake fire into `ship.status.fires` to verify the alert banner. Plan of record: `.cursor/plans/scanner_subsystem_roadmap_fe068679.plan.md` (do **not** edit the plan file).
+**Not yet exercised live end-to-end:** clicking an in-world/band blip to select (ship kept leaving range), comms target population, and the fire/alert overlay (needs `ship.status.fires` populated). Recommended manual pass: hover near Jennings at low speed, select a band blip + a POI-rim dot, exercise pip loadouts (save/apply/partial apply via dev Generator at 3), and temporarily push a fake fire into `ship.status.fires` to verify the alert banner. Plan of record: `.cursor/plans/scanner_subsystem_roadmap_fe068679.plan.md` (do **not** edit the plan file).
 
 ### Shipped recently (context)
 - **v0.1.267** Title wordmark: locked pose; STRANGER bronze plate windows + smile arch; GALAXY nebula windows

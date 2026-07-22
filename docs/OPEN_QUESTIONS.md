@@ -154,6 +154,8 @@ Former *Hyperdrift Crewline* north-star questions — still relevant for **Comba
 | 9.3 | **Keep vanilla JS / no build step** into campaign scale, or adopt tooling later? | Dev velocity |
 | 9.4 | **Browser-first forever, or native client later?** | Platform |
 | 9.5 | **Interior walker** — share hangar pan/zoom camera, or character-follow camera? | Feel of on-foot play |
+| 9.6 | **Generator fuel cells** — FIFO stack caps `effectivePool()` (max 12); top cell depletion drops pool until replenished; crew maintenance affects output (future). Prototype uses **`DEFAULT_GENERATOR_PIPS: 6`** stub + dev slider; full sim TBD. | POWER economy + partial loadout apply |
+| 9.7 | **Waypoint queue (Google Maps stops)** — arrival radius; max stops; set/clear/reorder UX (Sector Map vs Destination panel vs contact pick); rim vs map polyline; relationship to POI Book pins vs ephemeral stops; persist queue across dock/save? | Owner intent locked in [`GDD.md`](GDD.md); details TBD before build |
 
 ---
 

@@ -1647,6 +1647,107 @@ html, body {
   color: rgba(200, 214, 229, 0.7);
 }
 
+/* Boot failure overlay (module import / GameEngine init) */
+.load-error-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(4, 8, 14, 0.82);
+  pointer-events: auto;
+}
+
+.load-error-overlay.hidden {
+  display: none;
+}
+
+.load-error-card {
+  width: min(640px, 100%);
+  max-height: min(80vh, 720px);
+  display: flex;
+  flex-direction: column;
+  background: linear-gradient(180deg, #1a1e26 0%, #0e1116 100%);
+  border: 1px solid #6a5640;
+  box-shadow:
+    inset 0 1px 0 rgba(255, 220, 170, 0.1),
+    0 0 0 1px #080a0e,
+    0 16px 48px rgba(0, 0, 0, 0.65);
+}
+
+.load-error-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 18px 10px;
+  border-bottom: 1px solid rgba(196, 132, 58, 0.28);
+}
+
+.load-error-header h2 {
+  margin: 0;
+  font-family: 'Barlow Condensed', 'Segoe UI', sans-serif;
+  font-size: 1.15rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(230, 171, 109, 0.95);
+}
+
+.load-error-hint {
+  margin: 0;
+  padding: 10px 18px 0;
+  font-family: 'Barlow Condensed', 'Segoe UI', sans-serif;
+  font-size: 0.9rem;
+  color: rgba(150, 178, 202, 0.75);
+}
+
+.load-error-text {
+  margin: 10px 18px 0;
+  min-height: 160px;
+  flex: 1;
+  resize: vertical;
+  padding: 10px 12px;
+  font-family: Consolas, 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  color: rgba(210, 228, 246, 0.95);
+  background: rgba(8, 14, 22, 0.92);
+  border: 1px solid rgba(120, 200, 255, 0.22);
+  border-radius: 2px;
+}
+
+.load-error-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 14px 18px 16px;
+}
+
+.load-error-btn {
+  font-family: 'Barlow Condensed', 'Segoe UI', sans-serif;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 8px 14px;
+  color: rgba(200, 224, 246, 0.9);
+  background: rgba(30, 54, 76, 0.85);
+  border: 1px solid rgba(120, 200, 255, 0.35);
+  cursor: pointer;
+}
+
+.load-error-btn:hover {
+  background: rgba(40, 70, 100, 0.9);
+}
+
+.load-error-btn-primary {
+  color: rgba(230, 171, 109, 0.95);
+  border-color: rgba(196, 132, 58, 0.55);
+  background: rgba(60, 40, 24, 0.55);
+}
+
 .changelog-panel {
   position: absolute;
   inset: 0;

@@ -62,6 +62,7 @@ SAVE_ALLOWLIST = frozenset(
         "src/world/hangar-layout.js",
         "src/ui/title-layout.js",
         "src/world/data/sectorLayout.js",
+        "src/core/Constants.js",
     }
 )
 

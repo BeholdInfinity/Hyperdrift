@@ -10,7 +10,7 @@
  *   - edge   : near the outer scan range → ghosted
  *   - (out)  : beyond range → dropped
  *
- * Detection is tier-gated: `effectiveTier = min(scannerMk, scannerPips)`.
+ * Detection is tier-gated: `effectiveTier = min(scannerMk, radarPips)`.
  * Blip refresh is radar-stepped for band contacts (`in` / `edge`): they paint
  * when any sweep arm crosses their true bearing, clear when an arm revisits an
  * empty painted bearing, and fade with age between pings. **Visual-range**
@@ -112,8 +112,8 @@ export class ScannerSystem {
     return !!f[contactFilterBucket(c.type)];
   }
 
-  effectiveTier(scannerPips) {
-    const t = Math.min(this.scannerMk, scannerPips | 0);
+  effectiveTier(radarPips) {
+    const t = Math.min(this.scannerMk, radarPips | 0);
     return Math.max(0, Math.min(SCANNER.TIERS.length - 1, t));
   }
 
@@ -219,7 +219,7 @@ export class ScannerSystem {
    * @param {number} dt
    * @param {{
    *   ship: object, station: object, ambientTraffic: object, asteroids?: object[],
-   *   camera: object, scannerPips: number,
+   *   camera: object, radarPips: number, scannerPips?: number,
    *   centerX: number, centerY: number, innerR: number, outerR: number, band: number,
    * }} ctx
    */
@@ -232,7 +232,7 @@ export class ScannerSystem {
       return;
     }
 
-    this.tier = this.effectiveTier(ctx.scannerPips);
+    this.tier = this.effectiveTier(ctx.radarPips ?? ctx.scannerPips);
     this.on = this.tier > 0;
     // PORT always plots full sensor reach; SCAN uses wheel plotZoom (1…tier).
     // Adding scanner pips snaps plot zoom out to the new max ring; removing

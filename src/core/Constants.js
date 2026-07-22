@@ -447,8 +447,8 @@ export const RENDER = {
 
 /**
  * Scanner / sensor tuning. Detection is range-gated and driven by
- * `effectiveTier = min(scannerMk, scannerPips)`. The tier table is
- * data-driven and open-ended — append rows for higher Mks / bigger pip pools.
+ * `effectiveTier = min(scannerMk, radarPips)` (360° sweep / Radar channel).
+ * The tier table is data-driven and open-ended — append rows for higher Mks / bigger pip pools.
  * Each tier's `range` is world units; HUD km = `range / KM_SCALE`.
  *
  * Plot radius uses a piecewise pip map: 1 pip fills the whole band/scope with
@@ -474,7 +474,7 @@ export const SCANNER = {
   SWEEP_ARM_MAX: 3,
   /** Base radar sweep angular speed (rad/s) at ≤ SWEEP_ARM_MAX pips. */
   SWEEP_SPEED: 0.95,
-  /** Added rad/s for each scanner pip beyond SWEEP_ARM_MAX. */
+  /** Added rad/s for each radar pip beyond SWEEP_ARM_MAX. */
   SWEEP_SPEED_PER_EXTRA_PIP: 0.4,
   /** @deprecated use SWEEP_SPEED — kept so old reads don't NaN */
   SWEEP_BASE: 0.95,
@@ -544,11 +544,15 @@ export const POI = {
 
 /**
  * Global power-pip pool. Systems draw pips as distinct channels.
- * Scanner tier reads `scanner`; science reads `science`.
+ * Radar tier reads `radar`; Forward Looking Scanner reads `scanner`.
  */
 export const PIPS = {
-  BASE_POOL: 6,
-  CHANNELS: ['scanner', 'science', 'engine', 'weapons', 'shield'],
-  DEFAULTS: { scanner: 2, science: 1, engine: 2, weapons: 1, shield: 0 },
+  /** Maximum pips the generator can supply (fully fueled). */
+  BASE_POOL: 12,
+  /** Prototype startup effective pool (dev-bake target). */
+  DEFAULT_GENERATOR_PIPS: 8,
+  CHANNELS: ['radar', 'scanner', 'engine', 'weapons', 'shield'],
+  DEFAULTS: { radar: 2, scanner: 1, engine: 2, weapons: 1, shield: 0 },
   MAX_PER_CHANNEL: 5,
+  MAX_LOADOUTS: 12,
 };

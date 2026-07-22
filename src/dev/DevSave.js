@@ -9,6 +9,7 @@ const ALLOWED = new Set([
   'src/world/hangar-layout.js',
   'src/ui/title-layout.js',
   'src/world/data/sectorLayout.js',
+  'src/core/Constants.js',
 ]);
 
 /**
@@ -67,4 +68,5 @@ export const SAVE_PATHS = {
   hangarLayout: 'src/world/hangar-layout.js',
   titleLayout: 'src/ui/title-layout.js',
   sectorLayout: 'src/world/data/sectorLayout.js',
+  constants: 'src/core/Constants.js',
 };

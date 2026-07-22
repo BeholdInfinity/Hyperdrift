@@ -15,6 +15,8 @@ export class SectorMapView {
     this.zoom = 1;
     /** @type {{ x: number, y: number } | null} */
     this.hoverWorld = null;
+    /** @type {null | { text: string, sx: number, sy: number }} */
+    this.mapHoverTooltip = null;
     /** Screen rect of map canvas body (set each frame). */
     this.mapBody = null;
     this.tabs = { sector: 0 };
