@@ -104,10 +104,11 @@ src/
     AmbientTrafficSystem.js Near-station traffic + always-on cops; off-screen spawn/despawn
     NpcPilot.js           Shared Newtonian thruster pilot (holds, police hex, ambient burns)
     Station.js            Jennings Station overworld exterior + dock zones
-    PoiSystem.js          POI address book + waypoint tracker (4 discovery sources)
+    PoiSystem.js          POI address book + discovery (4 sources)
+    NavRoute.js           Ephemeral multi-stop nav route queue
+    NavPersistence.js     localStorage POI Book + Travel Log + Pip Loadouts + Nav Route (v3)
     SectorMap.js          Expedition fog-of-war + trail sampling
     TravelLog.js          Archived expedition trails (rename, lock, map overlays)
-    NavPersistence.js     localStorage POI Book + Travel Log + Pip Loadouts (v2)
     SectorLayout.js       Ring sampling + composition for proc gen
     data/sectorLayout.js  Baked planet + rings + fixed POIs (Dev save target)
   utils/
@@ -214,7 +215,6 @@ Many v0.1.283 scanner/cockpit items are **done** (sector map pan/zoom, Travel Lo
 - **Tier-based icon shrink** — blips shrink with distance only; also shrink per tier so more range bands fit — `src/systems/ScannerSystem.js` (fold tier factor into `c.size`)
 
 Scaffolds that are API-only / stubs:
-- **Navigation waypoint queue** — **planned (owner intent).** Google Maps–style multi-stop routing: ephemeral stops (distinct from POI Book pins); active stop on scanner rim + sector map + Destination; add/reorder stops; each stop auto-clears on arrival and advances the queue. Not built — see `GDD.md` § Navigation waypoints, `OPEN_QUESTIONS.md` §9.7.
 - **Highlight-sync API** (pilot/science/weapons) — not built; selection is local (`ScannerSystem.selectedId`), no broadcast/subscribe hook for future officer/multiplayer screens
 - **Comms panel** — HAIL/DOCK/TRADE/END buttons are no-ops (no call/receive/deny/hang-up); plan tags comms future, low priority — `src/systems/CockpitPanels.js` `_comms`
 - **POI discovery channels** — proximity + **Shift+click** manual waypoints on Sector Map; `mission` / `purchase` still API-only

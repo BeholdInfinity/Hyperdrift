@@ -144,22 +144,22 @@ Each hardpoint holds up to **4** items in a 2×2 slot grid. Freight is drawn as 
 - Mouse aims weapons only while the pointer is **inside the circular viewport** (disabled in **SCAN** view, where the disc is a radar scope)
 - **ORIENT** (cockpit MODES switch / `R`): **SHIP**-up (head-up, default) locks the hull pointing screen-up and rotates the world around it; **NORTH**-up keeps world-north up and rotates the ship inside it (marine "Head-Up vs North-Up" convention)
 - **VIEW** (cockpit MODES switch / `V`): **SHIP** (default) shows the world through the viewport with the thin **radar** ring; **SCAN** replaces both with one full-disc radar scope (ship centered, blips by piecewise pip range, own-ship silhouette at center). **Radar** reach follows `min(scannerMk, radarPips)` through **Mk5 / 5 pips** with fixed rings at **50 / 100 / 150 / 200 / 250 km**. Sweep arms max at **3**; the 4th and 5th pips increase sweep speed. In SCAN, mouse wheel zooms the scope one pip-ring at a time; that plot zoom carries over to the PORT ring. Prototype ships may not ship with Mk5 — Dev Mk override and Pip Control can force it for testing. The outer POI rim ring is unchanged. **LMB or MMB** on radar blips and CONTACTS list rows selects a contact (toggle off on same target or empty pick); **MMB** on a hull in the space viewport also selects.
-- **POWER panel** — tabs **`PIPS | LOADOUTS`**. **PIPS**: bar-setter slot clicks set per-channel allocation; row **X** clears a channel; **CLEAR ALL**; linked loadout bar when active (name, lock, **Clear** disconnects link only); **SAVE (NEW)** / **UPDATE** (grayed with no active loadout or when locked). **LOADOUTS**: Travel Log pattern — click row applies immediately; hover shows red/green diff grid; rename (right-click), lock, delete with canvas modal; max **12** presets persisted in **`NavPersistence` v2**. Partial apply when generator pool is too small: inline warning + synchronized flash on missed slots. Ship Status (systems/fuel/weapons stub) lives in the **bottom-right corner** screen (`STATUS`), not POWER. Corner readouts: **ZOOM** top-right, **MODES** bottom-left, top-left reserved.
-- **SECTOR MAP** (cockpit panel): **LIVE** fog + expedition trail; **TRAVEL LOG** tab lists archived trips in a sortable/filterable table. Drag to pan; wheel zoom over the map; **RECENTER** at the map’s bottom-right when not following the ship. Hover near a POI, pin, contact, or (future) waypoint marker to see its name in a canvas tooltip. **Right-click** the map to **DROP PIN** (or right-click an existing pin for rename/lock/delete); pins live in **POI BOOK** with the same controls. **Shift+click** still drops a pin. Click to select POI or contact; speed on viewport inner rim. Expedition archives on dock; POI Book + logs persist in `localStorage`.
+- **POWER panel** — default view is full interactive **PIPS** (pool header, channel rows, linked loadout bar when active sits below the rows); bar-setter slot clicks set per-channel allocation; row **X** clears a channel; linked loadout bar (name, lock, **CLEAR LOADOUT** disconnects link only). Footer: **LOADOUTS** toggle (left), **SAVE (NEW) | UPDATE | CLEAR PIPS** to its right; when loadouts open, **DELETE ALL UNLOCKED** on the far right and **CLOSE LOADOUTS** on the toggle. Loadouts drawer: compact **interactive** pip strip on top (same slot/+/-/X controls as full **PIPS**; hover a loadout row for green/red diff overlay); list below. Click row applies immediately; rename (right-click), lock, delete with canvas modal; max **12** presets persisted in **`NavPersistence` v2**. Partial apply when generator pool is too small: inline warning + synchronized flash on missed slots. Ship Status (systems/fuel/weapons stub) lives in the **bottom-right corner** screen (`STATUS`), not POWER. Corner readouts: **ZOOM** top-right, **MODES** bottom-left, top-left reserved.
+- **SECTOR MAP** (cockpit panel): live fog + expedition trail by default. **TRAVEL LOG** is a bottom-left toggle — lit when open; click again to return to the full map. When open, the map shrinks to the top ~45% and archived trips fill the drawer below (sortable/filterable table). Drag to pan; wheel zoom over the map; **RECENTER** at the map’s bottom-right when not following the ship. Hover near a POI, pin, contact, or **nav-route stop** to see its name in a canvas tooltip. **Right-click** the map to **DROP PIN** / **ADD STOP** (empty map) or pin/POI context menu; **MMB** on the live map instantly **ADD STOP** (POI under cursor uses POI ref). Pins live in **POI BOOK**; **Shift+click** still drops a pin only. Click to select POI or contact. Expedition archives on dock; POI Book + route + logs persist in `localStorage` (`NavPersistence` v3).
 
-### Navigation waypoints (planned — owner intent)
+### Navigation route (`NavRoute`)
 
-**Not built.** Separate from POI Book pins (persistent address book) and from “selected POI on the rim” (today’s Destination panel highlight).
+Separate from **POI Book pins** (persistent address book) and from **POI selection** (browse/highlight).
 
-Target behavior is **Google Maps–style multi-stop routing**:
+**Google Maps–style multi-stop routing:**
 
-- Pilot queues one or more **ephemeral nav stops** (world position and/or a POI/contact/pin target).
-- The **active stop** is the head of the queue — bearing/distance on the scanner rim, sector-map marker, and Destination panel should all agree on “go here next.”
-- **Add stop** appends to the route (like Maps “Add destination” / multiple stops).
-- When the ship **reaches** the active stop (proximity threshold TBD), that stop **auto-clears** and the next queued stop becomes active — no manual dismiss.
-- Reaching the last stop clears the route entirely.
-
-Open UX/detail questions live in [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) §9.7. Implementation hooks reserved today (e.g. sector-map tooltip “waypoint hook”, `PoiSystem` tracker scaffold).
+- Queue ephemeral **nav stops** (world position or POI ref; contact stops deferred).
+- **Active stop** = queue head — next-destination readout, scanner-rim chevron, sector-map marker, and chained white route legs agree.
+- **Add stop:** Sector Map **MMB** (instant), map **RMB → ADD STOP**, POI Book **RMB → ADD STOP** or **double-click** row (single-click still selects POI only).
+- **DESTINATION panel:** default view is full **Next | Route** split; left also stacks **SELECTED POI** (copper divider) when a POI is selected and it is not the active route stop. **POI BOOK** is a bottom-left toggle — lit when open; click again to return to destination view. When open: compact **Next | Route** strip on top; bottom drawer is **Selected POI | POI list** (copper vertical divider). Single-click in the list (or map/rim) selects for inspect; double-click / RMB **ADD STOP** appends to route. Footer **DELETE ALL UNLOCKED** removes unlocked manual pins (confirm if any renamed).
+- **Arrival:** speed-scaled capture radius; head auto-clears; **STATUS** corner flashes briefly; remaining route **persists through dock/land**; orphaned POI refs demote to generic white **Stop #N**.
+- **Colors:** generic stops + route lines = **white** (reserved — travel log trails never use white); POI stops use POI IFF color. Rim shows **next stop only**.
+- **Sector map:** white chained legs ship→#1→#2→… drawn above travel-log trails.
 
 ### Translation
 
@@ -370,7 +370,7 @@ Sandbox build order: narrative stub → ship interior slice → derelict slice �
 
 ### Prototype backlog (not built)
 
-- [ ] **Navigation waypoint queue** — Google Maps–style multi-stop route: ephemeral stops (not POI Book pins); active stop drives rim/map/DEST readouts; **add stop**; auto-advance and remove each stop on arrival (see `GDD.md` Navigation waypoints)
+- [x] **Navigation waypoint queue** — Google Maps–style multi-stop route (`NavRoute.js`; see `GDD.md` Navigation route)
 - [ ] Multiple ships
 - [ ] AI enemies
 - [ ] Trading economy
@@ -405,7 +405,7 @@ Sandbox build order: narrative stub → ship interior slice → derelict slice �
 - [ ] Economy / progression loop
 - [x] Home Base as start-of-run and between-mission hub
 - [x] Combat variety: dorsal turret + mining laser (loot roles deferred)
-- [ ] Meaningful navigation UI — **waypoint queue** (Google Maps multi-stop: active stop on rim/map; auto-clear on arrival; see Navigation waypoints above)
+- [x] Meaningful navigation UI — **waypoint queue** (Google Maps multi-stop: active stop on rim/map; auto-clear on arrival; see Navigation route above)
 ---
 
 ## Changelog reference

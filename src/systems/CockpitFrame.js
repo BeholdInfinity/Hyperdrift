@@ -118,6 +118,45 @@ export class CockpitFrame {
     ctx.restore();
   }
 
+  /**
+   * Next nav-route stop on the POI rim (chevron; white or POI IFF).
+   * @param {CanvasRenderingContext2D} ctx
+   * @param {import('./Renderer.js').Renderer} r
+   * @param {import('../world/NavRoute.js').NavRoute} navRoute
+   * @param {object} ship
+   * @param {object} engine GameEngine (POI color lookup)
+   * @param {number} camRot
+   */
+  drawNavRouteDot(ctx, r, navRoute, ship, engine, camRot = 0) {
+    if (!this.layout || !ship || !navRoute) return;
+    const stop = navRoute.activeStop();
+    if (!stop) return;
+    navRoute.resolvePosition(engine);
+    const { cx, cy, scannerOuterR, circleR } = this.layout;
+    const rimR = (scannerOuterR + circleR) / 2;
+    const bearing = Math.atan2(stop.y - ship.position.y, stop.x - ship.position.x) + camRot;
+    const dx = cx + Math.cos(bearing) * rimR;
+    const dy = cy + Math.sin(bearing) * rimR;
+    const color = navRoute.stopColor(engine, stop);
+    ctx.save();
+    ctx.translate(dx, dy);
+    ctx.rotate(bearing + Math.PI / 2);
+    ctx.fillStyle = color;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.75)';
+    ctx.lineWidth = 1.2;
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(0, -6);
+    ctx.lineTo(5, 4);
+    ctx.lineTo(0, 1);
+    ctx.lineTo(-5, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+  }
+
   /** POI rim geometry for hit-testing waypoint-dot clicks. */
   poiRimGeometry() {
     if (!this.layout) return null;

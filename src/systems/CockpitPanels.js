@@ -15,6 +15,7 @@ import {
   drawSectorMapPanel,
   sectorMapClick,
   sectorMapRightClick,
+  sectorMapMiddleClick,
   drawPoiPinContextMenu,
   drawPoiBookModal,
   travelLogArchiveRowSlots,
@@ -23,10 +24,12 @@ import {
 import { stepTravelLogListScroll } from '../world/TravelLogTable.js';
 import {
   drawPipLoadoutPanel,
+  drawPipLoadoutPreview,
   drawPipLoadoutModal,
   PIP_LABELS,
   processPipLoadoutInput,
   pipLoadoutRightClick,
+  closePipLoadoutModal,
 } from './PipLoadoutPanel.js';
 
 const FONT = "'Barlow Condensed', 'Segoe UI', sans-serif";
@@ -55,6 +58,9 @@ export class CockpitPanels {
     this._pipLinkedLoadoutRightRegions = [];
     /** @type {null | { poiId: string, x: number, y: number }} */
     this.poiBookMenu = null;
+    /** @type {null | { poiId: string, time: number }} */
+    this._poiBookLastClick = null;
+    this._routeListScroll = 0;
   }
 
   render(ctx, engine) {
@@ -551,74 +557,466 @@ export class CockpitPanels {
 
   // ---- 3 DESTINATION -----------------------------------------------------
   _destination(ctx, box, engine) {
-    const tab = this.tabs.destination;
-    this._tabBar(ctx, box, ['DEST', 'POI BOOK'], tab, (i) => (this.tabs.destination = i));
-    const body = { x: box.x, y: box.y + 22, w: box.w, h: box.h - 22 };
-    if (tab === 0) {
-      const poi = engine.poiSystem.getSelected();
-      if (!poi) {
-        this._text(ctx, 'NO DESTINATION SET', body.x, body.y + 16, { color: DIM, size: 13 });
-        return;
-      }
-      const color = engine.poiSystem.color(poi);
-      this._text(ctx, poi.name.toUpperCase(), body.x, body.y + 14, { color, size: 15, weight: 700 });
-      const rng = (engine.poiSystem.range(engine.ship, poi) / 100).toFixed(0);
-      const brg = ((engine.poiSystem.bearing(engine.ship, poi) * 180) / Math.PI + 360) % 360;
-      const rows = [
-        `RANGE  ${rng} km`,
-        `BEARING ${brg.toFixed(0)}°`,
-        `SOURCE ${poi.source.toUpperCase()}`,
-      ];
-      rows.forEach((s, i) => this._text(ctx, s, body.x, body.y + 34 + i * 15, { size: 12, weight: 500 }));
+    const btnH = 18;
+    const btnW = 72;
+    const footerPad = 2;
+    const body = { x: box.x, y: box.y, w: box.w, h: box.h - btnH - footerPad };
+    const poiBookOpen = this.tabs.destination === 1;
+    if (poiBookOpen) {
+      const navH = Math.max(52, Math.floor(body.h * 0.4));
+      const navBox = { x: body.x, y: body.y, w: body.w, h: navH };
+      this._drawNavSummary(ctx, navBox, engine, { compact: true });
+      const divY = body.y + navH;
+      ctx.strokeStyle = COPPER;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(body.x, divY);
+      ctx.lineTo(body.x + body.w, divY);
+      ctx.stroke();
+      const drawer = { x: body.x, y: divY + 2, w: body.w, h: body.h - navH - 2 };
+      this._drawPoiBookPanel(ctx, drawer, engine);
     } else {
-      const pois = engine.poiSystem.discovered();
-      const rowH = 18;
-      const bodyClip = { ...body };
-      this._clip(ctx, bodyClip, () => {
-        pois.forEach((poi, i) => {
-          const ry = body.y + i * rowH;
-          const sel = poi.id === engine.poiSystem.selectedId;
-          if (sel) {
-            ctx.fillStyle = 'rgba(120, 200, 255, 0.12)';
-            ctx.fillRect(body.x - 4, ry, body.w + 8, rowH);
-          }
-          const color = engine.poiSystem.color(poi);
-          ctx.fillStyle = color;
-          ctx.beginPath();
-          ctx.arc(body.x + 4, ry + rowH / 2, 3, 0, Math.PI * 2);
-          ctx.fill();
-          this._text(ctx, poi.name, body.x + 14, ry + 13, { size: 12, weight: 500 });
-          const userPin = engine.poiSystem.isUserPin(poi);
-          if (userPin) {
-            this.registerPoiBookRowRightClick(body.x, ry, body.w - 78, rowH, poi.id);
-            this._btnPadlock(ctx, body.x + body.w - 62, ry + 1, poi.locked, (e) => {
-              e.poiSystem.togglePoiLock(poi.id);
-              e.persistNavProfile();
-            });
-            if (!poi.locked) {
-              this._btnDanger(ctx, body.x + body.w - 44, ry + 1, 'X', (e) => {
-                if (e.poiSystem.deletePoi(poi.id)) e.persistNavProfile();
-              });
-            }
-          }
-          this._toggle(ctx, body.x + body.w - 26, ry + 3, 'R', poi.onRing, (e) => {
-            e.poiSystem.toggleRing(poi.id);
-            e.persistNavProfile();
-          });
-          this._toggle(ctx, body.x + body.w - 12, ry + 3, 'M', poi.onMap, (e) => {
-            e.poiSystem.toggleMap(poi.id);
-            e.persistNavProfile();
-          });
-          this._region(body.x - 4, ry, body.w - 78, rowH, (e) => e.selectPoi(poi.id));
-        });
+      this._drawNavSummary(ctx, body, engine, { compact: false });
+    }
+    const footerY = box.y + box.h - btnH;
+    const toggleW = this._drawFooterToggle(
+      ctx,
+      box.x,
+      footerY,
+      btnW,
+      btnH,
+      'POI BOOK',
+      poiBookOpen,
+      (e) => this._togglePoiBook(e),
+    );
+    if (poiBookOpen) {
+      this._drawFooterDeleteAll(ctx, box, footerY, btnH, toggleW, 8, (e) => {
+        const { renamedUnlocked } = e.poiSystem.previewDeleteAllUnlocked();
+        if (renamedUnlocked.length) {
+          e.poiBookModal = {
+            phase: 'deleteAll',
+            surface: 'poiBook',
+            names: renamedUnlocked.map((p) => p.name),
+          };
+        } else {
+          e.poiSystem.deleteAllUnlocked();
+          e.persistNavProfile();
+        }
       });
-      if (this.poiBookMenu) {
-        drawPoiPinContextMenu(ctx, body, engine, this, this.poiBookMenu, this.poiBookMenu.poiId, 'poiBook');
-      }
-      if (engine.poiBookModal?.surface === 'poiBook') {
-        drawPoiBookModal(ctx, body, engine, this);
+    }
+    if (engine.poiBookModal?.surface === 'poiBook') {
+      drawPoiBookModal(ctx, box, engine, this);
+    }
+  }
+
+  /** Bottom-left panel toggle (lit when active). @returns {number} drawn button width */
+  _drawFooterToggle(ctx, x, y, minW, h, label, active, action) {
+    const displayLabel = active ? `CLOSE ${label}` : label;
+    const fs = 10;
+    ctx.font = `700 ${fs}px ${FONT}`;
+    const w = Math.max(minW, Math.ceil(ctx.measureText(displayLabel).width) + 14);
+    ctx.fillStyle = active ? 'rgba(120, 200, 255, 0.22)' : 'rgba(30, 54, 76, 0.8)';
+    ctx.fillRect(x, y, w, h);
+    ctx.strokeStyle = active ? ACCENT : 'rgba(120, 200, 255, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, w, h);
+    this._text(ctx, displayLabel, x + w / 2, y + h - 4, {
+      size: fs,
+      align: 'center',
+      weight: 700,
+      color: active ? ACCENT : TXT,
+    });
+    this._region(x, y, w, h, action);
+    return w;
+  }
+
+  /** @returns {number} button width, or 0 if it would not fit */
+  _footerDeleteAllWidth(ctx, maxW) {
+    const label = 'DELETE ALL UNLOCKED';
+    const fs = 9;
+    ctx.font = `700 ${fs}px ${FONT}`;
+    const delW = Math.min(maxW - 4, Math.ceil(ctx.measureText(label).width) + 12);
+    return delW >= 48 ? delW : 0;
+  }
+
+  /** Right-aligned **DELETE ALL UNLOCKED**; `minLeftOffset` is min x from panel left edge. */
+  _drawFooterDeleteAll(ctx, panelBox, footerY, btnH, minLeftOffset, gap, action) {
+    const label = 'DELETE ALL UNLOCKED';
+    const fs = 9;
+    ctx.font = `700 ${fs}px ${FONT}`;
+    const delW = Math.min(
+      panelBox.w - minLeftOffset - gap - 4,
+      Math.ceil(ctx.measureText(label).width) + 12,
+    );
+    const delX = panelBox.x + panelBox.w - delW;
+    if (delW < 48 || delX < panelBox.x + minLeftOffset + gap) return;
+    this._btnWide(ctx, delX, footerY, delW, label, action, btnH);
+  }
+
+  _togglePoiBook(engine) {
+    if (this.tabs.destination === 1) {
+      this.tabs.destination = 0;
+      this.poiBookMenu = null;
+      if (engine.poiBookModal?.surface === 'poiBook') engine.poiBookModal = null;
+    } else {
+      this.tabs.destination = 1;
+    }
+  }
+
+  _toggleTravelLog(engine) {
+    const view = engine.sectorMapView;
+    if (view.tabs.sector === 1) {
+      view.tabs.sector = 0;
+      view.travelLogMenu = null;
+      view.modal = null;
+      if (engine.poiBookModal?.surface === 'sectorMap') engine.poiBookModal = null;
+    } else {
+      view.tabs.sector = 1;
+    }
+  }
+
+  _toggleLoadouts(engine) {
+    if (this.tabs.power === 1) {
+      this.tabs.power = 0;
+      engine.pipLoadoutHover = null;
+      closePipLoadoutModal(engine);
+    } else {
+      this.tabs.power = 1;
+    }
+  }
+
+  _drawNavSummary(ctx, box, engine, { compact }) {
+    const midX = box.x + Math.floor(box.w * 0.52);
+    ctx.strokeStyle = 'rgba(230, 171, 109, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(midX, box.y);
+    ctx.lineTo(midX, box.y + box.h);
+    ctx.stroke();
+
+    const left = { x: box.x, y: box.y, w: midX - box.x - 4, h: box.h };
+    const right = { x: midX + 4, y: box.y, w: box.x + box.w - midX - 4, h: box.h };
+    this._drawLeftNavColumn(ctx, left, engine, compact);
+    this._drawRouteList(ctx, right, engine, compact);
+  }
+
+  /** Left column: next nav stop + optional selected POI (copper divider). */
+  _drawLeftNavColumn(ctx, box, engine, compact) {
+    const poi = engine.poiSystem.getSelected();
+    const stop = engine.navRoute.activeStop();
+    const samePoi = poi && stop?.kind === 'poi' && stop.poiId === poi.id;
+    const showSelected = poi && !samePoi && !compact;
+
+    if (!showSelected) {
+      this._drawNextDestination(ctx, box, engine, compact);
+      return;
+    }
+
+    const splitY = box.y + Math.floor(box.h * (compact ? 0.46 : 0.52));
+    const nextBox = { x: box.x, y: box.y, w: box.w, h: Math.max(compact ? 28 : 36, splitY - box.y - 1) };
+    const selBox = {
+      x: box.x,
+      y: splitY + 2,
+      w: box.w,
+      h: box.y + box.h - splitY - 2,
+    };
+
+    this._drawNextDestination(ctx, nextBox, engine, compact);
+
+    ctx.strokeStyle = COPPER;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(box.x, splitY);
+    ctx.lineTo(box.x + box.w, splitY);
+    ctx.stroke();
+
+    this._drawSelectedPoi(ctx, selBox, engine, compact);
+  }
+
+  _drawNextDestination(ctx, box, engine, compact) {
+    const route = engine.navRoute;
+    route.resolvePosition(engine);
+    const stop = route.activeStop();
+    const tight = compact && box.h < 42;
+    const headerSize = tight ? 8 : compact ? 9 : 10;
+    const headerLabel = tight ? 'NEXT' : compact ? 'NEXT DEST' : 'NEXT DESTINATION';
+    this._text(ctx, headerLabel, box.x, box.y + (tight ? 9 : compact ? 11 : 13), {
+      size: headerSize,
+      color: COPPER,
+      weight: 700,
+    });
+    if (!stop) {
+      this._text(ctx, 'NO ACTIVE STOP', box.x, box.y + (tight ? 18 : compact ? 26 : 30), {
+        color: DIM,
+        size: tight ? 10 : compact ? 11 : 13,
+      });
+      return;
+    }
+    const color = route.stopColor(engine, stop);
+    const { range, bearing } = route.rangeBearing(engine.ship, stop);
+    const rng = (range / 100).toFixed(0);
+    const brg = ((bearing * 180) / Math.PI + 360) % 360;
+    const nameSize = tight ? 10 : compact ? 11 : 15;
+    const nameY = tight ? 18 : compact ? 22 : 28;
+    ctx.font = `700 ${nameSize}px ${FONT}`;
+    let label = stop.label.toUpperCase();
+    const maxW = box.w - 2;
+    if (ctx.measureText(label).width > maxW) {
+      while (label.length > 1 && ctx.measureText(`${label}…`).width > maxW) label = label.slice(0, -1);
+      label += '…';
+    }
+    this._text(ctx, label, box.x, box.y + nameY, { color, size: nameSize, weight: 700 });
+    if (compact && !tight) {
+      this._text(ctx, `RNG ${rng} km · BRG ${brg.toFixed(0)}°`, box.x, box.y + 34, {
+        size: 10,
+        weight: 500,
+      });
+    } else if (!compact) {
+      this._text(ctx, `RANGE  ${rng} km`, box.x, box.y + 48, { size: 12, weight: 500 });
+      this._text(ctx, `BEARING ${brg.toFixed(0)}°`, box.x, box.y + 63, { size: 12, weight: 500 });
+      if (stop.kind === 'poi') {
+        this._text(ctx, `KIND   POI`, box.x, box.y + 78, { size: 12, weight: 500, color: DIM });
       }
     }
+  }
+
+  _drawSelectedPoi(ctx, box, engine, compact, { skipHeader = false } = {}) {
+    const poi = engine.poiSystem.getSelected();
+    if (!poi) return;
+    if (!skipHeader) {
+      const headerSize = compact ? 8 : 10;
+      const headerLabel = compact && box.h < 36 ? 'SEL POI' : 'SELECTED POI';
+      this._text(ctx, headerLabel, box.x, box.y + (compact ? 10 : 13), {
+        size: headerSize,
+        color: COPPER,
+        weight: 700,
+      });
+    }
+    const color = engine.poiSystem.color(poi);
+    const rng = (engine.poiSystem.range(engine.ship, poi) / 100).toFixed(0);
+    const brg =
+      ((engine.poiSystem.bearing(engine.ship, poi) * 180) / Math.PI + 360) % 360;
+    const nameSize = compact ? 10 : 13;
+    const nameY = skipHeader ? (compact ? 12 : 14) : compact ? 22 : 28;
+    ctx.font = `700 ${nameSize}px ${FONT}`;
+    let name = poi.name.toUpperCase();
+    const maxW = box.w - 4;
+    if (ctx.measureText(name).width > maxW) {
+      while (name.length > 1 && ctx.measureText(`${name}…`).width > maxW) name = name.slice(0, -1);
+      name += '…';
+    }
+    this._text(ctx, name, box.x, box.y + nameY, { color, size: nameSize, weight: 700 });
+    if (compact) {
+      this._text(ctx, `RNG ${rng} km · BRG ${brg.toFixed(0)}°`, box.x, box.y + nameY + 12, {
+        size: 9,
+        weight: 500,
+      });
+    } else {
+      this._text(ctx, `RANGE  ${rng} km`, box.x, box.y + nameY + 16, { size: 12, weight: 500 });
+      this._text(ctx, `BEARING ${brg.toFixed(0)}°`, box.x, box.y + nameY + 31, { size: 12, weight: 500 });
+      this._text(ctx, `SOURCE ${poi.source.toUpperCase()}`, box.x, box.y + nameY + 46, {
+        size: 12,
+        weight: 500,
+      });
+    }
+  }
+
+  _drawRouteList(ctx, box, engine, compact) {
+    const route = engine.navRoute;
+    const stops = route.stops;
+    const rowH = compact ? 16 : 18;
+    const btnS = compact ? 12 : 14;
+    const headerY = box.y + (compact ? 11 : 13);
+
+    this._text(ctx, 'ROUTE', box.x, headerY, { size: compact ? 9 : 10, color: COPPER, weight: 700 });
+    const countLabel = stops.length ? `${stops.length}` : '0';
+    this._text(ctx, countLabel, box.x + 36, headerY, { size: compact ? 9 : 10, color: DIM, weight: 600 });
+
+    const clearLabel = compact ? 'CLR' : 'CLEAR ALL';
+    const clearW = compact ? 28 : 52;
+    const clearX = box.x + box.w - clearW;
+    const clearY = box.y + (compact ? 0 : 0);
+    this._btnWide(
+      ctx,
+      clearX,
+      clearY,
+      clearW,
+      clearLabel,
+      (e) => {
+        e.navRoute.clearAll();
+        e.persistNavProfile();
+        this._routeListScroll = 0;
+      },
+      compact ? 14 : 16,
+      stops.length === 0,
+    );
+
+    const listY = box.y + (compact ? 18 : 22);
+    const listH = box.h - (listY - box.y) - (compact ? 0 : 2);
+    const maxRows = Math.max(1, Math.floor(listH / rowH));
+    const start = compact ? 0 : Math.min(this._routeListScroll, Math.max(0, stops.length - maxRows));
+
+    this._clip(ctx, { x: box.x, y: listY, w: box.w, h: listH }, () => {
+      const visible = compact ? stops.slice(0, maxRows) : stops.slice(start, start + maxRows);
+      visible.forEach((stop, vi) => {
+        const idx = compact ? vi : start + vi;
+        const ry = listY + vi * rowH;
+        const active = idx === 0;
+        if (active) {
+          ctx.fillStyle = 'rgba(120, 200, 255, 0.1)';
+          ctx.fillRect(box.x - 2, ry, box.w + 4, rowH);
+        }
+        const dotColor = route.stopColor(engine, stop);
+        ctx.fillStyle = dotColor;
+        ctx.beginPath();
+        ctx.arc(box.x + 6, ry + rowH / 2, active ? 3.5 : 2.5, 0, Math.PI * 2);
+        ctx.fill();
+        const labelMax = box.w - btnS * 3 - 28;
+        ctx.font = `600 ${compact ? 10 : 11}px ${FONT}`;
+        let label = stop.label;
+        if (ctx.measureText(label).width > labelMax) {
+          while (label.length > 1 && ctx.measureText(`${label}…`).width > labelMax) label = label.slice(0, -1);
+          label += '…';
+        }
+        this._text(ctx, `${idx + 1}. ${label}`, box.x + 14, ry + rowH - 4, {
+          size: compact ? 10 : 11,
+          weight: 600,
+        });
+        const bx = box.x + box.w - btnS * 3 - 2;
+        this._routeRowBtn(ctx, bx, ry + 1, btnS, '↑', idx > 0, (e) => {
+          e.navRoute.moveStop(stop.id, idx - 1);
+          e.persistNavProfile();
+        });
+        this._routeRowBtn(ctx, bx + btnS + 1, ry + 1, btnS, '↓', idx < stops.length - 1, (e) => {
+          e.navRoute.moveStop(stop.id, idx + 1);
+          e.persistNavProfile();
+        });
+        this._btnDanger(ctx, bx + (btnS + 1) * 2, ry + 1, 'X', (e) => {
+          e.navRoute.removeStop(stop.id);
+          e.persistNavProfile();
+        });
+      });
+      if (compact && stops.length > maxRows) {
+        this._text(ctx, `+${stops.length - maxRows}`, box.x + box.w - 20, listY + maxRows * rowH - 2, {
+          size: 9,
+          align: 'right',
+          color: DIM,
+        });
+      }
+    });
+  }
+
+  _routeRowBtn(ctx, x, y, s, label, enabled, action) {
+    ctx.fillStyle = enabled ? 'rgba(30, 54, 76, 0.8)' : 'rgba(20, 28, 36, 0.5)';
+    ctx.fillRect(x, y, s, s);
+    ctx.strokeStyle = enabled ? 'rgba(120, 200, 255, 0.35)' : 'rgba(80, 90, 100, 0.25)';
+    ctx.strokeRect(x, y, s, s);
+    this._text(ctx, label, x + s / 2, y + s - 2, {
+      size: 9,
+      align: 'center',
+      weight: 700,
+      color: enabled ? TXT : DIM,
+    });
+    if (enabled) this._region(x, y, s, s, action);
+  }
+
+  _drawPoiBookPanel(ctx, box, engine) {
+    const splitX = box.x + Math.floor(box.w * 0.42);
+    const left = { x: box.x, y: box.y, w: splitX - box.x - 2, h: box.h };
+    const right = { x: splitX + 2, y: box.y, w: box.x + box.w - splitX - 2, h: box.h };
+
+    ctx.strokeStyle = COPPER;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(splitX, box.y);
+    ctx.lineTo(splitX, box.y + box.h);
+    ctx.stroke();
+
+    this._drawSelectedPoiPanel(ctx, left, engine, { inDrawer: true });
+
+    this._text(ctx, 'POI BOOK', right.x, right.y + 12, { size: 10, color: COPPER, weight: 700 });
+    const listBox = { x: right.x, y: right.y + 14, w: right.w, h: right.h - 14 };
+    this._drawPoiBookList(ctx, listBox, engine);
+    if (this.poiBookMenu) {
+      drawPoiPinContextMenu(ctx, box, engine, this, this.poiBookMenu, this.poiBookMenu.poiId, 'poiBook');
+    }
+  }
+
+  /** Selected POI inspect block (DEST left column or POI Book drawer left). */
+  _drawSelectedPoiPanel(ctx, box, engine, { inDrawer = false } = {}) {
+    const compact = inDrawer && box.w < 100;
+    const headerY = compact ? 10 : 13;
+    this._text(ctx, 'SELECTED POI', box.x, box.y + headerY, {
+      size: compact ? 8 : 10,
+      color: COPPER,
+      weight: 700,
+    });
+    const poi = engine.poiSystem.getSelected();
+    if (!poi) {
+      this._text(ctx, 'NO POI SELECTED', box.x, box.y + headerY + (compact ? 14 : 17), {
+        color: DIM,
+        size: compact ? 10 : 12,
+      });
+      return;
+    }
+    const bodyY = box.y + headerY + (compact ? 8 : 10);
+    const bodyBox = { x: box.x, y: bodyY, w: box.w, h: box.y + box.h - bodyY };
+    this._drawSelectedPoi(ctx, bodyBox, engine, compact, { skipHeader: true });
+  }
+
+  _drawPoiBookList(ctx, box, engine) {
+    const pois = engine.poiSystem.discovered();
+    const rowH = 18;
+    this._clip(ctx, box, () => {
+      pois.forEach((poi, i) => {
+        const ry = box.y + i * rowH;
+        const sel = poi.id === engine.poiSystem.selectedId;
+        if (sel) {
+          ctx.fillStyle = 'rgba(120, 200, 255, 0.12)';
+          ctx.fillRect(box.x - 4, ry, box.w + 8, rowH);
+        }
+        const color = engine.poiSystem.color(poi);
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.arc(box.x + 4, ry + rowH / 2, 3, 0, Math.PI * 2);
+        ctx.fill();
+        this._text(ctx, poi.name, box.x + 14, ry + 13, { size: 12, weight: 500 });
+        this.registerPoiBookRowRightClick(box.x, ry, box.w - 78, rowH, poi.id);
+        const userPin = engine.poiSystem.isUserPin(poi);
+        if (userPin) {
+          this._btnPadlock(ctx, box.x + box.w - 62, ry + 1, poi.locked, (e) => {
+            e.poiSystem.togglePoiLock(poi.id);
+            e.persistNavProfile();
+          });
+          if (!poi.locked) {
+            this._btnDanger(ctx, box.x + box.w - 44, ry + 1, 'X', (e) => {
+              if (e.poiSystem.deletePoi(poi.id)) e.persistNavProfile();
+            });
+          }
+        }
+        this._toggle(ctx, box.x + box.w - 26, ry + 3, 'R', poi.onRing, (e) => {
+          e.poiSystem.toggleRing(poi.id);
+          e.persistNavProfile();
+        });
+        this._toggle(ctx, box.x + box.w - 12, ry + 3, 'M', poi.onMap, (e) => {
+          e.poiSystem.toggleMap(poi.id);
+          e.persistNavProfile();
+        });
+        this._region(box.x - 4, ry, box.w - 78, rowH, (e) => this._poiBookRowClick(e, poi.id));
+      });
+    });
+  }
+
+  _poiBookRowClick(engine, poiId) {
+    const now = (engine.gameTime || 0) * 1000;
+    const last = this._poiBookLastClick;
+    if (last && last.poiId === poiId && now - last.time < 350) {
+      this._poiBookLastClick = null;
+      engine.addNavRouteStopFromPoi(poiId);
+      return;
+    }
+    this._poiBookLastClick = { poiId, time: now };
+    engine.selectPoi(poiId);
   }
 
   _toggle(ctx, x, y, label, on, action) {
@@ -706,7 +1104,27 @@ export class CockpitPanels {
     return true;
   }
 
-  _btnWide(ctx, x, y, w, label, action, h = 16) {
+  /** MMB on LIVE sector map — add nav stop. */
+  trySectorMapMiddleClick(engine, sx, sy) {
+    return sectorMapMiddleClick(engine, sx, sy);
+  }
+
+  _btnWide(ctx, x, y, w, label, action, h = 16, disabled = false) {
+    if (disabled) {
+      ctx.fillStyle = 'rgba(24, 32, 42, 0.55)';
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = 'rgba(70, 85, 100, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, w, h);
+      const fs = h >= 20 ? 10 : 9;
+      this._text(ctx, label, x + w / 2, y + h - 4, {
+        size: fs,
+        align: 'center',
+        weight: 700,
+        color: 'rgba(110, 120, 132, 0.45)',
+      });
+      return;
+    }
     ctx.fillStyle = 'rgba(30, 54, 76, 0.8)';
     ctx.fillRect(x, y, w, h);
     ctx.strokeStyle = 'rgba(120, 200, 255, 0.35)';
@@ -719,14 +1137,104 @@ export class CockpitPanels {
 
   // ---- 5 POWER (pips + loadouts) -----------------------------------------
   _power(ctx, box, engine) {
-    const tab = this.tabs.power;
-    this._tabBar(ctx, box, ['PIPS', 'LOADOUTS'], tab, (i) => (this.tabs.power = i));
-    const body = { x: box.x, y: box.y + 22, w: box.w, h: box.h - 22 };
-    if (tab === 0) this._pips(ctx, body, engine);
-    else drawPipLoadoutPanel(ctx, body, engine, this);
-    if (engine.pipLoadoutModal) {
-      drawPipLoadoutModal(ctx, body, engine, this);
+    const btnH = 18;
+    const btnW = 88;
+    const footerPad = 2;
+    const body = { x: box.x, y: box.y, w: box.w, h: box.h - btnH - footerPad };
+    const loadoutsOpen = this.tabs.power === 1;
+
+    if (loadoutsOpen) {
+      const previewH = Math.max(88, Math.floor(body.h * 0.42));
+      const previewBox = { x: body.x, y: body.y, w: body.w, h: previewH };
+      drawPipLoadoutPreview(ctx, previewBox, engine, this);
+      const divY = body.y + previewH;
+      ctx.strokeStyle = COPPER;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(body.x, divY);
+      ctx.lineTo(body.x + body.w, divY);
+      ctx.stroke();
+      const drawer = { x: body.x, y: divY + 2, w: body.w, h: body.y + body.h - divY - 2 };
+      drawPipLoadoutPanel(ctx, drawer, engine, this);
+    } else {
+      this._pips(ctx, body, engine);
     }
+
+    const footerY = box.y + box.h - btnH;
+    const footerGap = 8;
+    const toggleW = this._drawFooterToggle(
+      ctx,
+      box.x,
+      footerY,
+      btnW,
+      btnH,
+      'LOADOUTS',
+      loadoutsOpen,
+      (e) => this._toggleLoadouts(e),
+    );
+    const actionX = box.x + toggleW + footerGap;
+    let actionRight = box.x + box.w;
+    if (loadoutsOpen) {
+      const delReserve = this._footerDeleteAllWidth(ctx, box.w - (toggleW + footerGap));
+      if (delReserve > 0) actionRight = box.x + box.w - delReserve - footerGap;
+    }
+    const actionW = actionRight - actionX;
+    if (actionW >= 48) {
+      this._drawPipActionRow(ctx, actionX, footerY, actionW, btnH, engine);
+    }
+    if (loadoutsOpen) {
+      const deleteMinOffset =
+        actionW >= 48 ? toggleW + footerGap + actionW + footerGap : toggleW + footerGap;
+      this._drawFooterDeleteAll(ctx, box, footerY, btnH, deleteMinOffset, 0, (e) => {
+        const { renamedUnlocked } = e.pipLoadouts.previewDeleteAllUnlocked();
+        if (renamedUnlocked.length) {
+          e.pipLoadoutModal = {
+            phase: 'deleteAll',
+            names: renamedUnlocked.map((x) => e.pipLoadouts.title(x)),
+          };
+        } else {
+          e.pipLoadouts.deleteAllUnlocked();
+          e.persistNavProfile();
+        }
+      });
+    }
+    if (engine.pipLoadoutModal) {
+      drawPipLoadoutModal(ctx, box, engine, this);
+    }
+  }
+
+  _drawPipActionRow(ctx, x, y, w, h, engine) {
+    const gap = 4;
+    const btnW = (w - gap * 2) / 3;
+    if (btnW < 20) return;
+    const active = engine.pipLoadouts?.active;
+    const canUpdate = active && !active.locked;
+    const canSaveNew = !engine.pipLoadouts?.atCapacity();
+    const labels = ['SAVE (NEW)', 'UPDATE', 'CLEAR PIPS'];
+    labels.forEach((label, i) => {
+      const bx = x + i * (btnW + gap);
+      if (label === 'SAVE (NEW)') {
+        if (canSaveNew) {
+          this._btnWide(ctx, bx, y, btnW, label, (e) => {
+            if (e.pipLoadouts.saveNew(e.pipSystem)) e.persistNavProfile();
+          }, h);
+        } else {
+          this._btnWideDisabled(ctx, bx, y, btnW, label, h);
+        }
+      } else if (label === 'UPDATE') {
+        if (canUpdate) {
+          this._btnWide(ctx, bx, y, btnW, label, (e) => {
+            if (e.pipLoadouts.updateActive(e.pipSystem)) e.persistNavProfile();
+          }, h);
+        } else {
+          this._btnWideDisabled(ctx, bx, y, btnW, label, h);
+        }
+      } else if (label === 'CLEAR PIPS') {
+        this._btnWide(ctx, bx, y, btnW, label, (e) => {
+          e.pipSystem.clearAll();
+        }, h);
+      }
+    });
   }
 
   _pips(ctx, box, engine) {
@@ -737,13 +1245,10 @@ export class CockpitPanels {
     const active = engine.pipLoadouts?.active;
 
     const padY = 2;
-    const footerBtnH = Math.max(18, Math.min(24, Math.floor(box.h * 0.075)));
-    const footerGap = 4;
-    const footerBlockH = footerBtnH * 2 + footerGap;
     const loadoutH = active ? 22 : 0;
-    const headerH = 18 + loadoutH;
+    const headerH = 18;
     const rowsTop = box.y + padY + headerH;
-    const rowsBottom = box.y + box.h - padY - footerBlockH;
+    const rowsBottom = box.y + box.h - padY - loadoutH;
     const rowsAreaH = Math.max(PIPS.CHANNELS.length * 18, rowsBottom - rowsTop);
     const rowH = Math.max(20, Math.min(34, Math.floor(rowsAreaH / PIPS.CHANNELS.length)));
     const blockH = rowH * PIPS.CHANNELS.length;
@@ -794,32 +1299,6 @@ export class CockpitPanels {
       });
     }
 
-    if (active) {
-      const ly = headerY + 18;
-      ctx.fillStyle = 'rgba(30, 48, 68, 0.32)';
-      ctx.fillRect(box.x, ly, box.w, loadoutH);
-      ctx.strokeStyle = 'rgba(120, 200, 255, 0.18)';
-      ctx.lineWidth = 1;
-      ctx.strokeRect(box.x, ly, box.w, loadoutH);
-      this._btnPadlock(ctx, box.x + 2, ly + 3, active.locked, (e) => {
-        e.pipLoadouts.toggleLock(active.id);
-        e.persistNavProfile();
-      });
-      const nameX = box.x + 22;
-      const clearW = 40;
-      const nameW = box.w - 22 - clearW - 4;
-      this._text(ctx, engine.pipLoadouts.title(active), nameX, ly + 15, {
-        size: 10,
-        weight: 600,
-        color: COPPER,
-      });
-      this.registerPipLinkedLoadoutRightClick(nameX, ly + 2, nameW, loadoutH - 4, active.id);
-      this._btnWide(ctx, box.x + box.w - clearW - 2, ly + 3, clearW, 'Clear', (e) => {
-        e.pipLoadouts.clearActiveLink();
-        e.persistNavProfile();
-      }, loadoutH - 6);
-    }
-
     PIPS.CHANNELS.forEach((ch, i) => {
       const ry = blockY + i * rowH;
       if (i % 2 === 0) {
@@ -858,51 +1337,31 @@ export class CockpitPanels {
       this._btn(ctx, plusX, stepBtnY, '+', (e) => e.pipSystem.add(ch), btnS);
     });
 
-    const footerY = box.y + box.h - footerBlockH;
-    const halfW = (box.w - 4) / 2;
-    const canUpdate = active && !active.locked;
-    const canSaveNew = !engine.pipLoadouts?.atCapacity();
-    if (canSaveNew) {
-      this._btnWide(
-        ctx,
-        box.x,
-        footerY,
-        halfW,
-        'SAVE (NEW)',
-        (e) => {
-          if (e.pipLoadouts.saveNew(e.pipSystem)) e.persistNavProfile();
-        },
-        footerBtnH
-      );
-    } else {
-      this._btnWideDisabled(ctx, box.x, footerY, halfW, 'SAVE (NEW)', footerBtnH);
+    if (active) {
+      const ly = box.y + box.h - padY - loadoutH;
+      ctx.fillStyle = 'rgba(30, 48, 68, 0.32)';
+      ctx.fillRect(box.x, ly, box.w, loadoutH);
+      ctx.strokeStyle = 'rgba(120, 200, 255, 0.18)';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(box.x, ly, box.w, loadoutH);
+      this._btnPadlock(ctx, box.x + 2, ly + 3, active.locked, (e) => {
+        e.pipLoadouts.toggleLock(active.id);
+        e.persistNavProfile();
+      });
+      const nameX = box.x + 22;
+      const clearW = 72;
+      const nameW = box.w - 22 - clearW - 4;
+      this._text(ctx, engine.pipLoadouts.title(active), nameX, ly + 15, {
+        size: 10,
+        weight: 600,
+        color: COPPER,
+      });
+      this.registerPipLinkedLoadoutRightClick(nameX, ly + 2, nameW, loadoutH - 4, active.id);
+      this._btnWide(ctx, box.x + box.w - clearW - 2, ly + 3, clearW, 'CLEAR LOADOUT', (e) => {
+        e.pipLoadouts.clearActiveLink();
+        e.persistNavProfile();
+      }, loadoutH - 6);
     }
-    if (canUpdate) {
-      this._btnWide(
-        ctx,
-        box.x + halfW + 4,
-        footerY,
-        halfW,
-        'UPDATE',
-        (e) => {
-          if (e.pipLoadouts.updateActive(e.pipSystem)) e.persistNavProfile();
-        },
-        footerBtnH
-      );
-    } else {
-      this._btnWideDisabled(ctx, box.x + halfW + 4, footerY, halfW, 'UPDATE', footerBtnH);
-    }
-    this._btnWide(
-      ctx,
-      box.x,
-      footerY + footerBtnH + footerGap,
-      box.w,
-      'CLEAR ALL',
-      (e) => {
-        e.pipSystem.clearAll();
-      },
-      footerBtnH
-    );
   }
 
   _drawSegmentedPoolBar(ctx, x, y, w, h, total, available) {

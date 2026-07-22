@@ -13,6 +13,26 @@ export const TRAIL_PALETTE = [
   'rgba(140, 200, 220, 0.5)',
 ];
 
+/** Nav route reserves white — skip near-white palette slots for travel log trails. */
+function trailColorIsReserved(color) {
+  const m = String(color).match(/rgba?\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)/i);
+  if (!m) return false;
+  const r = parseInt(m[1], 10);
+  const g = parseInt(m[2], 10);
+  const b = parseInt(m[3], 10);
+  const lum = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+  return lum > 220 && Math.max(r, g, b) - Math.min(r, g, b) < 40;
+}
+
+export function safeTrailColorIndex(entryIndex) {
+  const len = TRAIL_PALETTE.length;
+  for (let i = 0; i < len; i++) {
+    const idx = (entryIndex + i) % len;
+    if (!trailColorIsReserved(TRAIL_PALETTE[idx])) return idx;
+  }
+  return entryIndex % len;
+}
+
 /** @param {number} ts */
 export function formatTripDate(ts) {
   const d = new Date(ts ?? Date.now());
@@ -80,7 +100,7 @@ export class TravelLog {
       poisEncountered: payload.poisEncountered ?? 0,
       locked: false,
       visibleOnMap: false,
-      colorIndex: this.entries.length % TRAIL_PALETTE.length,
+      colorIndex: safeTrailColorIndex(this.entries.length),
     };
     this.entries.unshift(entry);
     return entry;

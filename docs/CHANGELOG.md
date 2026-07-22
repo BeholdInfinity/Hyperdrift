@@ -7,15 +7,18 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 ## [Unreleased]
 
 ### Fixed
-- **Jennings hull beacons** — red blinkers on the north/south rims are mirrored pairs (±spread from pole) instead of hand-tuned asymmetric angles.
+- **POI BOOK toggle** — removed **DEST** tab; **POI BOOK** is a bottom-left toggle on the DESTINATION panel (click again to close and return to nav view).
+- **TRAVEL LOG toggle** — removed **LIVE** tab; **TRAVEL LOG** is a bottom-left toggle on the SECTOR MAP panel (click again to close and return to full map view).
+- **Footer delete row** — **DELETE ALL UNLOCKED** on Travel Log, Loadouts, and POI Book shares the bottom footer with each panel toggle (right-aligned, gap between buttons); only visible while that drawer is open.
+- **Red blinkers** — north/south rims use mirrored pairs (±spread from pole) instead of hand-tuned asymmetric angles.
 - **Game failed to load** — `PipLoadouts.fromJSON` mixed `??` and `||` without parentheses (`SyntaxError: Unexpected token '||'`), which blocked `GameEngine` / `main.js` from importing.
 - **Game failed to load (PIPS layout)** — duplicate `const slotH` in `CockpitPanels._pips` (`SyntaxError: Identifier 'slotH' has already been declared`), blocking the module graph.
 - **Blueprint north-up default** — entering Blueprint now clears inherited `camera.rotation` (flight **ORIENT** SHIP-up lock or title vignette tilt) so the drafting grid, pad rings, and default **N** heading match the ship on screen instead of showing a stale compass direction (e.g. SE).
 - **POI pin rename modal** — rename overlay now opens on the panel that requested it (POI Book or Sector Map), not both at once (`poiBookModal.surface`).
-- **Sector Map marker tooltips** — hovering near a POI, manual pin, or scanner contact on LIVE / TRAVEL LOG mini-maps shows its name in a canvas HUD tooltip (waypoint hook reserved for future nav targets).
+- **Sector Map marker tooltips** — hovering near a POI, manual pin, scanner contact, or **nav-route stop** on LIVE / TRAVEL LOG mini-maps shows its name in a canvas HUD tooltip.
 
 ### Added
-- **Boot failure error panel** — if a module import or `GameEngine` startup throws before the title loop runs, `loadErrorOverlay.js` shows a copy-friendly error card (**Copy error** / **Select all**) plus a short browser `alert` pointing at it (paste into chat for debugging).
+- **Navigation route queue** — Google Maps–style multi-stop routing via **`NavRoute.js`**: ephemeral stops (distinct from POI Book pins). Add stops with Sector Map **MMB**, map **RMB → ADD STOP**, or POI Book **RMB / double-click**. **DESTINATION** panel: **Next | Route** split on **DEST** tab; **POI BOOK** tab keeps compact nav strip + drawer. Route reorder/remove/**CLEAR ALL**; speed-scaled arrival auto-advance; **STATUS** corner flash; queue persists through dock (`NavPersistence` v3). White route legs + generic markers on sector map; POI stops use IFF color; rim chevron for next stop only. Travel log palette skips white/near-white. — if a module import or `GameEngine` startup throws before the title loop runs, `loadErrorOverlay.js` shows a copy-friendly error card (**Copy error** / **Select all**) plus a short browser `alert` pointing at it (paste into chat for debugging).
 - **POWER pip loadouts + layout rework** — Ship Status moves to the **top-right corner** screen (`STATUS` baked in `CockpitFrame`); POWER panel tabs are **`PIPS | LOADOUTS`** only. Pip channels renamed: **`radar`** (360° sweep ring) and **`scanner`** (Forward Looking Scanner / cargo gate). **`PipLoadouts`** (max 12) + **`PipLoadoutPanel`**: click row to apply, hover diff popup (red/green), rename/delete with canvas modal, **DELETE ALL UNLOCKED**. PIPS tab: bar-setter slot clicks, row **X**, **CLEAR ALL**, linked loadout bar (name/lock/**Clear**), **SAVE (NEW)** / **UPDATE** (blocked when locked); **right-click linked name** or LOADOUTS row name to rename via in-game modal (keyboard + OK/CANCEL — no browser prompt). Partial apply shows **`PARTIAL — N pip(s) short`** + synchronized 3× flash on missed slots. **`NavPersistence` v2** extends localStorage with pip loadouts (v1 saves migrate; optional seed **Loadout #1**). Generator stub: **`PIPS.BASE_POOL: 12`**, **`DEFAULT_GENERATOR_PIPS: 6`**, `effectivePool()` from fuel cells; dev **RADAR** drawer **Generator** slider (1–12) + **Save generator default** bakes `Constants.js`.
 - **Cockpit MODES corner** — the bottom-right corner (formerly the static **PREC** readout) is now a stack of clickable two-position switches titled **MODES**:
   - **PREC** — a switch mirroring Caps Lock Precision (`OFF` / `ON`). Precision desire is decoupled from the raw Caps Lock key state so the switch and the key stay in sync without fighting each other (`GameEngine.precisionDesired` / `togglePrecision`).
@@ -53,7 +56,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ### Planned
 
-- **Navigation waypoint queue** — Google Maps–style multi-stop route: ephemeral stops (not POI Book pins); active stop on rim/map/DEST; add stop; auto-clear each stop on arrival and advance queue (`GDD.md`)
 - Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
 - Full player crane trolley control feel + on-foot weld loop for turret swap
 - Shared 2.5D interior walker (`shipInterior`) on vessel Place graphs

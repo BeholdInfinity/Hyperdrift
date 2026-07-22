@@ -1,8 +1,8 @@
 /**
- * Sector map panel — LIVE / TRAVEL LOG tabs, pan/zoom map, travel log UI.
+ * Sector map panel — live map + optional travel-log drawer, pan/zoom, travel log UI.
  */
 
-import { IFF } from '../core/Constants.js';
+import { IFF, NAV } from '../core/Constants.js';
 import { getSectorLayout } from '../world/SectorLayout.js';
 import { formatTripDate } from '../world/TravelLog.js';
 import { trailDistance } from '../world/SectorMap.js';
@@ -26,37 +26,70 @@ const ACCENT = 'rgba(120, 200, 255, 0.85)';
 
 export function drawSectorMapPanel(ctx, box, engine, panels) {
   const view = engine.sectorMapView;
-  const tab = view.tabs.sector;
-  panels._tabBar(ctx, box, ['LIVE', 'TRAVEL LOG'], tab, (i) => {
-    view.tabs.sector = i;
-  });
-
-  const chromeH = 18;
-  const body = { x: box.x, y: box.y + chromeH, w: box.w, h: box.h - chromeH };
-  const mapH = tab === 0 ? body.h - 18 : Math.max(40, body.h * 0.45);
-  const mapBox = { x: body.x, y: body.y, w: body.w, h: mapH };
+  const btnH = 18;
+  const btnW = 88;
+  const footerPad = 2;
+  const body = { x: box.x, y: box.y, w: box.w, h: box.h - btnH - footerPad };
+  const travelLogOpen = view.tabs.sector === 1;
+  const telemetryH = 12;
+  const contentY = body.y + telemetryH;
+  const contentH = body.h - telemetryH;
+  const mapH = travelLogOpen ? Math.max(40, Math.floor(contentH * 0.45)) : contentH;
+  const mapBox = { x: body.x, y: contentY, w: body.w, h: mapH };
   view.mapBody = mapBox;
 
-  drawMapTelemetry(ctx, body.x, body.y - 2, body.w, engine, view);
+  drawMapTelemetry(ctx, body.x, body.y + 10, body.w, engine, view);
 
-  if (tab === 0) {
-    drawMapCanvas(ctx, mapBox, engine, view, { fog: true, liveTrail: true });
-    drawMapOverlays(ctx, mapBox, engine, panels);
-    view.travelLogListBox = null;
-  } else {
-    drawMapCanvas(ctx, mapBox, engine, view, { fog: true, liveTrail: true });
-    drawMapOverlays(ctx, mapBox, engine, panels);
+  drawMapCanvas(ctx, mapBox, engine, view, { fog: true, liveTrail: true });
+  drawMapOverlays(ctx, mapBox, engine, panels);
+
+  if (travelLogOpen) {
+    const divY = contentY + mapH;
+    ctx.strokeStyle = COPPER;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(body.x, divY);
+    ctx.lineTo(body.x + body.w, divY);
+    ctx.stroke();
     const listBox = {
       x: body.x,
-      y: body.y + mapH + 4,
+      y: divY + 4,
       w: body.w,
-      h: body.h - mapH - 4,
+      h: body.y + body.h - divY - 4,
     };
     view.travelLogListBox = listBox;
     drawTravelLogList(ctx, listBox, engine, panels);
     if (view.travelLogMenu) {
       drawTravelLogContextMenu(ctx, listBox, engine, panels, view.travelLogMenu);
     }
+  } else {
+    view.travelLogListBox = null;
+  }
+
+  const footerY = box.y + box.h - btnH;
+  const toggleW = panels._drawFooterToggle(
+    ctx,
+    box.x,
+    footerY,
+    btnW,
+    btnH,
+    'TRAVEL LOG',
+    travelLogOpen,
+    (e) => panels._toggleTravelLog(e),
+  );
+  if (travelLogOpen) {
+    panels._drawFooterDeleteAll(ctx, box, footerY, btnH, toggleW, 8, (e) => {
+      const { renamedUnlocked } = e.travelLog.previewDeleteAllUnlocked();
+      if (renamedUnlocked.length) {
+        e.sectorMapView.modal = {
+          phase: 'deleteAll',
+          names: renamedUnlocked.map((x) => e.travelLog.expeditionTitle(x)),
+        };
+      } else {
+        e.travelLog.deleteAllUnlocked();
+        e.persistNavProfile();
+      }
+    });
   }
 
   if (view.modal) {
@@ -158,6 +191,8 @@ function drawMapCanvas(ctx, box, engine, view, { fog, liveTrail }) {
     strokeTrail(ctx, map.trail, box, view, 'rgba(120, 200, 255, 0.45)');
   }
 
+  drawNavRouteOnMap(ctx, box, engine, view);
+
   for (const poi of engine.poiSystem.mapPois()) {
     const s = view.worldToScreen(poi.x, poi.y, box);
     const sel = poi.id === engine.poiSystem.selectedId;
@@ -219,6 +254,54 @@ function strokeTrail(ctx, trail, box, view, color) {
     else ctx.lineTo(s.x, s.y);
   });
   ctx.stroke();
+}
+
+/** White chained legs: ship→#1, #1→#2, … plus numbered stop markers. */
+function drawNavRouteOnMap(ctx, box, engine, view) {
+  const route = engine.navRoute;
+  const ship = engine.ship;
+  if (!route?.stops?.length || !ship) return;
+  route.resolvePosition(engine);
+  const stops = route.stops;
+  const chain = [{ x: ship.position.x, y: ship.position.y }, ...stops.map((s) => ({ x: s.x, y: s.y }))];
+
+  ctx.save();
+  ctx.strokeStyle = NAV.ROUTE_LINE_COLOR;
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 4]);
+  for (let i = 0; i < chain.length - 1; i++) {
+    const a = view.worldToScreen(chain[i].x, chain[i].y, box);
+    const b = view.worldToScreen(chain[i + 1].x, chain[i + 1].y, box);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  stops.forEach((stop, i) => {
+    const s = view.worldToScreen(stop.x, stop.y, box);
+    const active = i === 0;
+    const color = route.stopColor(engine, stop);
+    const r = active ? 5 : 3.5;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, r, 0, Math.PI * 2);
+    ctx.fill();
+    if (active) {
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, 8, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.font = `700 ${active ? 9 : 8}px ${FONT}`;
+    ctx.fillStyle = active ? '#fff' : DIM;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(String(i + 1), s.x, s.y - (active ? 12 : 10));
+  });
+  ctx.restore();
 }
 
 function drawMapPinMarker(ctx, x, y, color, selected) {
@@ -326,7 +409,7 @@ export function pickSectorMapMarkerAtScreen(engine, sx, sy, mapBox, view) {
     for (const wp of waypoints) {
       if (wp.x == null || wp.y == null) continue;
       const s = view.worldToScreen(wp.x, wp.y, mapBox);
-      tryHit(s.x, s.y, wp.hitRadius ?? 10, wp.name || 'Waypoint', 'waypoint', wp.id);
+      tryHit(s.x, s.y, wp.hitRadius ?? 10, wp.name || 'Waypoint', 'navStop', wp.id);
     }
   }
 
@@ -429,11 +512,20 @@ export function processPoiBookModalInput(engine) {
 
 export function drawPoiBookModal(ctx, box, engine, panels) {
   const modal = engine.poiBookModal;
-  if (!modal || modal.phase !== 'rename') return;
+  if (!modal) return;
   ctx.fillStyle = 'rgba(8, 14, 22, 0.5)';
   ctx.fillRect(box.x, box.y, box.w, box.h);
   panels._region(box.x, box.y, box.w, box.h, () => {});
+  if (modal.phase === 'rename') {
+    drawRenamePoiModal(ctx, box, engine, panels, modal);
+    return;
+  }
+  if (modal.phase === 'deleteAll') {
+    drawPoiDeleteAllModal(ctx, box, engine, panels, modal);
+  }
+}
 
+function drawRenamePoiModal(ctx, box, engine, panels, modal) {
   const w = Math.min(240, box.w - 12);
   const h = 108;
   const x = box.x + (box.w - w) / 2;
@@ -477,6 +569,33 @@ export function drawPoiBookModal(ctx, box, engine, panels) {
   });
 }
 
+function drawPoiDeleteAllModal(ctx, box, engine, panels, modal) {
+  const w = Math.min(280, box.w - 8);
+  const h = 88;
+  const x = box.x + (box.w - w) / 2;
+  const y = box.y + (box.h - h) / 2;
+  ctx.fillStyle = 'rgba(12, 24, 36, 0.96)';
+  ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle = COPPER;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+  panels._text(ctx, 'DELETE ALL?', x + 8, y + 16, { size: 12, weight: 700, color: COPPER });
+  panels._text(ctx, `Includes renamed: ${(modal.names || []).join(', ')}`, x + 8, y + 36, {
+    size: 11,
+    color: TXT,
+    weight: 400,
+  });
+  const by = y + h - 22;
+  panels._btnWide(ctx, x + 8, by, w / 2 - 12, 'CANCEL', (e) => {
+    closePoiBookModal(e);
+  });
+  panels._btnWide(ctx, x + w / 2 + 4, by, w / 2 - 12, 'DELETE', (e) => {
+    e.poiSystem.deleteAllUnlocked();
+    e.persistNavProfile();
+    closePoiBookModal(e);
+  });
+}
+
 export function deletePoiIfAllowed(engine, poiId) {
   if (engine.poiSystem.deletePoi(poiId)) engine.persistNavProfile();
 }
@@ -484,35 +603,49 @@ export function deletePoiIfAllowed(engine, poiId) {
 /** @param {'sectorMap'|'poiBook'} menuTag */
 export function drawPoiPinContextMenu(ctx, clampBox, engine, panels, menu, poiId, menuTag) {
   const poi = engine.poiSystem.list.find((p) => p.id === poiId);
-  if (!poi || !engine.poiSystem.isUserPin(poi)) return;
+  if (!poi) return;
   const menuOpt = menuTag === 'sectorMap' ? { sectorMapMenu: true } : { poiBookMenu: true };
+  const userPin = engine.poiSystem.isUserPin(poi);
   const w = 96;
   const rowH = 18;
   const items = [
     {
-      label: 'RENAME',
+      label: 'ADD STOP',
       color: ACCENT,
       action: (e) => {
         e.poiBookMenu = null;
         e.sectorMapView.sectorMapMenu = null;
-        openRenamePoiModal(e, poiId, menuTag);
-      },
-    },
-    {
-      label: poi.locked ? 'UNLOCK' : 'LOCK',
-      color: TXT,
-      action: (e) => {
-        e.poiSystem.togglePoiLock(poiId);
-        e.persistNavProfile();
+        e.addNavRouteStopFromPoi(poiId);
       },
     },
   ];
-  if (!poi.locked) {
-    items.push({
-      label: 'DELETE',
-      color: 'rgba(255, 120, 120, 0.95)',
-      action: (e) => deletePoiIfAllowed(e, poiId),
-    });
+  if (userPin) {
+    items.push(
+      {
+        label: 'RENAME',
+        color: ACCENT,
+        action: (e) => {
+          e.poiBookMenu = null;
+          e.sectorMapView.sectorMapMenu = null;
+          openRenamePoiModal(e, poiId, menuTag);
+        },
+      },
+      {
+        label: poi.locked ? 'UNLOCK' : 'LOCK',
+        color: TXT,
+        action: (e) => {
+          e.poiSystem.togglePoiLock(poiId);
+          e.persistNavProfile();
+        },
+      },
+    );
+    if (!poi.locked) {
+      items.push({
+        label: 'DELETE',
+        color: 'rgba(255, 120, 120, 0.95)',
+        action: (e) => deletePoiIfAllowed(e, poiId),
+      });
+    }
   }
   drawStackedContextMenu(ctx, clampBox, panels, menu.x, menu.y, w, rowH, items, menuOpt);
 }
@@ -554,7 +687,7 @@ function drawSectorMapContextMenu(ctx, mapBox, engine, panels, menu) {
   }
   const w = 108;
   const rowH = 20;
-  const h = rowH;
+  const h = rowH * 2;
   let x = menu.x;
   let y = menu.y;
   x = Math.max(mapBox.x, Math.min(x, mapBox.x + mapBox.w - w));
@@ -570,11 +703,34 @@ function drawSectorMapContextMenu(ctx, mapBox, engine, panels, menu) {
     x,
     y,
     w,
-    h,
+    rowH,
     (e) => {
       const poi = e.poiSystem.addManualPin(menu.worldX, menu.worldY);
       e.poiSystem.select(poi.id);
       e.persistNavProfile();
+      e.sectorMapView.sectorMapMenu = null;
+    },
+    { sectorMapMenu: true },
+  );
+  ctx.strokeStyle = 'rgba(120, 200, 255, 0.18)';
+  ctx.beginPath();
+  ctx.moveTo(x + 4, y + rowH);
+  ctx.lineTo(x + w - 4, y + rowH);
+  ctx.stroke();
+  panels._text(ctx, 'ADD STOP', x + w / 2, y + rowH + 14, {
+    size: 10,
+    align: 'center',
+    weight: 700,
+    color: ACCENT,
+  });
+  panels._region(
+    x,
+    y + rowH,
+    w,
+    rowH,
+    (e) => {
+      e.addNavRouteStopWorld(menu.worldX, menu.worldY);
+      e.sectorMapView.sectorMapMenu = null;
     },
     { sectorMapMenu: true },
   );
@@ -584,15 +740,33 @@ export function sectorMapRightClick(engine, sx, sy) {
   const view = engine.sectorMapView;
   if (!view.mapBody || !view.containsMapPoint(sx, sy)) return false;
   if (view.modal) return false;
+  if (view.tabs.sector !== 0) return false;
   view.travelLogMenu = null;
   const mapBox = view.mapBody;
-  const pin = pickMapPoiAtScreen(engine, sx, sy, mapBox, view);
-  if (pin) {
-    view.sectorMapMenu = { kind: 'poi', poiId: pin.id, x: sx, y: sy };
+  const hit = pickSectorMapMarkerAtScreen(engine, sx, sy, mapBox, view);
+  if (hit && (hit.kind === 'pin' || hit.kind === 'poi')) {
+    view.sectorMapMenu = { kind: 'poi', poiId: hit.id, x: sx, y: sy };
   } else {
     const w = view.screenToWorld(sx, sy, mapBox);
     view.sectorMapMenu = { kind: 'map', worldX: w.x, worldY: w.y, x: sx, y: sy };
   }
+  return true;
+}
+
+/** MMB on LIVE sector map — instant add stop (POI if hovering marker). */
+export function sectorMapMiddleClick(engine, sx, sy) {
+  const view = engine.sectorMapView;
+  if (view.tabs.sector !== 0) return false;
+  if (!view.mapBody || !view.containsMapPoint(sx, sy)) return false;
+  if (view.modal || view.pointerDragging()) return false;
+  const mapBox = view.mapBody;
+  const hit = pickSectorMapMarkerAtScreen(engine, sx, sy, mapBox, view);
+  if (hit && (hit.kind === 'pin' || hit.kind === 'poi')) {
+    engine.addNavRouteStopFromPoi(hit.id);
+    return true;
+  }
+  const w = view.screenToWorld(sx, sy, mapBox);
+  engine.addNavRouteStopWorld(w.x, w.y);
   return true;
 }
 
@@ -606,8 +780,7 @@ const FONT_TABLE = `600 9px ${FONT}`;
 export function travelLogArchiveRowSlots(listBox, engine) {
   if (!listBox) return 0;
   const y0 = listBox.y + 2 + TRIP_HEADER_H + TRIP_FILTER_H + 2;
-  const footerH = 18;
-  const listH = listBox.h - (y0 - listBox.y) - footerH;
+  const listH = listBox.h - (y0 - listBox.y);
   const maxRows = Math.max(0, Math.floor(listH / TRIP_ROW_H));
   const showCurrent = engine._expeditionActive ? 1 : 0;
   const usedCurrent = Math.min(showCurrent, maxRows);
@@ -957,9 +1130,8 @@ function drawTravelLogList(ctx, box, engine, panels) {
   drawFilterCell(ctx, panels, cols.poiX, filterY, cols.poiW, TRIP_FILTER_H, 'poi', table);
   drawFilterCell(ctx, panels, cols.actionsX, filterY, cols.actionsW, TRIP_FILTER_H, 'locked', table);
 
-  const y0 = y + 2;
-  const footerH = 18;
-  const listH = box.h - (y0 - box.y) - footerH;
+  const y0 = box.y + 2 + TRIP_HEADER_H + TRIP_FILTER_H + 2;
+  const listH = box.h - (y0 - box.y);
   const maxRows = Math.max(0, Math.floor(listH / TRIP_ROW_H));
   let rowIndex = 0;
 
@@ -978,20 +1150,6 @@ function drawTravelLogList(ctx, box, engine, panels) {
     const ry = y0 + rowIndex * TRIP_ROW_H;
     rowIndex++;
     drawTripRowCells(ctx, panels, cols, ry, entry, log, { eid: entry.id, entry, engine });
-  });
-
-  const delY = box.y + box.h - 16;
-  panels._btnWide(ctx, box.x, delY, box.w, 'DELETE ALL UNLOCKED', (e) => {
-    const { renamedUnlocked } = e.travelLog.previewDeleteAllUnlocked();
-    if (renamedUnlocked.length) {
-      e.sectorMapView.modal = {
-        phase: 'deleteAll',
-        names: renamedUnlocked.map((x) => e.travelLog.expeditionTitle(x)),
-      };
-    } else {
-      e.travelLog.deleteAllUnlocked();
-      e.persistNavProfile();
-    }
   });
 }
 

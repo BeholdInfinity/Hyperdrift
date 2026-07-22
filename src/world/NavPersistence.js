@@ -1,9 +1,9 @@
 /**
- * Persist POI Book + Travel Log + Pip Loadouts to localStorage.
+ * Persist POI Book + Travel Log + Pip Loadouts + Nav Route to localStorage.
  */
 
 const STORAGE_KEY = 'hyperdrift.navProfile';
-const VERSION = 2;
+const VERSION = 3;
 
 export function loadNavProfile() {
   try {
@@ -11,7 +11,7 @@ export function loadNavProfile() {
     if (!raw) return null;
     const data = JSON.parse(raw);
     const ver = data.version | 0;
-    if (ver !== 1 && ver !== 2) return null;
+    if (ver !== 1 && ver !== 2 && ver !== 3) return null;
     return data;
   } catch {
     return null;
@@ -25,6 +25,7 @@ export function saveNavProfile({
   pipLoadouts,
   nextLoadoutId,
   activeLoadoutId,
+  navRoute,
 }) {
   try {
     const payload = {
@@ -35,6 +36,7 @@ export function saveNavProfile({
       pipLoadouts,
       nextLoadoutId,
       activeLoadoutId: activeLoadoutId ?? null,
+      navRoute: navRoute ?? null,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
     return true;

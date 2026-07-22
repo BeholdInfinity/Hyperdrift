@@ -542,6 +542,23 @@ export const POI = {
   },
 };
 
+/** Ephemeral nav route queue (distinct from POI Book). */
+export const NAV = {
+  ARRIVAL_RADIUS_BASE: 600,
+  ARRIVAL_RADIUS_SPEED_MULT: 0.35,
+  ARRIVAL_RADIUS_MAX: 2400,
+  MAX_STOPS: 12,
+  /** Nav-route-only — travel log trails must not use white. */
+  GENERIC_STOP_COLOR: '#ffffff',
+  ROUTE_LINE_COLOR: '#ffffff',
+  /** @param {number} speed Ship speed magnitude (world u/s). */
+  effectiveArrivalRadius(speed) {
+    const s = Math.max(0, speed || 0);
+    const r = NAV.ARRIVAL_RADIUS_BASE + s * NAV.ARRIVAL_RADIUS_SPEED_MULT;
+    return Math.min(NAV.ARRIVAL_RADIUS_MAX, Math.max(NAV.ARRIVAL_RADIUS_BASE, r));
+  },
+};
+
 /**
  * Global power-pip pool. Systems draw pips as distinct channels.
  * Radar tier reads `radar`; Forward Looking Scanner reads `scanner`.

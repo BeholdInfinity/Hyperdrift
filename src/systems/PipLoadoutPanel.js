@@ -1,5 +1,5 @@
 /**
- * POWER panel — LOADOUTS tab (list, hover diff, delete modal).
+ * POWER panel — loadout drawer, pip diff preview, delete/rename modals.
  */
 
 import { PIPS } from '../core/Constants.js';
@@ -21,7 +21,6 @@ export const PIP_LABELS = {
 };
 
 const ROW_H = 18;
-const FOOTER_H = 18;
 const LIST_SCROLL_STEP = 1;
 
 /** @param {import('./CockpitPanels.js').CockpitPanels} panels */
@@ -29,8 +28,7 @@ export function drawPipLoadoutPanel(ctx, box, engine, panels) {
   const loadouts = engine.pipLoadouts;
   if (!loadouts) return;
 
-  const footerY = box.y + box.h - FOOTER_H;
-  const listBox = { x: box.x, y: box.y + 2, w: box.w, h: footerY - box.y - 4 };
+  const listBox = { x: box.x, y: box.y + 2, w: box.w, h: box.h - 4 };
   engine.pipLoadoutListBox = listBox;
   engine.pipLoadoutRowHits = [];
 
@@ -39,23 +37,6 @@ export function drawPipLoadoutPanel(ctx, box, engine, panels) {
   } else {
     drawLoadoutRows(ctx, listBox, engine, panels);
   }
-
-  if (engine.pipLoadoutHover?.entryId) {
-    drawHoverPopup(ctx, box, engine, panels);
-  }
-
-  panels._btnWide(ctx, box.x, footerY, box.w, 'DELETE ALL UNLOCKED', (e) => {
-    const { renamedUnlocked } = e.pipLoadouts.previewDeleteAllUnlocked();
-    if (renamedUnlocked.length) {
-      e.pipLoadoutModal = {
-        phase: 'deleteAll',
-        names: renamedUnlocked.map((x) => e.pipLoadouts.title(x)),
-      };
-    } else {
-      e.pipLoadouts.deleteAllUnlocked();
-      e.persistNavProfile();
-    }
-  });
 }
 
 const DEL_BTN = 11;
@@ -152,47 +133,181 @@ function deleteLoadoutEntry(engine, entryId) {
   }
 }
 
-function drawHoverPopup(ctx, box, engine, panels) {
-  const entry = engine.pipLoadouts.find(engine.pipLoadoutHover.entryId);
-  if (!entry) return;
-  const pw = Math.min(box.w - 8, 168);
-  const ph = 6 + PIPS.CHANNELS.length * 14 + 8;
-  let px = engine.pipLoadoutHover.x + 12;
-  let py = engine.pipLoadoutHover.y;
-  if (px + pw > box.x + box.w) px = box.x + box.w - pw - 4;
-  if (py + ph > box.y + box.h) py = box.y + box.h - ph - 4;
-
-  ctx.fillStyle = 'rgba(10, 20, 32, 0.96)';
-  ctx.fillRect(px, py, pw, ph);
-  ctx.strokeStyle = COPPER;
-  ctx.lineWidth = 1;
-  ctx.strokeRect(px, py, pw, ph);
-  panels._text(ctx, engine.pipLoadouts.title(entry), px + 6, py + 12, {
-    size: 10,
-    weight: 700,
-    color: COPPER,
-  });
-
-  let y = py + 22;
+function previewPoolAfterLoadout(pips, targetAlloc) {
+  const pool = pips.pool();
+  /** @type {Record<string, number>} */
+  const sim = {};
+  for (const ch of PIPS.CHANNELS) sim[ch] = pips.get(ch);
   for (const ch of PIPS.CHANNELS) {
-    const label = PIP_LABELS[ch] || ch.toUpperCase();
-    panels._text(ctx, label.slice(0, 4), px + 4, y + 8, { size: 8, color: DIM, weight: 600 });
-    const slots = engine.pipSystem.diffSlots(ch, entry.alloc[ch]);
-    for (let k = 0; k < PIPS.MAX_PER_CHANNEL; k++) {
-      const sx = px + 38 + k * 10;
-      const kind = slots[k];
-      if (kind === 'keep') ctx.fillStyle = ACCENT;
-      else if (kind === 'add') ctx.fillStyle = IFF_GREEN;
-      else if (kind === 'remove') ctx.fillStyle = IFF_RED;
-      else ctx.fillStyle = 'rgba(50, 64, 78, 0.5)';
-      ctx.fillRect(sx, y, 8, 10);
-      if (kind === 'empty' && kind !== 'keep') {
-        ctx.strokeStyle = 'rgba(90, 110, 130, 0.35)';
-        ctx.strokeRect(sx, y, 8, 10);
+    const target = Math.max(0, Math.min(PIPS.MAX_PER_CHANNEL, targetAlloc[ch] | 0));
+    if (sim[ch] > target) sim[ch] = target;
+  }
+  const simUsed = () => PIPS.CHANNELS.reduce((n, ch) => n + sim[ch], 0);
+  const simFree = () => pool - simUsed();
+  let guard = 0;
+  while (simFree() > 0 && guard++ < 256) {
+    let progressed = false;
+    for (const ch of PIPS.CHANNELS) {
+      const target = Math.max(0, Math.min(PIPS.MAX_PER_CHANNEL, targetAlloc[ch] | 0));
+      if (sim[ch] < target && simFree() > 0) {
+        sim[ch]++;
+        progressed = true;
+        if (simFree() <= 0) break;
       }
     }
-    y += 14;
+    if (!progressed) break;
   }
+  const used = simUsed();
+  return { pool, free: pool - used, used };
+}
+
+function drawPreviewPoolBar(ctx, x, y, w, h, total, currentFree, targetFree, diff) {
+  if (w <= 0 || h <= 0) return;
+  const segments = Math.max(1, total | 0);
+  const curFree = Math.max(0, Math.min(segments, currentFree | 0));
+  const tgtFree = Math.max(0, Math.min(segments, targetFree | 0));
+  const segW = w / segments;
+  ctx.save();
+  for (let i = 0; i < segments; i++) {
+    const sx = x + i * segW;
+    const gap = i < segments - 1 ? 1 : 0;
+    const sw = Math.max(1, segW - gap);
+    const wasFree = i < curFree;
+    const willFree = i < tgtFree;
+    if (!diff) {
+      ctx.fillStyle = wasFree ? ACCENT : 'rgba(50, 64, 78, 0.55)';
+    } else if (wasFree && willFree) {
+      ctx.fillStyle = ACCENT;
+    } else if (!wasFree && !willFree) {
+      ctx.fillStyle = 'rgba(50, 64, 78, 0.55)';
+    } else if (wasFree && !willFree) {
+      ctx.fillStyle = IFF_RED;
+    } else {
+      ctx.fillStyle = IFF_GREEN;
+    }
+    ctx.fillRect(sx, y, sw, h);
+  }
+  ctx.strokeStyle =
+    (diff ? tgtFree : curFree) <= 0 ? 'rgba(255, 200, 80, 0.75)' : 'rgba(90, 110, 130, 0.45)';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+  if (segments > 1) {
+    ctx.strokeStyle = 'rgba(20, 28, 38, 0.85)';
+    for (let i = 1; i < segments; i++) {
+      const lx = x + i * segW;
+      ctx.beginPath();
+      ctx.moveTo(lx, y + 1);
+      ctx.lineTo(lx, y + h - 1);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+}
+
+function drawPreviewSlot(ctx, x, y, w, h, kind) {
+  if (kind === 'keep') ctx.fillStyle = ACCENT;
+  else if (kind === 'add') ctx.fillStyle = IFF_GREEN;
+  else if (kind === 'remove') ctx.fillStyle = IFF_RED;
+  else ctx.fillStyle = 'rgba(50, 64, 78, 0.5)';
+  ctx.fillRect(x, y, w, h);
+  if (kind === 'empty') {
+    ctx.strokeStyle = 'rgba(90, 110, 130, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x, y, w, h);
+  }
+}
+
+/** Compact interactive pip grid — live edit + optional hover diff vs a loadout. */
+export function drawPipLoadoutPreview(ctx, box, engine, panels) {
+  const pips = engine.pipSystem;
+  const loadouts = engine.pipLoadouts;
+  const flash = engine.pipLoadoutFlash;
+  const flashActive = flash && (engine.gameTime || 0) < flash.until;
+  const pulse = flashActive ? 0.45 + 0.55 * Math.abs(Math.sin((engine.gameTime || 0) * 14)) : 0;
+  const hoverId = engine.pipLoadoutHover?.entryId;
+  const entry = hoverId ? loadouts?.find(hoverId) : null;
+
+  panels._text(
+    ctx,
+    entry ? loadouts.title(entry) : 'CURRENT ALLOCATION',
+    box.x,
+    box.y + 11,
+    { size: 9, color: entry ? COPPER : DIM, weight: 700 },
+  );
+
+  const poolTotal = pips.pool();
+  const poolFree = pips.free();
+  const targetPool = entry ? previewPoolAfterLoadout(pips, entry.alloc) : null;
+  const displayFree = targetPool ? targetPool.free : poolFree;
+  const ratioLabel = `${displayFree}/${poolTotal}`;
+  const ratioSize = 7;
+  ctx.font = `600 ${ratioSize}px ${FONT}`;
+  const ratioW = ctx.measureText(ratioLabel).width;
+  const ratioX = box.x + box.w;
+  const ratioY = box.y + 10;
+  const barH = 5;
+  const barGap = 4;
+  const barEndX = ratioX - ratioW - barGap;
+  const barX = box.x + Math.floor(box.w * 0.5);
+  const barW = barEndX - barX;
+  const barY = ratioY - barH + 1;
+  if (barW >= 8) {
+    drawPreviewPoolBar(ctx, barX, barY, barW, barH, poolTotal, poolFree, displayFree, !!entry);
+  }
+  panels._text(ctx, ratioLabel, ratioX, ratioY, {
+    size: ratioSize,
+    align: 'right',
+    color: entry ? COPPER : DIM,
+    weight: 600,
+  });
+
+  const rowsTop = box.y + 16;
+  const rowH = Math.max(14, Math.floor((box.h - 18) / PIPS.CHANNELS.length));
+  const btnS = Math.max(10, Math.min(12, rowH - 2));
+  const labelW = 32;
+  const xBtn = box.x + labelW;
+  const minusX = box.x + box.w - btnS * 2 - 2;
+  const plusX = box.x + box.w - btnS - 2;
+  const slotsX = xBtn + btnS + 4;
+  const slotsEnd = minusX - 4;
+  const slotGap = 2;
+  const slotW = Math.max(
+    7,
+    Math.floor((slotsEnd - slotsX - slotGap * (PIPS.MAX_PER_CHANNEL - 1)) / PIPS.MAX_PER_CHANNEL),
+  );
+  const slotH = Math.max(7, rowH - 3);
+
+  PIPS.CHANNELS.forEach((ch, i) => {
+    const ry = rowsTop + i * rowH;
+    const label = (PIP_LABELS[ch] || ch.toUpperCase()).slice(0, 4);
+    panels._text(ctx, label, box.x + 2, ry + rowH - 3, { size: 8, color: DIM, weight: 600 });
+    const n = pips.get(ch);
+    const rowBtnY = ry + (rowH - btnS) / 2;
+    panels._btnDanger(ctx, xBtn, rowBtnY, 'X', (e) => e.pipSystem.clear(ch), {
+      size: btnS,
+      compact: true,
+      disabled: n <= 0,
+    });
+    const maxReach = n + pips.free();
+    const slotY = ry + (rowH - slotH) / 2;
+    const diff = entry ? pips.diffSlots(ch, entry.alloc[ch]) : null;
+    for (let k = 0; k < PIPS.MAX_PER_CHANNEL; k++) {
+      const sx = slotsX + k * (slotW + slotGap);
+      const target = k + 1;
+      const blocked = target > maxReach && target > n;
+      const missed = flashActive && flash.missed?.[ch] > 0 && k >= n && k < n + flash.missed[ch];
+      if (entry && !missed) {
+        drawPreviewSlot(ctx, sx, slotY, slotW, slotH, diff[k]);
+      } else {
+        panels._drawPipSlot(ctx, sx, slotY, slotW, slotH, k < n, blocked, missed, pulse);
+      }
+      if (!blocked) {
+        panels._region(sx, slotY - 1, slotW + 1, slotH + 2, (e) => e.pipSystem.set(ch, target));
+      }
+    }
+    panels._btn(ctx, minusX, rowBtnY, '−', (e) => e.pipSystem.remove(ch), btnS);
+    panels._btn(ctx, plusX, rowBtnY, '+', (e) => e.pipSystem.add(ch), btnS);
+  });
 }
 
 const RENAME_MAX_LEN = 32;

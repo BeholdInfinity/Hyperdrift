@@ -222,6 +222,21 @@ export class PoiSystem {
     return true;
   }
 
+  /** @returns {{ toRemove: object[], renamedUnlocked: object[] }} */
+  previewDeleteAllUnlocked() {
+    const toRemove = this.list.filter((p) => this.isUserPin(p) && !p.locked);
+    const renamedUnlocked = toRemove.filter((p) => this.isPoiRenamed(p));
+    return { toRemove, renamedUnlocked };
+  }
+
+  deleteAllUnlocked() {
+    const { toRemove } = this.previewDeleteAllUnlocked();
+    const ids = new Set(toRemove.map((p) => p.id));
+    if (this.selectedId && ids.has(this.selectedId)) this.selectedId = null;
+    this.list = this.list.filter((p) => !ids.has(p.id));
+    return toRemove.length;
+  }
+
   exportForSave() {
     return this.list.map((p) => ({
       id: p.id,

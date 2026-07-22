@@ -21,6 +21,7 @@ import { PoiSystem } from '../world/PoiSystem.js';
 import { SectorMap, trailDistance } from '../world/SectorMap.js';
 import { TravelLog } from '../world/TravelLog.js';
 import { loadNavProfile, saveNavProfile } from '../world/NavPersistence.js';
+import { NavRoute } from '../world/NavRoute.js';
 import { SectorMapView } from '../systems/SectorMapView.js';
 import { WeaponSystem } from '../systems/WeaponSystem.js';
 import { AsteroidSystem } from '../systems/AsteroidSystem.js';
@@ -56,6 +57,7 @@ import {
   STATION,
   AMBIENT,
   SCANNER,
+  NAV,
 } from '../core/Constants.js';
 import { Vec2, angleDifference, clamp } from '../utils/MathUtils.js';
 import {
@@ -129,6 +131,9 @@ export class GameEngine {
     this.pipLoadoutFlash = null;
     this.pipLoadoutListScroll = 0;
     this.poiSystem = new PoiSystem();
+    this.navRoute = new NavRoute();
+    this._navArrivalFlashUntil = 0;
+    this._navArrivalFlashText = '';
     this.sectorMap = new SectorMap();
     this.travelLog = new TravelLog();
     this.sectorMapView = new SectorMapView();
@@ -303,6 +308,7 @@ export class GameEngine {
         this.pipLoadouts.activeId = null;
       }
     }
+    if (data.navRoute) this.navRoute.hydrateFromSave(data.navRoute);
   }
 
   persistNavProfile() {
@@ -313,7 +319,35 @@ export class GameEngine {
       pipLoadouts: this.pipLoadouts.toJSON(),
       nextLoadoutId: this.pipLoadouts._nextId,
       activeLoadoutId: this.pipLoadouts.activeId,
+      navRoute: this.navRoute.exportForSave(),
     });
+  }
+
+  /** @deprecated use navRoute — sector map tooltip hook */
+  get sectorWaypoints() {
+    return this.navRoute.getMapMarkers(this);
+  }
+
+  addNavRouteStop(spec) {
+    const stop = this.navRoute.addStop(spec, this);
+    if (stop) this.persistNavProfile();
+    return stop;
+  }
+
+  addNavRouteStopFromPoi(poiId) {
+    const poi = this.poiSystem.list.find((p) => p.id === poiId);
+    if (!poi) return null;
+    return this.addNavRouteStop({ kind: 'poi', poiId: poi.id, label: poi.name });
+  }
+
+  addNavRouteStopWorld(x, y) {
+    return this.addNavRouteStop({ kind: 'world', x, y });
+  }
+
+  _flashNavArrivalStatus() {
+    const next = this.navRoute.activeStop();
+    this._navArrivalFlashText = next ? `NEXT: ${next.label}` : 'WAYPOINT REACHED';
+    this._navArrivalFlashUntil = (this.gameTime || 0) + 1.2;
   }
 
   beginExpedition() {
@@ -2908,6 +2942,16 @@ export class GameEngine {
       camZoomWheel
     );
 
+    if (this.mode === 'playing') {
+      this.navRoute.resolvePosition(this);
+      const arrSpeed = this.ship.velocity.length();
+      const arrRadius = NAV.effectiveArrivalRadius(arrSpeed);
+      if (this.navRoute.checkArrival(this.ship, arrRadius, this)) {
+        this.persistNavProfile();
+        this._flashNavArrivalStatus();
+      }
+    }
+
     const speedAfter = this.ship.velocity.length();
     this.speedStreaks.update(
       { x: this.ship.velocity.x, y: this.ship.velocity.y },
@@ -3284,6 +3328,14 @@ export class GameEngine {
       this.ship,
       this.camera.rotation || 0
     );
+    this.cockpitFrame.drawNavRouteDot(
+      this.renderer.ctx,
+      this.renderer,
+      this.navRoute,
+      this.ship,
+      this,
+      this.camera.rotation || 0
+    );
     this.cockpitPanels.render(this.renderer.ctx, this);
     this._renderCornerReadouts();
   }
@@ -3446,6 +3498,13 @@ export class GameEngine {
         : `${this.camera.displayZoom().toFixed(2)}x`;
     this.cockpitFrame.drawCorners(this.renderer.ctx, {
       ZOOM: { text: scanZoomText },
+      STATUS:
+        (this.gameTime || 0) < this._navArrivalFlashUntil && this._navArrivalFlashText
+          ? {
+              text: this._navArrivalFlashText.toUpperCase(),
+              color: 'rgba(95, 224, 138, 0.95)',
+            }
+          : undefined,
     });
   }
 
@@ -3569,6 +3628,8 @@ export class GameEngine {
     const distC = Math.hypot(dx, dy);
 
     if (this.cockpitPanels.handleMiddleClick(x, y, this)) return;
+
+    if (this.cockpitPanels.trySectorMapMiddleClick(this, x, y)) return;
 
     if (this.scanView !== 'scan' && distC <= this.renderer.viewportRadius) {
       this._selectContactViewportClick(x, y);
