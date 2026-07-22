@@ -83,7 +83,19 @@ src/
     Starfield.js          7 parallax star layers (screen-fixed size, tiled when zoomed out)
     NebulaField.js        3 depth layers + ambient procedural nebulae
     SpeedStreaks.js       Velocity-opposed foreground streaks (screen-space)
-    HangarBay.js          Hangar sim hydrated from active Place hangar area
+    HangarBay.js          Thin barrel → hangar/ (import path unchanged)
+    hangar/               Hangar sim modules (split from monolith HangarBay)
+      constants.js        BAY, ROW_Y, tuning, zoom exports
+      layout.js           Pad centers, sidePadX, pile grid, module init
+      cargoCatalog.js     Cargo/hold/service helpers
+      helpers.js          rand, pick, thrusterActivity, etc.
+      HangarBay.js        Core class + update() orchestrator
+      HangarRender.js     render* / _draw* prototype mixin
+      CraneSim.js         Crane sim prototype mixin
+      ForkliftAI.js       Forklift AI prototype mixin
+      MechanicAI.js       Mechanic + weld FX prototype mixin
+      VisitorTraffic.js   Visitor traffic + service prototype mixin
+      CrewShared.js       Shared crew movement/heading helpers
     ServiceBoard.js       Pad status board service checklist (row layout, scroll, column draw)
     HangarVisitorShips.js Modular hangar visitors (generateVisitor + ShipRenderer; locked shipDef)
     AmbientTrafficSystem.js Near-station traffic + always-on cops; off-screen spawn/despawn
