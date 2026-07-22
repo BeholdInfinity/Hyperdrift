@@ -6,6 +6,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Fixed
+- **Blueprint north-up default** — entering Blueprint now clears inherited `camera.rotation` (flight **ORIENT** SHIP-up lock or title vignette tilt) so the drafting grid, pad rings, and default **N** heading match the ship on screen instead of showing a stale compass direction (e.g. SE).
+
 ### Added
 - **Cockpit MODES corner** — the bottom-right corner (formerly the static **PREC** readout) is now a stack of clickable two-position switches titled **MODES**:
   - **PREC** — a switch mirroring Caps Lock Precision (`OFF` / `ON`). Precision desire is decoupled from the raw Caps Lock key state so the switch and the key stay in sync without fighting each other (`GameEngine.precisionDesired` / `togglePrecision`).

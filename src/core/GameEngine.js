@@ -866,6 +866,7 @@ export class GameEngine {
       targetUserZoom: this.camera.targetUserZoom,
       speedZoom: this.camera.speedZoom,
       effectiveZoom: this.camera.effectiveZoom,
+      rotation: this.camera.rotation,
     };
 
     this._blueprint = new BlueprintSandbox();
@@ -888,6 +889,9 @@ export class GameEngine {
     this.renderer.setLayoutMode('blueprint');
     this.camera.position.set(0, 0);
     this.camera.offset.set(0, 0);
+    // Blueprint is always world-north up; do not inherit flight SHIP-up rotation
+    // or the title vignette tilt (grid + heading readout assume rotation 0).
+    this.camera.rotation = 0;
     const z = BLUEPRINT.ZOOM_DEFAULT;
     this.camera.userZoom = z;
     this.camera.targetUserZoom = z;
@@ -1035,6 +1039,7 @@ export class GameEngine {
         this.camera.targetUserZoom = this._savedCam.targetUserZoom;
         this.camera.speedZoom = this._savedCam.speedZoom;
         this.camera.effectiveZoom = this._savedCam.effectiveZoom;
+        this.camera.rotation = this._savedCam.rotation || 0;
         this.camera.offset.set(0, 0);
       }
       if (this._hangarHud) this._hangarHud.classList.remove('hidden');
@@ -2723,6 +2728,7 @@ export class GameEngine {
 
     this.camera.position.set(0, 0);
     this.camera.offset.set(0, 0);
+    this.camera.rotation = 0;
     this.camera.updateBlueprint(ship.position, deltaTime, zoomWheel);
   }
 
