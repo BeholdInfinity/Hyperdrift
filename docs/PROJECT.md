@@ -63,6 +63,7 @@ src/
     ProceduralGeneration.js  Seeded asteroids + nebulae
     ScannerSystem.js      Scanner model: contacts, sweep-gated paints, piecewise pip range + SCAN plot-zoom, age fade, selection
     Scanner.js            Scanner ring/scope renderer (silhouettes, IFF, sweep, nose/tail, chevrons)
+    ViewportTelemetry.js  Viewport speed + contact/POI/nav distance labels (collision-aware layout)
     CockpitFrame.js       Cached 16:9 steel/copper HUD chrome + POI rim dots + corners (TL empty · TR ZOOM · BL MODES · BR STATUS)
     CockpitPanels.js      Live content for the 6 cockpit screens + CONTACTS filters + PIPS/LOADOUTS + status alert overlay
     SectorMapView.js      Sector map pan/zoom/follow + screen↔world mapping
@@ -210,8 +211,8 @@ src/
 ### Scanner → Cockpit HUD follow-ups (post v0.1.284)
 v0.1.283–284 shipped the scanner/cockpit core (sector map, Travel Log, nav route queue, pip loadouts, MODES/ORIENT/VIEW, full SCAN scope, sweep paints, selection lock FX, visual-range viewport brackets). Remaining polish:
 - **Thicken sensor-ring inner border** so visual contacts ride a thicker border matching the outer POI rim (today dots sit on the thin `viewportRadius` edge) — `src/systems/Scanner.js` `_drawBand`, maybe `src/systems/Renderer.js`
-- **Selected-POI distance in the viewport** — a selected POI's distance shows only in the Destination panel; draw it in-viewport like contacts — `src/systems/Scanner.js` `_drawSelection` (POI variant) or `GameEngine._renderScanner`
 - **Tier-based icon shrink** — blips shrink with distance only; also shrink per tier so more range bands fit — `src/systems/ScannerSystem.js` (fold tier factor into `c.size`)
+- ~~**Selected-POI distance in the viewport**~~ — shipped: `ViewportTelemetry.js` (POI + nav stop + contact ranges; visual contacts beside hull brackets)
 
 Scaffolds that are API-only / stubs:
 - **Highlight-sync API** (pilot/science/weapons) — not built; selection is local (`ScannerSystem.selectedId`), no broadcast/subscribe hook for future officer/multiplayer screens

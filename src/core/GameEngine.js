@@ -11,6 +11,7 @@ import {
   contactScreenAabb,
   drawCornerBrackets,
 } from '../systems/ContactSelectionDraw.js';
+import { renderViewportTelemetry } from '../systems/ViewportTelemetry.js';
 import { CockpitFrame } from '../systems/CockpitFrame.js';
 import { CockpitPanels } from '../systems/CockpitPanels.js';
 import { PipSystem } from '../systems/PipSystem.js';
@@ -3320,6 +3321,7 @@ export class GameEngine {
     this.renderer.endCircularClip();
 
     this._renderScanner();
+    this._renderViewportTelemetry();
     this.cockpitFrame.render(this.renderer.ctx, this.renderer);
     this.cockpitFrame.drawPoiDots(
       this.renderer.ctx,
@@ -3736,6 +3738,30 @@ export class GameEngine {
       cameraRotation: this.camera.rotation || 0,
       time: this.gameTime,
       maxSpeed: PHYSICS.MAX_SPEED,
+    });
+  }
+
+  /** Speed + target distance labels laid out inside the viewport / scope. */
+  _renderViewportTelemetry() {
+    const r = this.renderer;
+    if (!r.scannerBand || !this.ship) return;
+    const geo = this._scannerGeometry();
+    renderViewportTelemetry(r.ctx, {
+      centerX: r.centerX,
+      centerY: r.centerY,
+      innerR: geo.innerR,
+      outerR: geo.outerR,
+      band: geo.band,
+      plotPad: geo.plotPad,
+      fullScope: geo.fullScope,
+      ship: this.ship,
+      cameraRotation: this.camera.rotation || 0,
+      maxSpeed: PHYSICS.MAX_SPEED,
+      scannerSystem: this.scannerSystem,
+      poiSystem: this.poiSystem,
+      navRoute: this.navRoute,
+      engine: this,
+      camera: this.camera,
     });
   }
 

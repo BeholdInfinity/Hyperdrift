@@ -6,6 +6,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Added
+- **Viewport target distances** — selected contact, active nav-route stop, and selected POI (when distinct from the stop) now show range in the viewport / SCAN scope via `ViewportTelemetry.js`, staggered to avoid overlapping the speed readout on the velocity ray. Visual-range contacts label beside the hull brackets; band contacts, POI, and nav stops label on the inner ring bearing.
+
 ### Planned
 
 - Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
