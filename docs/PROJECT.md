@@ -207,10 +207,9 @@ src/
 - **Hangar visitor size polish** — peer-Mk spawn exists; verify same-group visitors ≈ player size
 - Ambient miner asteroid damage (visual cue only today)
 
-### Scanner → Cockpit HUD follow-ups (v0.1.283 slice)
-Many v0.1.283 scanner/cockpit items are **done** (sector map pan/zoom, Travel Log, expedition persistence, map pick, waypoints, telemetry move, selected-contact sweep lock FX). Remaining polish:
+### Scanner → Cockpit HUD follow-ups (post v0.1.284)
+v0.1.283–284 shipped the scanner/cockpit core (sector map, Travel Log, nav route queue, pip loadouts, MODES/ORIENT/VIEW, full SCAN scope, sweep paints, selection lock FX, visual-range viewport brackets). Remaining polish:
 - **Thicken sensor-ring inner border** so visual contacts ride a thicker border matching the outer POI rim (today dots sit on the thin `viewportRadius` edge) — `src/systems/Scanner.js` `_drawBand`, maybe `src/systems/Renderer.js`
-- **In-world highlight of the selected contact** — visual-range contacts get viewport corner brackets **and** keep inner-ring dot brackets; band contacts ring-only — `ContactSelectionDraw.js`, `GameEngine._renderSelectedContactViewport`, `Scanner._drawSelection`
 - **Selected-POI distance in the viewport** — a selected POI's distance shows only in the Destination panel; draw it in-viewport like contacts — `src/systems/Scanner.js` `_drawSelection` (POI variant) or `GameEngine._renderScanner`
 - **Tier-based icon shrink** — blips shrink with distance only; also shrink per tier so more range bands fit — `src/systems/ScannerSystem.js` (fold tier factor into `c.size`)
 
@@ -230,6 +229,8 @@ Cosmetic / lower priority:
 **Not yet exercised live end-to-end:** clicking an in-world/band blip to select (ship kept leaving range), comms target population, and the fire/alert overlay (needs `ship.status.fires` populated). Recommended manual pass: hover near Jennings at low speed, select a band blip + a POI-rim dot, exercise pip loadouts (save/apply/partial apply via dev Generator at 3), and temporarily push a fake fire into `ship.status.fires` to verify the alert banner. Plan of record: `.cursor/plans/scanner_subsystem_roadmap_fe068679.plan.md` (do **not** edit the plan file).
 
 ### Shipped recently (context)
+- **v0.1.284** Nav route queue; pip loadouts + PIPS/STATUS rework; MODES corner (PREC/ORIENT/VIEW); scanner sweep paints + full SCAN + Mk5 tiers; sector map / Travel Log drawers; boot error overlay; WT shared launch tabs
+- **v0.1.283** Scanner subsystem model + six live cockpit panels + POI ring + pip pool scaffold
 - **v0.1.267** Title wordmark: locked pose; STRANGER bronze plate windows + smile arch; GALAXY nebula windows
 - **v0.1.266** Mech travel facing: smooth turn-then-walk (no moonwalk / instant snaps)
 - **v0.1.265** Bay mechs diversify job types; double-team only when one type left
@@ -354,7 +355,7 @@ Cosmetic / lower priority:
 - Hand-art polish for select hero variants (parametric silhouettes cover all classes now)
 - Asteroids destroy but don't fragment into smaller pieces yet
 - No fuel consumption on afterburner
-- Corner panels (Radar, Weapons, Navigation) are empty shells
+- Comms panel HAIL/DOCK/TRADE still no-ops (other cockpit panels live)
 - Settings beyond controls sandbox (audio/graphics bindings)
 
 ## Dev Mode + Blueprint + Hangar editor

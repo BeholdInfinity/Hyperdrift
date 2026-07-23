@@ -6,6 +6,26 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Planned
+
+- Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
+- Full player crane trolley control feel + on-foot weld loop for turret swap
+- Shared 2.5D interior walker (`shipInterior`) on vessel Place graphs
+- Unique silhouette polish per catalog variant
+- Hand-art polish for hero variants (bell-quality)
+- Asteroid fragmentation on destroy
+- Fuel system for afterburner
+- Radar minimap in corner panel
+- Audio
+- Resource drops (guns vs mining laser yield tradeoff)
+- Ambient NPC mining HP drain
+- Blueprint per-hardpoint item **category** swap
+- More hangar `decor` wall-art variants
+
+---
+
+## [0.1.284] — 2026-07-22
+
 ### Fixed
 - **POI BOOK toggle** — removed **DEST** tab; **POI BOOK** is a bottom-left toggle on the DESTINATION panel (click again to close and return to nav view).
 - **TRAVEL LOG toggle** — removed **LIVE** tab; **TRAVEL LOG** is a bottom-left toggle on the SECTOR MAP panel (click again to close and return to full map view).
@@ -53,22 +73,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ### Tooling
 - `StartStopGame` launchers open in **one shared Windows Terminal window** with named tabs (**Hyperdrift Server** / **Hyperdrift Stop**) instead of a new window per launch. The `.bat` files call `wt.exe` by full path (`%LOCALAPPDATA%\Microsoft\WindowsApps\wt.exe`) since it's often not on PATH, route via `wt -w hyperdrift`, and fall back to the classic console when Windows Terminal is absent. Stop logic moved into `stop-game.ps1`.
-
-### Planned
-
-- Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
-- Full player crane trolley control feel + on-foot weld loop for turret swap
-- Shared 2.5D interior walker (`shipInterior`) on vessel Place graphs
-- Unique silhouette polish per catalog variant
-- Hand-art polish for hero variants (bell-quality)
-- Asteroid fragmentation on destroy
-- Fuel system for afterburner
-- Radar minimap in corner panel
-- Audio
-- Resource drops (guns vs mining laser yield tradeoff)
-- Ambient NPC mining HP drain
-- Blueprint per-hardpoint item **category** swap
-- More hangar `decor` wall-art variants
 
 ---
 
