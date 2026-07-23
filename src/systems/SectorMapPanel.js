@@ -17,6 +17,7 @@ import {
   truncateText,
   tripDurationMs,
 } from '../world/TravelLogTable.js';
+import { drawSectorMapTelemetry } from './TelemetryCorner.js';
 
 const FONT = "'Barlow Condensed', 'Segoe UI', sans-serif";
 const TXT = 'rgba(200, 224, 246, 0.9)';
@@ -41,7 +42,7 @@ export function drawSectorMapPanel(ctx, box, engine, panels) {
   drawMapTelemetry(ctx, body.x, body.y + 10, body.w, engine, view);
 
   drawMapCanvas(ctx, mapBox, engine, view, { fog: true, liveTrail: true });
-  drawMapOverlays(ctx, mapBox, engine, panels);
+  drawMapOverlays(ctx, mapBox, engine, panels, { travelLogOpen });
 
   if (travelLogOpen) {
     const divY = contentY + mapH;
@@ -67,6 +68,7 @@ export function drawSectorMapPanel(ctx, box, engine, panels) {
   }
 
   const footerY = box.y + box.h - btnH;
+  const footerGap = 6;
   const toggleW = panels._drawFooterToggle(
     ctx,
     box.x,
@@ -77,8 +79,21 @@ export function drawSectorMapPanel(ctx, box, engine, panels) {
     travelLogOpen,
     (e) => panels._toggleTravelLog(e),
   );
+
+  const minLeft = box.x + toggleW + footerGap;
+
+  if (!view.followShip && !travelLogOpen) {
+    const recW = panels._footerRecenterWidth(ctx);
+    const recX = box.x + box.w - recW;
+    if (recX >= minLeft) {
+      panels._drawFooterRecenter(ctx, recX, footerY, recW, btnH, (e) =>
+        e.sectorMapView.recenter(e.ship),
+      );
+    }
+  }
+
   if (travelLogOpen) {
-    panels._drawFooterDeleteAll(ctx, box, footerY, btnH, toggleW, 8, (e) => {
+    panels._drawFooterDeleteAll(ctx, box, footerY, btnH, toggleW, footerGap, (e) => {
       const { renamedUnlocked } = e.travelLog.previewDeleteAllUnlocked();
       if (renamedUnlocked.length) {
         e.sectorMapView.modal = {
@@ -100,24 +115,7 @@ export function drawSectorMapPanel(ctx, box, engine, panels) {
 }
 
 function drawMapTelemetry(ctx, x, y, w, engine, view) {
-  const ship = engine.ship;
-  if (!ship) return;
-  const speed = Math.hypot(ship.velocity.x, ship.velocity.y);
-  const pos = `${Math.round(ship.position.x)}, ${Math.round(ship.position.y)}`;
-  const spd = `${Math.round(speed)}`;
-  const course =
-    speed >= 1
-      ? `${(((Math.atan2(ship.velocity.y, ship.velocity.x) * 180) / Math.PI + 360) % 360).toFixed(0)}°`
-      : '—';
-  let hover = '';
-  if (view.hoverWorld) {
-    hover = `  ${Math.round(view.hoverWorld.x)}, ${Math.round(view.hoverWorld.y)}`;
-  }
-  ctx.font = `600 11px ${FONT}`;
-  ctx.fillStyle = DIM;
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'alphabetic';
-  ctx.fillText(`${pos}   ${spd}   ${course}${hover}`, x, y + 10);
+  drawSectorMapTelemetry(ctx, x, y, engine, view, { fs: 11, color: DIM });
 }
 
 function drawMapCanvas(ctx, box, engine, view, { fog, liveTrail }) {
@@ -336,29 +334,22 @@ function drawPinIcon(ctx, x, y, size, color = COPPER) {
   ctx.restore();
 }
 
-function drawRecenterButton(ctx, mapBox, view, panels) {
-  if (view.followShip) return;
-  const bw = 62;
-  const bh = 16;
-  const bx = mapBox.x + mapBox.w - bw - 4;
-  const by = mapBox.y + mapBox.h - bh - 4;
-  ctx.fillStyle = 'rgba(40, 70, 100, 0.88)';
-  ctx.fillRect(bx, by, bw, bh);
-  ctx.strokeStyle = ACCENT;
-  ctx.lineWidth = 1;
-  ctx.strokeRect(bx, by, bw, bh);
-  panels._text(ctx, 'RECENTER', bx + bw / 2, by + 12, {
-    size: 10,
-    align: 'center',
-    weight: 700,
-    color: ACCENT,
-  });
-  panels._region(bx, by, bw, bh, (e) => e.sectorMapView.recenter(e.ship));
+function drawMapRecenterButton(ctx, mapBox, panels, action) {
+  const btnH = 18;
+  const pad = 4;
+  const recW = panels._footerRecenterWidth(ctx);
+  const recX = mapBox.x + mapBox.w - recW - pad;
+  const recY = mapBox.y + mapBox.h - btnH - pad;
+  if (recW <= 0 || recX < mapBox.x || recY < mapBox.y) return;
+  if (recW > mapBox.w - pad * 2) return;
+  panels._drawFooterRecenter(ctx, recX, recY, recW, btnH, action);
 }
 
-function drawMapOverlays(ctx, mapBox, engine, panels) {
+function drawMapOverlays(ctx, mapBox, engine, panels, { travelLogOpen = false } = {}) {
   const view = engine.sectorMapView;
-  drawRecenterButton(ctx, mapBox, view, panels);
+  if (travelLogOpen && !view.followShip) {
+    drawMapRecenterButton(ctx, mapBox, panels, (e) => e.sectorMapView.recenter(e.ship));
+  }
   drawMapMarkerTooltip(ctx, mapBox, view, panels);
   if (view.sectorMapMenu) {
     drawSectorMapContextMenu(ctx, mapBox, engine, panels, view.sectorMapMenu);

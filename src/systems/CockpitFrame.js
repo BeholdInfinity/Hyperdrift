@@ -53,8 +53,8 @@ const PANEL_LABELS = {
   left: ['CONTACT DETAILS', 'CONTACTS', 'COMMS'],
   right: ['DESTINATION', 'SECTOR MAP', 'POWER'],
 };
-/** Index: 0=TL, 1=TR, 2=BL, 3=BR. TL reserved/empty; populated corners rotated CW once. */
-const CORNER_LABELS = ['', 'ZOOM', 'MODES', 'STATUS'];
+/** Index: 0=TL, 1=TR, 2=BL, 3=BR. */
+const CORNER_LABELS = ['ZOOM', 'TELEMETRY', 'MODES', 'STATUS'];
 
 export class CockpitFrame {
   constructor() {
@@ -72,7 +72,7 @@ export class CockpitFrame {
    */
   render(ctx, r) {
     if (!r.hudRect || !r.scannerBand) return;
-    const key = `${r.width}x${r.height}|${Math.round(r.scannerOuterRadius)}|cd13`;
+    const key = `${r.width}x${r.height}|${Math.round(r.scannerOuterRadius)}|cd16`;
     if (key !== this._key || !this.cache) {
       this._build(r);
       this._key = key;
@@ -550,14 +550,20 @@ export class CockpitFrame {
     c.stroke();
 
     if (panel.title) {
-      const fs = Math.max(10, Math.min(14, w * (panel.title.length > 12 ? 0.07 : 0.085)));
+      let fs = Math.max(10, Math.min(14, w * (panel.title.length > 12 ? 0.07 : 0.085)));
       c.font = `600 ${fs}px 'Barlow Condensed', 'Segoe UI', sans-serif`;
+      let tw = c.measureText(panel.title).width;
+      const maxW = w - 12;
+      if (tw > maxW) {
+        fs = Math.max(9, fs * (maxW / tw));
+        c.font = `600 ${fs}px 'Barlow Condensed', 'Segoe UI', sans-serif`;
+      }
       c.fillStyle = SCREEN.label;
       c.shadowColor = COPPER.glow;
       c.shadowBlur = 3;
-      c.textAlign = 'left';
+      c.textAlign = 'center';
       c.textBaseline = 'top';
-      c.fillText(panel.title, x + 8, y + 5);
+      c.fillText(panel.title, x + w / 2, y + 5);
       c.shadowBlur = 0;
     }
   }
@@ -645,7 +651,7 @@ export class CockpitFrame {
     c.lineWidth = 1;
     c.stroke();
 
-    // Title label (copper) — a header for panels, centered for corner readouts.
+    // Title label (copper) — centered header on every panel/corner screen.
     if (rect.title) {
       const fs = compact
         ? Math.max(10, Math.min(h * 0.34, w * 0.3))
@@ -654,16 +660,10 @@ export class CockpitFrame {
       c.fillStyle = SCREEN.label;
       c.shadowColor = COPPER.glow;
       c.shadowBlur = 4;
-      if (compact) {
-        // Label only; the live value is drawn each frame by drawCorners().
-        c.textAlign = 'center';
-        c.textBaseline = 'middle';
-        c.fillText(rect.title, x + w / 2, y + h * 0.27);
-      } else {
-        c.textAlign = 'left';
-        c.textBaseline = 'top';
-        c.fillText(rect.title, x + 8, y + 6);
-      }
+      c.textAlign = 'center';
+      c.textBaseline = compact ? 'middle' : 'top';
+      const ty = compact ? y + h * 0.27 : y + 6;
+      c.fillText(rect.title, x + w / 2, ty);
       c.shadowBlur = 0;
     }
   }

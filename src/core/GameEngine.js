@@ -57,7 +57,6 @@ import {
   PAD_MK4_TEASE_RADIUS,
   STATION,
   AMBIENT,
-  SCANNER,
   NAV,
 } from '../core/Constants.js';
 import { Vec2, angleDifference, clamp } from '../utils/MathUtils.js';
@@ -3490,16 +3489,10 @@ export class GameEngine {
     ctx.fill();
   }
 
-  /** Live ship metadata in the cockpit frame's four corner screens. */
+  /** STATUS corner flash (nav arrival); TELEMETRY/ZOOM drawn in CockpitPanels. */
   _renderCornerReadouts() {
     if (!this.cockpitFrame.layout || !this.ship) return;
-    const kmScale = SCANNER.KM_SCALE || 100;
-    const scanZoomText =
-      this.scanView === 'scan' && this.scannerSystem?.on
-        ? `${Math.round((this.scannerSystem.plotRange || 0) / kmScale)}km`
-        : `${this.camera.displayZoom().toFixed(2)}x`;
     this.cockpitFrame.drawCorners(this.renderer.ctx, {
-      ZOOM: { text: scanZoomText },
       STATUS:
         (this.gameTime || 0) < this._navArrivalFlashUntil && this._navArrivalFlashText
           ? {
@@ -4221,9 +4214,6 @@ export class GameEngine {
     this._hudSpeed.textContent = speed;
     if (this._hudCoords) {
       this._hudCoords.textContent = `${Math.round(this.ship.position.x)}, ${Math.round(this.ship.position.y)}`;
-    }
-    if (this._hudZoom) {
-      this._hudZoom.textContent = this.camera.displayZoom().toFixed(2);
     }
     if (this._hudPrecision) {
       if (this.precisionActive) {

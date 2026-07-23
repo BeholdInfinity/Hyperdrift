@@ -31,6 +31,13 @@ import {
   pipLoadoutRightClick,
   closePipLoadoutModal,
 } from './PipLoadoutPanel.js';
+import {
+  buildNavTelemetry,
+  buildZoomRadarTelemetry,
+  drawNavCorner,
+  drawZoomCorner,
+  drawNavRangeBearingRow,
+} from './TelemetryCorner.js';
 
 const FONT = "'Barlow Condensed', 'Segoe UI', sans-serif";
 const TXT = 'rgba(200, 224, 246, 0.9)';
@@ -41,6 +48,29 @@ const PIP_FLASH_GREEN = 'rgba(95, 224, 138, 0.95)';
 const PIP_FLASH_RED = 'rgba(255, 120, 120, 0.95)';
 /** Muted green for STATUS corner readout (less vivid than IFF.green). */
 const STATUS_OK = 'rgba(108, 158, 128, 0.9)';
+/** MODES corner switch — inactive segment label (readable on dark glass). */
+const MODE_SEG_OFF = 'rgba(165, 192, 214, 0.72)';
+/** MODES corner switch — active segment label. */
+const MODE_SEG_ON = 'rgba(235, 248, 255, 0.96)';
+
+function clipPanelRect(ctx, x, y, w, h, fn) {
+  if (w <= 0 || h <= 0) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(x, y, w, h);
+  ctx.clip();
+  fn();
+  ctx.restore();
+}
+
+/** Shrink font until `text` fits `maxW` (px). */
+function fitTextFs(ctx, text, maxW, preferFs, weight, minFs = 7) {
+  for (let fs = preferFs; fs >= minFs; fs--) {
+    ctx.font = `${weight} ${fs}px ${FONT}`;
+    if (ctx.measureText(text).width <= maxW) return fs;
+  }
+  return minFs;
+}
 
 export class CockpitPanels {
   constructor() {
@@ -79,6 +109,8 @@ export class CockpitPanels {
     this._sectorMap(ctx, this._content(p[4]), engine);
     this._power(ctx, this._content(p[5]), engine);
     this._shipStatusCorner(ctx, engine);
+    this._telemetryCorner(ctx, engine);
+    this._zoomCorner(ctx, engine);
     this._modeSwitches(ctx, engine);
     this._alertOverlay(ctx, engine);
   }
@@ -94,34 +126,31 @@ export class CockpitPanels {
     const g = engine.cockpitFrame?.cornerScreen('MODES');
     if (!g) return;
 
-    const pad = Math.max(6, Math.min(g.w, g.h) * 0.09);
-    const ix = g.x + pad;
-    const iw = g.w - pad * 2;
-    // Rows fill the area below the baked "MODES" title (top ~40%).
-    const top = g.y + g.h * 0.42;
-    const bottom = g.y + g.h - pad;
-    const rowH = Math.max(20, Math.min(30, (bottom - top) / 4));
+    const pad = Math.max(3, Math.min(g.w, g.h) * 0.04);
+    const titleBand = Math.max(14, g.h * 0.18);
+    const box = {
+      x: g.x + pad,
+      y: g.y + titleBand,
+      w: g.w - pad * 2,
+      h: g.h - titleBand - pad,
+    };
+    if (box.w < 8 || box.h < 8) return;
 
-    // PREC is a two-position switch: OFF ↔ ON (instant engage).
-    const precColor = engine.precisionActive
-      ? { fill: 'rgba(95, 224, 138, 0.30)', line: IFF.green }
-      : { fill: 'rgba(90, 110, 130, 0.20)', line: 'rgba(150, 178, 202, 0.6)' };
-    const accent = { fill: 'rgba(120, 200, 255, 0.28)', line: ACCENT };
+    const precAccent = engine.precisionActive
+      ? { fill: 'rgba(95, 224, 138, 0.34)', line: IFF.green }
+      : { fill: 'rgba(120, 200, 255, 0.26)', line: ACCENT };
+    const accent = { fill: 'rgba(120, 200, 255, 0.30)', line: ACCENT };
 
-    // Extend this list to add future mode switches; the stack self-lays out.
     const rows = [
       {
         cap: 'PREC',
         off: 'OFF',
         on: 'ON',
         active: engine.precisionActive,
-        color: precColor,
+        color: precAccent,
         click: (e) => e.togglePrecision(),
       },
       {
-        // ORIENT = display stabilization, the marine radar "Head-Up vs
-        // North-Up" convention. SHIP keeps the hull pointing up so the world
-        // rotates around it (default); NORTH keeps world-north up. Bound to R.
         cap: 'ORIENT',
         off: 'SHIP',
         on: 'NORTH',
@@ -130,8 +159,6 @@ export class CockpitPanels {
         click: (e) => e.toggleViewMode(),
       },
       {
-        // VIEW = ship viewport (world through the circle) vs. one full radar
-        // scope. SHIP is the default flight view; SCAN is the scope. Bound to V.
         cap: 'VIEW',
         off: 'SHIP',
         on: 'SCAN',
@@ -141,27 +168,79 @@ export class CockpitPanels {
       },
     ];
 
-    rows.forEach((row, i) => this._modeSwitchRow(ctx, ix, top + i * rowH, iw, rowH, row));
+    const rowCount = rows.length;
+    const rowGap = Math.max(2, Math.floor(box.h * 0.04));
+    const rowH = (box.h - rowGap * (rowCount - 1)) / rowCount;
+    if (rowH < 12) return;
+
+    const layout = this._modeSwitchLayout(ctx, box, rows, rowH);
+    if (layout.switchW < 24) return;
+
+    clipPanelRect(ctx, box.x, box.y, box.w, box.h, () => {
+      rows.forEach((row, i) => {
+        const y = box.y + i * (rowH + rowGap);
+        if (y + rowH > box.y + box.h + 0.5) return;
+        clipPanelRect(ctx, box.x, y, box.w, rowH, () => {
+          this._modeSwitchRow(ctx, box, y, rowH, row, layout);
+        });
+      });
+    });
   }
 
-  _modeSwitchRow(ctx, x, y, w, h, row) {
-    const capW = Math.min(w * 0.42, 42);
-    this._text(ctx, row.cap, x, y + h / 2 + 4, { size: 10, color: COPPER, weight: 700 });
-    const sh = Math.min(16, h - 6);
-    const sw = w - capW - 2;
-    const sx = x + capW + 2;
-    const sy = y + (h - sh) / 2;
-    this._modeSwitch(ctx, sx, sy, sw, sh, row.off, row.on, row.active, row.color);
-    this._region(sx, sy, sw, sh, row.click);
+  /** Shared cap column + switch width so every MODES row aligns. */
+  _modeSwitchLayout(ctx, box, rows, rowH) {
+    const capFs = Math.max(8, Math.min(11, Math.floor(rowH * 0.44)));
+    ctx.font = `700 ${capFs}px ${FONT}`;
+    const capColW = rows.reduce(
+      (max, row) => Math.max(max, Math.ceil(ctx.measureText(row.cap).width)),
+      0,
+    );
+    const labelGap = 4;
+    const switchH = Math.max(14, Math.min(20, rowH - 2));
+    const segPad = 3;
+    let labelFs = Math.max(7, Math.min(10, Math.floor(switchH * 0.46)));
+
+    const ref = rows.find((row) => row.cap === 'ORIENT') || rows[0];
+    labelFs = Math.min(
+      labelFs,
+      fitTextFs(ctx, ref.off, 999, labelFs, 700),
+      fitTextFs(ctx, ref.on, 999, labelFs, 700),
+    );
+    const switchW = Math.max(0, box.w - capColW - labelGap);
+
+    return { capColW, labelGap, switchW, switchH, capFs, labelFs, segPad };
+  }
+
+  _modeSwitchRow(ctx, box, y, h, row, layout) {
+    const { capColW, labelGap, switchW, switchH, capFs, labelFs, segPad } = layout;
+    if (switchW < 24) return;
+
+    const midY = y + h / 2;
+    const capX = box.x;
+    clipPanelRect(ctx, capX, y, capColW, h, () => {
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.font = `700 ${capFs}px ${FONT}`;
+      ctx.fillStyle = COPPER;
+      ctx.fillText(row.cap, capX, midY);
+    });
+
+    const sx = box.x + capColW + labelGap;
+    const sy = y + (h - switchH) / 2;
+    this._modeSwitch(ctx, sx, sy, switchW, switchH, row.off, row.on, row.active, row.color, {
+      labelFs,
+      segPad,
+    });
+    this._region(sx, sy, switchW, switchH, row.click);
   }
 
   /** One slide switch: track + lit half on the active side + segment labels. */
-  _modeSwitch(ctx, x, y, w, h, leftLabel, rightLabel, rightActive, color) {
+  _modeSwitch(ctx, x, y, w, h, leftLabel, rightLabel, rightActive, color, opts = {}) {
     const r = h / 2;
     this._roundRect(ctx, x, y, w, h, r);
-    ctx.fillStyle = 'rgba(16, 28, 40, 0.92)';
+    ctx.fillStyle = 'rgba(18, 32, 48, 0.94)';
     ctx.fill();
-    ctx.strokeStyle = 'rgba(120, 200, 255, 0.28)';
+    ctx.strokeStyle = 'rgba(120, 200, 255, 0.42)';
     ctx.lineWidth = 1;
     ctx.stroke();
 
@@ -171,21 +250,31 @@ export class CockpitPanels {
     ctx.fillStyle = color.fill;
     ctx.fill();
     ctx.strokeStyle = color.line;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1.25;
     ctx.stroke();
 
-    const ty = y + h - Math.max(4, h * 0.28);
-    this._text(ctx, leftLabel, x + half / 2, ty, {
-      size: 9,
-      align: 'center',
-      color: rightActive ? DIM : color.line,
-      weight: 700,
+    const pad = opts.segPad ?? 3;
+    const halfInner = Math.max(0, half - pad * 2);
+    let fs = opts.labelFs ?? Math.max(7, Math.min(10, Math.floor(h * 0.46)));
+    fs = Math.min(
+      fs,
+      fitTextFs(ctx, leftLabel, halfInner, fs, 700),
+      fitTextFs(ctx, rightLabel, halfInner, fs, 700),
+    );
+
+    const ty = y + h / 2;
+    ctx.font = `700 ${fs}px ${FONT}`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+
+    clipPanelRect(ctx, x, y, half, h, () => {
+      ctx.fillStyle = rightActive ? MODE_SEG_OFF : MODE_SEG_ON;
+      ctx.fillText(leftLabel, x + half / 2, ty);
     });
-    this._text(ctx, rightLabel, x + half + half / 2, ty, {
-      size: 9,
-      align: 'center',
-      color: rightActive ? color.line : DIM,
-      weight: 700,
+
+    clipPanelRect(ctx, x + half, y, half, h, () => {
+      ctx.fillStyle = rightActive ? MODE_SEG_ON : MODE_SEG_OFF;
+      ctx.fillText(rightLabel, x + half + half / 2, ty);
     });
   }
 
@@ -352,6 +441,69 @@ export class CockpitPanels {
     ctx.textAlign = align;
     ctx.textBaseline = 'alphabetic';
     ctx.fillText(s, x, y);
+  }
+
+  /** @returns {number} row height consumed */
+  _drawNavRangeBearing(ctx, box, y, rngKm, bearingRad, { fs = 10, weight = 500 } = {}) {
+    const rowH = fs + 4;
+    return drawNavRangeBearingRow(ctx, box, y, rowH, rngKm, bearingRad, { fs, weight });
+  }
+
+  /**
+   * Bounded nav target block: optional header, name, RNG/BRG row, optional meta footer.
+   * Lays out top-down within `box` — caller should clip to `box`.
+   * @returns {number} pixels used from box top
+   */
+  _drawNavTargetSection(ctx, box, spec) {
+    const density = spec.density || 'full';
+    const headerFs = density === 'full' ? 10 : 9;
+    const nameFs = density === 'full' ? 13 : 10;
+    const statsFs = density === 'full' ? 11 : 10;
+    const topPad = density === 'split' ? 3 : density === 'compact' ? 4 : 6;
+    let y = box.y + topPad;
+
+    if (spec.header) {
+      this._text(ctx, spec.header, box.x, y + headerFs, {
+        size: headerFs,
+        color: COPPER,
+        weight: 700,
+      });
+      y += headerFs + (density === 'split' ? 3 : 5);
+    }
+
+    ctx.font = `700 ${nameFs}px ${FONT}`;
+    let name = (spec.name || '').toUpperCase();
+    const maxW = Math.max(8, box.w - 2);
+    if (ctx.measureText(name).width > maxW) {
+      while (name.length > 1 && ctx.measureText(`${name}…`).width > maxW) name = name.slice(0, -1);
+      name += '…';
+    }
+    this._text(ctx, name, box.x, y + nameFs, {
+      color: spec.nameColor || TXT,
+      size: nameFs,
+      weight: 700,
+    });
+    y += nameFs + (density === 'split' ? 5 : 7);
+
+    const rowH = this._drawNavRangeBearing(ctx, box, y, spec.rng, spec.bearing, {
+      fs: statsFs,
+      weight: 500,
+    });
+    y += rowH + 2;
+
+    if (spec.meta) {
+      const metaFs = 9;
+      if (y + metaFs + 1 <= box.y + box.h) {
+        this._text(ctx, spec.meta, box.x, y + metaFs, {
+          size: metaFs,
+          weight: 500,
+          color: DIM,
+        });
+        y += metaFs + 2;
+      }
+    }
+
+    return y - box.y;
   }
 
   _clip(ctx, box, fn) {
@@ -609,7 +761,7 @@ export class CockpitPanels {
     }
   }
 
-  /** Bottom-left panel toggle (lit when active). @returns {number} drawn button width */
+  /** @returns {number} drawn button width */
   _drawFooterToggle(ctx, x, y, minW, h, label, active, action) {
     const displayLabel = active ? `CLOSE ${label}` : label;
     const fs = 10;
@@ -653,6 +805,18 @@ export class CockpitPanels {
     this._btnWide(ctx, delX, footerY, delW, label, action, btnH);
   }
 
+  /** @returns {number} footer **RECENTER** button width */
+  _footerRecenterWidth(ctx) {
+    const label = 'RECENTER';
+    const fs = 10;
+    ctx.font = `700 ${fs}px ${FONT}`;
+    return Math.max(62, Math.ceil(ctx.measureText(label).width) + 14);
+  }
+
+  _drawFooterRecenter(ctx, x, y, w, h, action) {
+    this._btnWide(ctx, x, y, w, 'RECENTER', action, h);
+  }
+
   _togglePoiBook(engine) {
     if (this.tabs.destination === 1) {
       this.tabs.destination = 0;
@@ -686,7 +850,7 @@ export class CockpitPanels {
   }
 
   _drawNavSummary(ctx, box, engine, { compact }) {
-    const midX = box.x + Math.floor(box.w * 0.52);
+    const midX = box.x + Math.floor(box.w * 0.58);
     ctx.strokeStyle = 'rgba(230, 171, 109, 0.35)';
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -694,9 +858,9 @@ export class CockpitPanels {
     ctx.lineTo(midX, box.y + box.h);
     ctx.stroke();
 
-    const left = { x: box.x, y: box.y, w: midX - box.x - 4, h: box.h };
-    const right = { x: midX + 4, y: box.y, w: box.x + box.w - midX - 4, h: box.h };
-    this._drawLeftNavColumn(ctx, left, engine, compact);
+    const left = { x: box.x, y: box.y, w: midX - box.x - 3, h: box.h };
+    const right = { x: midX + 3, y: box.y, w: box.x + box.w - midX - 3, h: box.h };
+    this._clip(ctx, left, () => this._drawLeftNavColumn(ctx, left, engine, compact));
     this._drawRouteList(ctx, right, engine, compact);
   }
 
@@ -712,8 +876,12 @@ export class CockpitPanels {
       return;
     }
 
-    const splitY = box.y + Math.floor(box.h * (compact ? 0.46 : 0.52));
-    const nextBox = { x: box.x, y: box.y, w: box.w, h: Math.max(compact ? 28 : 36, splitY - box.y - 1) };
+    const minSectionH = 54;
+    let splitY = box.y + Math.floor(box.h / 2);
+    if (box.h < minSectionH * 2) {
+      splitY = box.y + Math.max(minSectionH, box.h - minSectionH);
+    }
+    const nextBox = { x: box.x, y: box.y, w: box.w, h: splitY - box.y - 1 };
     const selBox = {
       x: box.x,
       y: splitY + 2,
@@ -721,7 +889,7 @@ export class CockpitPanels {
       h: box.y + box.h - splitY - 2,
     };
 
-    this._drawNextDestination(ctx, nextBox, engine, compact);
+    this._clip(ctx, nextBox, () => this._drawNextDestination(ctx, nextBox, engine, compact, true));
 
     ctx.strokeStyle = COPPER;
     ctx.lineWidth = 1;
@@ -730,95 +898,74 @@ export class CockpitPanels {
     ctx.lineTo(box.x + box.w, splitY);
     ctx.stroke();
 
-    this._drawSelectedPoi(ctx, selBox, engine, compact);
+    this._clip(ctx, selBox, () =>
+      this._drawSelectedPoi(ctx, selBox, engine, compact, { split: true }),
+    );
   }
 
-  _drawNextDestination(ctx, box, engine, compact) {
+  _drawNextDestination(ctx, box, engine, compact, split = false) {
     const route = engine.navRoute;
     route.resolvePosition(engine);
     const stop = route.activeStop();
-    const tight = compact && box.h < 42;
-    const headerSize = tight ? 8 : compact ? 9 : 10;
-    const headerLabel = tight ? 'NEXT' : compact ? 'NEXT DEST' : 'NEXT DESTINATION';
-    this._text(ctx, headerLabel, box.x, box.y + (tight ? 9 : compact ? 11 : 13), {
-      size: headerSize,
-      color: COPPER,
-      weight: 700,
-    });
-    if (!stop) {
-      this._text(ctx, 'NO ACTIVE STOP', box.x, box.y + (tight ? 18 : compact ? 26 : 30), {
-        color: DIM,
-        size: tight ? 10 : compact ? 11 : 13,
-      });
-      return;
-    }
-    const color = route.stopColor(engine, stop);
-    const { range, bearing } = route.rangeBearing(engine.ship, stop);
-    const rng = (range / 100).toFixed(0);
-    const brg = ((bearing * 180) / Math.PI + 360) % 360;
-    const nameSize = tight ? 10 : compact ? 11 : 15;
-    const nameY = tight ? 18 : compact ? 22 : 28;
-    ctx.font = `700 ${nameSize}px ${FONT}`;
-    let label = stop.label.toUpperCase();
-    const maxW = box.w - 2;
-    if (ctx.measureText(label).width > maxW) {
-      while (label.length > 1 && ctx.measureText(`${label}…`).width > maxW) label = label.slice(0, -1);
-      label += '…';
-    }
-    this._text(ctx, label, box.x, box.y + nameY, { color, size: nameSize, weight: 700 });
-    if (compact && !tight) {
-      this._text(ctx, `RNG ${rng} km · BRG ${brg.toFixed(0)}°`, box.x, box.y + 34, {
-        size: 10,
-        weight: 500,
-      });
-    } else if (!compact) {
-      this._text(ctx, `RANGE  ${rng} km`, box.x, box.y + 48, { size: 12, weight: 500 });
-      this._text(ctx, `BEARING ${brg.toFixed(0)}°`, box.x, box.y + 63, { size: 12, weight: 500 });
-      if (stop.kind === 'poi') {
-        this._text(ctx, `KIND   POI`, box.x, box.y + 78, { size: 12, weight: 500, color: DIM });
-      }
-    }
-  }
+    const tight = compact && !split && box.h < 42;
+    const density = split ? 'split' : compact ? 'compact' : 'full';
 
-  _drawSelectedPoi(ctx, box, engine, compact, { skipHeader = false } = {}) {
-    const poi = engine.poiSystem.getSelected();
-    if (!poi) return;
-    if (!skipHeader) {
-      const headerSize = compact ? 8 : 10;
-      const headerLabel = compact && box.h < 36 ? 'SEL POI' : 'SELECTED POI';
-      this._text(ctx, headerLabel, box.x, box.y + (compact ? 10 : 13), {
-        size: headerSize,
+    if (!stop) {
+      const headerLabel = tight ? 'NEXT' : split ? 'NEXT' : compact ? 'NEXT DEST' : 'NEXT DESTINATION';
+      this._text(ctx, headerLabel, box.x, box.y + (tight ? 9 : 10), {
+        size: tight ? 8 : split ? 9 : 10,
         color: COPPER,
         weight: 700,
       });
+      this._text(ctx, 'NO ACTIVE STOP', box.x, box.y + (tight ? 18 : 22), {
+        color: DIM,
+        size: tight ? 10 : 11,
+      });
+      return;
     }
+
+    const color = route.stopColor(engine, stop);
+    const { range, bearing } = route.rangeBearing(engine.ship, stop);
+    const rng = (range / 100).toFixed(0);
+    const headerLabel = tight ? 'NEXT' : split ? 'NEXT' : compact ? 'NEXT DEST' : 'NEXT DESTINATION';
+
+    if (tight) {
+      this._text(ctx, headerLabel, box.x, box.y + 9, { size: 8, color: COPPER, weight: 700 });
+      this._text(ctx, stop.label.toUpperCase(), box.x, box.y + 18, { color, size: 10, weight: 700 });
+      return;
+    }
+
+    this._drawNavTargetSection(ctx, box, {
+      header: headerLabel,
+      name: stop.label,
+      nameColor: color,
+      rng,
+      bearing,
+      meta: !compact && !split && stop.kind === 'poi' ? 'POI' : null,
+      density,
+    });
+  }
+
+  _drawSelectedPoi(ctx, box, engine, compact, { skipHeader = false, split = false } = {}) {
+    const poi = engine.poiSystem.getSelected();
+    if (!poi) return;
+
+    const density = split ? 'split' : compact ? 'compact' : 'full';
     const color = engine.poiSystem.color(poi);
     const rng = (engine.poiSystem.range(engine.ship, poi) / 100).toFixed(0);
-    const brg =
-      ((engine.poiSystem.bearing(engine.ship, poi) * 180) / Math.PI + 360) % 360;
-    const nameSize = compact ? 10 : 13;
-    const nameY = skipHeader ? (compact ? 12 : 14) : compact ? 22 : 28;
-    ctx.font = `700 ${nameSize}px ${FONT}`;
-    let name = poi.name.toUpperCase();
-    const maxW = box.w - 4;
-    if (ctx.measureText(name).width > maxW) {
-      while (name.length > 1 && ctx.measureText(`${name}…`).width > maxW) name = name.slice(0, -1);
-      name += '…';
-    }
-    this._text(ctx, name, box.x, box.y + nameY, { color, size: nameSize, weight: 700 });
-    if (compact) {
-      this._text(ctx, `RNG ${rng} km · BRG ${brg.toFixed(0)}°`, box.x, box.y + nameY + 12, {
-        size: 9,
-        weight: 500,
-      });
-    } else {
-      this._text(ctx, `RANGE  ${rng} km`, box.x, box.y + nameY + 16, { size: 12, weight: 500 });
-      this._text(ctx, `BEARING ${brg.toFixed(0)}°`, box.x, box.y + nameY + 31, { size: 12, weight: 500 });
-      this._text(ctx, `SOURCE ${poi.source.toUpperCase()}`, box.x, box.y + nameY + 46, {
-        size: 12,
-        weight: 500,
-      });
-    }
+    const poiBearing = engine.poiSystem.bearing(engine.ship, poi);
+    const headerLabel =
+      skipHeader ? null : split ? 'SEL POI' : compact && box.h < 36 ? 'SEL POI' : 'SELECTED POI';
+
+    this._drawNavTargetSection(ctx, box, {
+      header: headerLabel,
+      name: poi.name,
+      nameColor: color,
+      rng,
+      bearing: poiBearing,
+      meta: poi.source ? poi.source.toUpperCase() : null,
+      density,
+    });
   }
 
   _drawRouteList(ctx, box, engine, compact) {
@@ -932,7 +1079,7 @@ export class CockpitPanels {
     ctx.lineTo(splitX, box.y + box.h);
     ctx.stroke();
 
-    this._drawSelectedPoiPanel(ctx, left, engine, { inDrawer: true });
+    this._clip(ctx, left, () => this._drawSelectedPoiPanel(ctx, left, engine, { inDrawer: true }));
 
     this._text(ctx, 'POI BOOK', right.x, right.y + 12, { size: 10, color: COPPER, weight: 700 });
     const listBox = { x: right.x, y: right.y + 14, w: right.w, h: right.h - 14 };
@@ -944,24 +1091,42 @@ export class CockpitPanels {
 
   /** Selected POI inspect block (DEST left column or POI Book drawer left). */
   _drawSelectedPoiPanel(ctx, box, engine, { inDrawer = false } = {}) {
-    const compact = inDrawer && box.w < 100;
+    const compact = inDrawer && box.w < 120;
+    const headerFs = compact ? 8 : 10;
     const headerY = compact ? 10 : 13;
     this._text(ctx, 'SELECTED POI', box.x, box.y + headerY, {
-      size: compact ? 8 : 10,
+      size: headerFs,
       color: COPPER,
       weight: 700,
     });
     const poi = engine.poiSystem.getSelected();
+    const bodyY = box.y + headerY + (compact ? 6 : 8);
+    const bodyBox = {
+      x: box.x,
+      y: bodyY,
+      w: box.w,
+      h: Math.max(0, box.y + box.h - bodyY),
+    };
     if (!poi) {
-      this._text(ctx, 'NO POI SELECTED', box.x, box.y + headerY + (compact ? 14 : 17), {
+      this._text(ctx, 'NO POI SELECTED', bodyBox.x, bodyBox.y + 14, {
         color: DIM,
         size: compact ? 10 : 12,
       });
       return;
     }
-    const bodyY = box.y + headerY + (compact ? 8 : 10);
-    const bodyBox = { x: box.x, y: bodyY, w: box.w, h: box.y + box.h - bodyY };
-    this._drawSelectedPoi(ctx, bodyBox, engine, compact, { skipHeader: true });
+    const color = engine.poiSystem.color(poi);
+    const rng = (engine.poiSystem.range(engine.ship, poi) / 100).toFixed(0);
+    const bearing = engine.poiSystem.bearing(engine.ship, poi);
+    this._clip(ctx, bodyBox, () => {
+      this._drawNavTargetSection(ctx, bodyBox, {
+        name: poi.name,
+        nameColor: color,
+        rng,
+        bearing,
+        meta: poi.source ? poi.source.toUpperCase() : null,
+        density: compact ? 'compact' : 'full',
+      });
+    });
   }
 
   _drawPoiBookList(ctx, box, engine) {
@@ -1444,6 +1609,20 @@ export class CockpitPanels {
     if (!s) return;
     const box = { x: s.x + 2, y: s.y + 14, w: s.w - 4, h: s.h - 16 };
     this._shipStatus(ctx, box, engine, { compact: true });
+  }
+
+  /** TELEMETRY corner — SPD, HDG/CRS, POS. */
+  _telemetryCorner(ctx, engine) {
+    const s = engine.cockpitFrame?.cornerScreen('TELEMETRY');
+    if (!s) return;
+    drawNavCorner(ctx, s, buildNavTelemetry(engine));
+  }
+
+  /** ZOOM corner — zoom %, view radius, radar pip rings. */
+  _zoomCorner(ctx, engine) {
+    const s = engine.cockpitFrame?.cornerScreen('ZOOM');
+    if (!s) return;
+    drawZoomCorner(ctx, s, buildZoomRadarTelemetry(engine));
   }
 
   /**

@@ -7,7 +7,33 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 ## [Unreleased]
 
 ### Added
+- **Split corner readouts** — top-left **ZOOM** (`ZOOM` %, `VIEW` radius km, **RADAR** pip rings with active plot ring highlighted) and top-right **TELEMETRY** (`SPD`, `HDG` with 16-point cardinal + leading-zero degrees, `CRS` when speed > 0, `POS`). New [`TelemetryCorner.js`](src/systems/TelemetryCorner.js).
 - **Viewport target distances** — selected contact, active nav-route stop, and selected POI (when distinct from the stop) now show range in the viewport / SCAN scope via `ViewportTelemetry.js`, staggered to avoid overlapping the speed readout on the velocity ray. Visual-range contacts label beside the hull brackets; band contacts, POI, and nav stops label on the inner ring bearing.
+
+### Changed
+- **Minimap / radar corner panel** — planned corner minimap satisfied by **SECTOR MAP** + **VIEW → SCAN** full scope; no duplicate map in corners.
+- **Compass rose** — deferred; numeric HDG/CRS in TELEMETRY corner; visual compass may land on viewport rings or Sector Map later.
+- **TELEMETRY + ZOOM corner layout** — copper label / cyan value strips, accent cardinals, subtle dividers (nav vs position; view vs radar), active radar pip ring highlighted.
+- **Corner positions** — **ZOOM** top-left, **TELEMETRY** top-right (swapped from initial layout).
+- **Cockpit panel titles** — all six side screens + four corner readouts now use centered copper headers (`CockpitFrame._panelScreen`).
+- **DESTINATION bearing** — active nav stop and selected POI share a bounded **RNG** / **BRG** row layout (`_drawNavTargetSection`); nav column 58% width; **NEXT** + **SEL POI** halves clip to their regions; POI Book drawer shows the same bearing strip + source tag.
+- **Sector map telemetry strip** — course over ground uses the same degrees + cardinal format when moving.
+- **Sector map telemetry columns** — POS, SPD, and CRS each occupy a fixed-width slot (tabular digits + reserved heading pair) so values no longer shift horizontally as numbers change.
+- **TELEMETRY corner layout** — **SPD/HDG/CRS/POS** rows evenly fill the frame with **11–15px** type (shared `cornerRowMetrics` with **ZOOM**); tighter inset below baked title. Numeric values use **tabular monospace** cells so digits (and padded **POS** fields) do not shift horizontally as values change.
+- **ZOOM corner layout** — panel split into upper **ZOOM/VIEW** and lower **RADAR** halves. **RADAR** sub-title matches baked corner title typography (centered copper + glow). Pip row always shows all five range tiers (50–250 km), center-aligned: gray when locked, light blue when unlocked, **bold** light blue for the active plot range. **ZOOM/VIEW** rows and radar pips scale to fill the frame (larger type, less dead space below the baked title).
+
+### Fixed
+- **UI text spill / overlap** — label/value rows reserve a cap column and clip values to the remaining zone; long tabular strings shrink or truncate instead of overwriting labels or bleeding into adjacent panels (**TELEMETRY**, **ZOOM**, **DESTINATION** RNG/BRG, radar pips).
+- **MODES corner spill** — row heights and switch labels now fit inside the panel bounds (no clipped rows or overlapping segment text).
+
+### Changed
+- **Sector map footer** — **RECENTER** sits in the bottom footer row with **TRAVEL LOG** when the travel log is closed; when the drawer is open it moves to the bottom-right of the map section so the footer fits **CLOSE TRAVEL LOG** + **DELETE ALL UNLOCKED**.
+- **Bearing readout columns** — HDG/CRS/BRG use a fixed 3-digit tabular degree field plus a reserved cardinal slot (widest 16-point label); degrees never enter the cardinal column.
+- **Degree symbol** — all compass bearing readouts (TELEMETRY, DESTINATION/POI BRG, sector map strip) append **°** in a reserved cell beside the tabular digits.
+- **Cardinal alignment** — 16-point labels right-align within their reserved slot (HDG/CRS/BRG).
+
+### Changed
+- **MODES corner panel** — switch rows fit strictly inside the content box; toggles share one width and cap column, filling the space from labels to the panel’s right inset.
 
 ### Planned
 
@@ -18,7 +44,6 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 - Hand-art polish for hero variants (bell-quality)
 - Asteroid fragmentation on destroy
 - Fuel system for afterburner
-- Radar minimap in corner panel
 - Audio
 - Resource drops (guns vs mining laser yield tradeoff)
 - Ambient NPC mining HP drain

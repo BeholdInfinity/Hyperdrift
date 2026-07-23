@@ -64,8 +64,9 @@ src/
     ScannerSystem.js      Scanner model: contacts, sweep-gated paints, piecewise pip range + SCAN plot-zoom, age fade, selection
     Scanner.js            Scanner ring/scope renderer (silhouettes, IFF, sweep, nose/tail, chevrons)
     ViewportTelemetry.js  Viewport speed + contact/POI/nav distance labels (collision-aware layout)
-    CockpitFrame.js       Cached 16:9 steel/copper HUD chrome + POI rim dots + corners (TL empty · TR ZOOM · BL MODES · BR STATUS)
+    CockpitFrame.js       Cached 16:9 steel/copper HUD chrome + POI rim dots + corners (TL ZOOM · TR TELEMETRY · BL MODES · BR STATUS)
     CockpitPanels.js      Live content for the 6 cockpit screens + CONTACTS filters + PIPS/LOADOUTS + status alert overlay
+    TelemetryCorner.js    TELEMETRY + ZOOM corner readouts (nav + viewport/radar scale)
     SectorMapView.js      Sector map pan/zoom/follow + screen↔world mapping
     SectorMapPanel.js     LIVE / TRAVEL LOG map draw + travel log UI
     PipSystem.js          Global power-pip pool (set/clear/apply loadout, generator cap)
@@ -157,7 +158,7 @@ src/
 | Speed streaks (velocity-opposed, screen-space) | Done |
 | Camera lead offset + scroll zoom + speed zoom | Done |
 | Fullscreen button + pause menu (ESC; resume / settings / main menu) | Done |
-| Sound, fuel, fragmentation, minimap | Not started |
+| Sound, fuel, fragmentation, minimap | Minimap done (Sector Map + SCAN); sound/fuel/fragmentation not started |
 
 ## Key tuning (`src/core/Constants.js`)
 
@@ -222,6 +223,7 @@ Scaffolds that are API-only / stubs:
 - **RadarSystem file rename** — pip channel is `radar` and player strings say Radar; implementation still lives in `ScannerSystem.js` / `SCANNER` constants — rename follow-up
 
 Cosmetic / lower priority:
+- **Compass rose** — deferred; numeric HDG/CRS + 16-point cardinals in **TELEMETRY** corner; visual compass TBD on viewport scanner rings or Sector Map
 - **Ship Status is a list, not a schematic** — plan preferred a small ship-schematic damage map; `ship.status` is a stub (systems list, fuel, fires[], weapons) with placeholder values; nothing writes real damage/fuel/ammo yet — corner screen `_shipStatusCorner`, `GameEngine._ensureShipStatus`
 - **Sector map doesn't emphasize the selected contact** — partial: map halos added; in-world highlight still open
 - **No "objects"/debris contact type** — only asteroids fill the non-AI object slot (off by default; dev toggle on)
