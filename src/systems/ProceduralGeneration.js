@@ -1,7 +1,7 @@
 import { SeededRandom, hashCoords } from '../utils/SeededRandom.js';
 import { WORLD } from '../core/Constants.js';
 import { Asteroid } from '../entities/Asteroid.js';
-import { ringAt, pickCompositionTag, ringDensityMultiplier, isInsidePlayableSector } from '../world/SectorLayout.js';
+import { ringAt, pickCompositionTag, ringDensityMultiplier, isInsidePlayableSector, isNearAuthoredSite } from '../world/SectorLayout.js';
 
 export class ProceduralGeneration {
   constructor(seed = WORLD.SEED) {
@@ -49,6 +49,7 @@ export class ProceduralGeneration {
     for (let i = 0; i < count; i++) {
       const x = cx + rng.range(-WORLD.CHUNK_SIZE / 2, WORLD.CHUNK_SIZE / 2);
       const y = cy + rng.range(-WORLD.CHUNK_SIZE / 2, WORLD.CHUNK_SIZE / 2);
+      if (isNearAuthoredSite(x, y)) continue;
       const radius = rng.range(12, 40);
       const hp = Math.ceil(radius / 5);
       const seed = rng.int(1, 99999);
@@ -73,6 +74,7 @@ export class ProceduralGeneration {
         const angle = rng.range(0, Math.PI * 2);
         const x = clusterX + Math.cos(angle) * spread * rng.next();
         const y = clusterY + Math.sin(angle) * spread * rng.next();
+        if (isNearAuthoredSite(x, y)) continue;
         const radius = rng.range(8, 35);
         const hp = Math.ceil(radius / 4);
         const seed = rng.int(1, 99999);

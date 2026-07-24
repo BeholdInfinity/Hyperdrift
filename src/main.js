@@ -6,6 +6,8 @@ import {
   sectorEditorDraft,
   randomizePlanetLook,
   bakeSectorLayout,
+  validateSectorLayout,
+  moveSiteOrbit,
 } from './dev/DevSectorEditor.js';
 import { saveToRepo, exportToClipboard, SAVE_PATHS } from './dev/DevSave.js';
 import {
@@ -996,8 +998,22 @@ document.getElementById('dev-sector-randomize')?.addEventListener('click', () =>
   DevTools.status = `Sector: seed ${sectorEditorDraft.planet.visualSeed}`;
 });
 document.getElementById('dev-sector-save')?.addEventListener('click', async () => {
+  const check = validateSectorLayout(sectorEditorDraft);
+  if (!check.ok) {
+    DevTools.status = `Sector validator: ${check.issues[0]}`;
+    return;
+  }
   const res = await bakeSectorLayout();
   DevTools.status = res.ok ? 'Sector layout saved' : res.error || 'Sector save failed';
+});
+document.getElementById('dev-sector-validate')?.addEventListener('click', () => {
+  const check = validateSectorLayout(sectorEditorDraft);
+  if (check.ok && !check.warnings.length) {
+    DevTools.status = 'Sector layout: validator OK';
+    return;
+  }
+  const msg = check.ok ? check.warnings[0] : check.issues[0];
+  DevTools.status = check.ok ? `Sector warnings: ${msg}` : `Sector validator: ${msg}`;
 });
 
 function wireTuneSlider(id, key) {

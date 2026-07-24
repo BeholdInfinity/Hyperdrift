@@ -81,6 +81,7 @@ export class NavRoute {
   /** Refresh coords; demote orphaned POI refs to generic world stops. */
   resolvePosition(engine) {
     if (!engine?.poiSystem) return;
+    const t = engine.gameTime || 0;
     for (const stop of this.stops) {
       if (stop.kind !== 'poi' || !stop.poiId) continue;
       const poi = engine.poiSystem.list.find((p) => p.id === stop.poiId);
@@ -90,8 +91,9 @@ export class NavRoute {
         stop.label = `Stop #${++this._genericCounter}`;
         continue;
       }
-      stop.x = poi.x;
-      stop.y = poi.y;
+      const pos = engine.poiSystem.worldPosition(poi, t);
+      stop.x = pos.x;
+      stop.y = pos.y;
       stop.label = poi.name;
     }
   }

@@ -15,6 +15,7 @@ import { STATION, AMBIENT, SHIP, radarMaxRange } from '../core/Constants.js';
 import { generateShip, generateVisitor } from '../ships/ShipGenerator.js';
 import { SHIP_CLASSES } from '../ships/ShipClasses.js';
 import { drawVisitorShip, makeVisitorThrusters } from './HangarVisitorShips.js';
+import { corridorSpawnFactor } from './TransitCorridor.js';
 import { emitMountExhaust, hasActivePropulsion } from '../ships/PlumeDraw.js';
 import {
   clearThrusters,
@@ -537,6 +538,8 @@ export class AmbientTrafficSystem {
     const player = ctx.player;
     const station = ctx.station;
     const hangarBay = ctx.hangarBay || null;
+    this._gameTime = ctx.gameTime ?? 0;
+    this._gameTime = ctx.gameTime ?? 0;
     const sx = station?.x ?? STATION.WORLD_X;
     const sy = station?.y ?? STATION.WORLD_Y;
     const px = player?.position?.x ?? sx;
@@ -633,8 +636,7 @@ export class AmbientTrafficSystem {
       for (const ship of this.ships) {
         if (!hasActivePropulsion(ship)) continue;
         const pose = this.asStationPose(ship);
-        const spd = Math.hypot(ship.vx || 0, ship.vy || 0);
-        const underStation = !!(station && station.shouldOccludeShip?.(pose, spd));
+        const underStation = !!(station && station.shouldOccludeShip?.(pose));
         emitMountExhaust(ship, particles, {
           attachId: `a${ship.id}`,
           underStation,
@@ -822,7 +824,8 @@ export class AmbientTrafficSystem {
       const edge = this._pickOffscreenFlyby(sx, sy, px, py, view);
       if (!edge) return;
       const dens = densityAtDistance(dist(edge.x, edge.y, sx, sy));
-      if (Math.random() > dens * AMBIENT.NEAR_ACCEPT) return;
+      const corridorMult = corridorSpawnFactor(edge.x, edge.y, this._gameTime ?? 0);
+      if (Math.random() > (dens * AMBIENT.NEAR_ACCEPT) / corridorMult) return;
       const n =
         role.groupMin != null
           ? role.groupMin +
@@ -855,9 +858,7 @@ export class AmbientTrafficSystem {
     }
 
     const dens = densityAtDistance(spawnR);
-    if (Math.random() > dens * (role.deep ? AMBIENT.DEEP_ACCEPT : AMBIENT.NEAR_ACCEPT)) {
-      return;
-    }
+    const accept = role.deep ? AMBIENT.DEEP_ACCEPT : AMBIENT.NEAR_ACCEPT;
 
     const pos = role.deep
       ? this._pickOffscreenDeep(sx, sy, px, py, view, spawnR)
@@ -870,6 +871,8 @@ export class AmbientTrafficSystem {
           role.ring || [spawnR * 0.9, spawnR * 1.1]
         );
     if (!pos) return;
+    const corridorMult = corridorSpawnFactor(pos.x, pos.y, this._gameTime ?? 0);
+    if (Math.random() > (dens * accept) / corridorMult) return;
 
     const n =
       role.groupMin != null
@@ -1260,6 +1263,7 @@ export class AmbientTrafficSystem {
 
     const tx = station.laneCenterWorldX(lane);
     const approachSpd = Math.min(STATION.DOCK_MAX_SPEED * 0.85, 95);
+    const frameOpts = { frameVx: station.vx ?? 0, frameVy: station.vy ?? 0 };
 
     if (ship.state === 'bayApproach') {
       // Aim past the caution paint into the mouth — do NOT park at the outer
@@ -1275,10 +1279,10 @@ export class AmbientTrafficSystem {
         yawMult: inCorridor ? 1.35 : 1.1,
         speedBand: AMBIENT.COAST_SPEED_BAND,
         headingTol: inCorridor ? 0.4 : AMBIENT.COAST_HEADING_TOL,
+        ...frameOpts,
       });
-      const spd = Math.hypot(ship.vx, ship.vy);
       const poseNow = this.asStationPose(ship);
-      if (station.shouldAutoIngress(poseNow, spd)) {
+      if (station.shouldAutoIngress(poseNow)) {
         ship.state = 'bayIngress';
         ship.stateT = 0;
       } else if (ship.stateT > 55) {
@@ -1295,6 +1299,7 @@ export class AmbientTrafficSystem {
       yawMult: 1.4,
       brakeForArrival: false,
       headingTol: 0.45,
+      ...frameOpts,
     });
     const underRoof = ship.y > station.stripeWorldY() + STATION.EXIT_NEST;
     if (underRoof || ship.stateT > 8) {

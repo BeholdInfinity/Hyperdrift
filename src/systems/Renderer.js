@@ -178,9 +178,20 @@ export class Renderer {
   }
 
   renderAsteroids(asteroids, camera) {
+    const zoom = Math.max(camera.effectiveZoom, 0.001);
+    const margin = 140 / zoom;
+    const cx = camera.position.x;
+    const cy = camera.position.y;
+    const viewR = this.viewportRadius / zoom + margin;
+    const viewR2 = viewR * viewR;
+
     this.renderWorldLayer((wctx) => {
       for (const asteroid of asteroids) {
         if (!asteroid.active) continue;
+
+        const dx = asteroid.position.x - cx;
+        const dy = asteroid.position.y - cy;
+        if (dx * dx + dy * dy > viewR2) continue;
 
         wctx.save();
         wctx.translate(asteroid.position.x, asteroid.position.y);
@@ -188,7 +199,7 @@ export class Renderer {
 
         wctx.fillStyle = '#3a3a3a';
         wctx.strokeStyle = '#5a5a5a';
-        wctx.lineWidth = 1 / camera.effectiveZoom;
+        wctx.lineWidth = 1 / zoom;
 
         wctx.beginPath();
         const verts = asteroid.vertices;

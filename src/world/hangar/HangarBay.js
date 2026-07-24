@@ -308,7 +308,7 @@ export class HangarBay {
      */
     this.preferExternalDoorTraffic = false;
     /**
-     * False when space LOD has paused the hangar — ambient must not start new
+     * When false (interior session inactive), ambient must not start new
      * mouth approaches against a frozen sim.
      */
     this.spaceTrafficActive = true;
@@ -5214,19 +5214,55 @@ export class HangarBay {
     return npc.y >= doorLo - 4 && npc.y <= doorHi + 4;
   }
 
+  _hangarSpaceCover() {
+    const vpW = BAY.VIEWPORT_W;
+    const vpH = BAY.VIEWPORT_H;
+    const vpY = -BAY.HALF_H - 40;
+    const pads = padCenters();
+    const left = pads[0] - vpW / 2;
+    const right = pads[pads.length - 1] + vpW / 2;
+    const midY = vpY + vpH / 2;
+    const doorTop = -BAY.HALF_H;
+    const doorH = BAY.DOOR_H;
+    const windowCover = Math.hypot(right - left, vpH) / 2 + 40;
+    const doorCover = Math.hypot(right - left, (doorTop + doorH - midY) * 2) / 2 + 40;
+    return Math.max(windowCover, doorCover);
+  }
+
+  /** Bust peephole plate when a new hangar session starts. */
+  invalidateSpacefieldCache() {
+    if (this._spacefieldPlate) this._spacefieldPlate.key = '';
+  }
+
   _paintHangarSpacefield(ctx, space, cover) {
-    const { starfield, nebulaField, spaceX, spaceY, time, nebulae } = space;
+    const { starfield, nebulaField, spaceX, spaceY, time, backdropSession = 0 } = space;
     const zoom = 0.55;
-    nebulaField.paintAmbient(ctx, spaceX, spaceY, time, cover, zoom);
-    starfield.render(ctx, spaceX, spaceY, cover, time, zoom);
-    if (nebulae?.length) {
-      ctx.save();
-      ctx.translate(-spaceX, -spaceY);
-      ctx.scale(0.12, 0.12);
-      ctx.translate(spaceX, spaceY);
-      nebulaField.renderWorldNebulae(ctx, nebulae, time);
-      ctx.restore();
+    const side = Math.ceil(cover * 2.2);
+    // One bake per hangar visit — cosmetic coords, not live flight/chunk sim.
+    const cacheKey = `hangar-static|${backdropSession}|${side}`;
+
+    if (!this._spacefieldPlate) {
+      this._spacefieldPlate = { canvas: null, ctx: null, side: 0, key: '' };
     }
+    const plate = this._spacefieldPlate;
+    if (plate.key !== cacheKey || plate.side < side) {
+      if (!plate.canvas || plate.side < side) {
+        plate.canvas = document.createElement('canvas');
+        plate.canvas.width = side;
+        plate.canvas.height = side;
+        plate.ctx = plate.canvas.getContext('2d', { alpha: true });
+        plate.side = side;
+      }
+      const pctx = plate.ctx;
+      pctx.setTransform(1, 0, 0, 1, 0, 0);
+      pctx.clearRect(0, 0, side, side);
+      pctx.translate(side / 2, side / 2);
+      nebulaField.paintAmbient(pctx, spaceX, spaceY, time, cover, zoom);
+      starfield.render(pctx, spaceX, spaceY, cover, time, zoom);
+      plate.key = cacheKey;
+    }
+
+    ctx.drawImage(plate.canvas, 0, 0, side, side, -cover, -cover, cover * 2, cover * 2);
   }
 
   _bayDoorLeafW() {

@@ -23,6 +23,43 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.287] — 2026-07-24
+
+### Added
+- **Thera system geography (v2)** — bounded **Therissa Prime** / **Thera** system at Planet Center `(0,0)`; 12 outlaw-country orbital stations + 5 planetary surface sites + 6 ring warp gates + Iron Crown fringe wreck; `sectorLayout.js` v2 authoritative schema; `SectorBootstrap.js` wires POI, Jennings anchor, and Place stubs.
+- **World motion** — planetary spin (30 h), orbital kinematics, planetary gravity on the player ship, ring annulus viewport backdrop, transit corridor ambient spawn boost.
+- **Traffic law (stub)** — per-station posted limits (`LIM` telemetry), inner-ring sensor fines, patrol witness near stations, `TrafficRecord` persisted in nav profile v4.
+- **Orbit flight assists** — TELEMETRY **PRO** (circular prograde at current radius), CONTACTS **SYNC** hold (`X` at ≥95% match); global hard speed cap disabled (`WORLD.USE_MAX_SPEED_CAP: false`).
+- **Sector map** — rotating planet disc, fog-tier planet/ring brightness, chart-scale pan/zoom, station regulatory shell preview, live POI positions.
+- **Dev sector editor** — layout validator (spacing, fringe, warp pairs, pirate policy), orbit move helpers, bake gate on validator pass.
+- **Zero-hold mode** — double-tap **Alt** while speed **< 100 u/s** latches thrusters to hold zero velocity (counters gravity drift); double-tap again or manual thrust cancels.
+- **Interior instancing** — `InteriorSession` owns hangar sim, entities, particles, and weapons; created on hangar entry, destroyed on launch/title exit. Exterior space/title never load or tick `HangarBay`.
+
+### Changed
+- **Jennings Station** — overworld anchor at authored orbit (~480k u north of Planet Center), not world origin; saved nav profile v3 POI coords reset on v4 load.
+- **Place registry** — Jennings-clone station factories + planetary outpost stubs registered from layout sites.
+- **Hangar zoom LOD removed** — full deck tiles, weld glows, sparkles, and open-door space peeks render at all zoom levels.
+
+### Fixed
+- **Hangar launch spawn** — station orbit sync runs immediately before exit spawn so the ship emerges at the bay mouth on the live anchor, not downstream of a stale frame.
+- **Runtime error panel** — boot overlay also catches post-load frame errors and mode/instance transitions (copy/paste friendly; no alert spam after boot).
+- **Station-frame velocity** — departures inherit Jennings orbit speed; dock/LIM checks and traffic fines use speed relative to the station; approach AI cruises in the station frame.
+- **Quick Launch + hangar launch** — transcript-replay duplicate declarations (`shipVx`, `createStationClonePlace`, MODES `scan`) and missing handoff hook removed; playing render no longer throws on HUD draw.
+- **Launch freeze** — traffic enforcement referenced `layout` before initialization (TDZ); sim no longer throws on first space tick.
+- **Sector map perf** — fog-of-war draw capped (~4800 cells) with LOD stride when zoomed out; skips sub-pixel cells at chart zoom.
+- **Frame perf** — POI sync/update and sector-map fog reveal run once per sim tick (were duplicated in radar render); speed-limit lookup skips distant stations.
+- **Render perf** — starfield alpha-batched `fillRect`; nebula ambient plate cached per camera cell; asteroid list reused + viewport cull; radar sim moved off render path; sector map static layers cached when panned; map hover skips work off-panel.
+- **Sim isolation** — vessel interior crew tick only when `interiorActive`; planetary gravity off in hangar (`affectedByGravity`).
+- **Hangar perf** — peephole spacefield cached offscreen (windows + doors share one plate); dropped chunk loader + invisible scaled nebulae pass.
+- **Hangar / space decouple** — station peephole uses a cosmetic backdrop anchor; plate bakes once per hangar visit; interior pauses live orbit, POI sync, ambient traffic, and asteroid chunks until launch handoff.
+- **Title / Jennings vignette** — title camera offsets from the live station orbit anchor (was still framed for origin `(0,0)` after geography move).
+- **Zero-hold latch** — no longer clears on window blur; drift is corrected when hold stays active.
+- **Traffic fines toast** — citation flash uses `gameTime` (was wall clock).
+- **Strict speed limits** — military `limitMultiplier` no longer applied twice.
+- **Nav v4 migration** — flash when an older saved nav profile is reset.
+
+---
+
 ## [0.1.286] — 2026-07-23
 
 ### Changed

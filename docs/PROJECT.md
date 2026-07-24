@@ -52,6 +52,7 @@ src/
     TitleLayoutRuntime.js Live apply + reset helpers for Title Layout Dev panel
   core/
     GameEngine.js         Main loop, title/play modes, system orchestration
+    InteriorSession.js    Instanced station interior (hangar sim + local entities)
     Constants.js          Physics, camera, ship, world tuning
   systems/
     InputSystem.js        Keyboard, mouse, wheel, fullscreen, ESC pause
@@ -106,12 +107,23 @@ src/
     AmbientTrafficSystem.js Near-station traffic + always-on cops; off-screen spawn/despawn
     NpcPilot.js           Shared Newtonian thruster pilot (holds, police hex, ambient burns)
     Station.js            Jennings Station overworld exterior + dock zones
-    PoiSystem.js          POI address book + discovery (4 sources)
+    PoiSystem.js          POI address book + discovery; `worldPosition(poi, t)` for orbital/surface sites
     NavRoute.js           Ephemeral multi-stop nav route queue
     NavPersistence.js     localStorage POI Book + Travel Log + Pip Loadouts + Nav Route (v3)
     SectorMap.js          Expedition fog-of-war + trail sampling
     TravelLog.js          Archived expedition trails (rename, lock, map overlays)
     SectorLayout.js       Ring sampling + composition for proc gen
+    SectorBootstrap.js    Layout v2 → POI, Station anchor, Place registration
+    data/sectorLayout.js  Authoritative Thera system geography (v2)
+    PlanetSpin.js         Therissa Prime 30 h rotation
+    OrbitKinematics.js    Shared μ, belt/station orbit helpers
+    GravitySystem.js      Planetary gravity toward Planet Center
+    RingBackdrop.js       Viewport ring annuli layer
+    WarpGateSystem.js     Ring shortcut gate pairs
+    SpeedLimitSystem.js   Posted regulatory limits by band/shell
+    TrafficEnforcement.js Sensor + patrol citation stub
+    TrafficRecord.js      Per-station fine ledger (nav v4)
+    TransitCorridor.js    Inter-station lane spawn weighting
     data/sectorLayout.js  Baked planet + rings + fixed POIs (Dev save target)
   utils/
     MathUtils.js, SeededRandom.js
@@ -122,7 +134,7 @@ src/
 - **Modular systems** wired by `GameEngine` — extend via new systems/entities, not monolith edits
 - **Place → Area → Feature** — top-level hosts are Places (`station` | `capitalShip` | `outpost` | `vessel`), not “the hangar” singleton. Hangars are `areaType: 'hangar'` with bay Features; shops/bars/farms/decks are stub area types. Stable string IDs; look shells inherit place → area → feature (condition, tech, theme). See `src/world/place/`.
 - **Chunk-based world** — deterministic seeds, load radius 3, unload radius 5 (`WORLD` in Constants)
-- **Hangar sim LOD (space)** — Quick Launch and hangar→space both keep the hangar live; ticks by distance to the **closest human pilot** (`STATION.HANGAR_LOD_FULL_DIST` → full, lerp to `HANGAR_LOD_PAUSE_DIST` → pause). NPCs do not wake it. Hangar mode always full-rate. In space, empty-bay door fills request ambient runway approaches so mouth land/leave cadence matches hangar-side traffic. Multiplayer: extend `_humanPilotPositions()`.
+- **Hangar sim LOD (space)** — removed: exterior space no longer ticks a headless hangar. Interior is a separate `InteriorSession` loaded only in hangar mode; bay lights in space use station defaults until dock.
 - **Thruster visuals driven by modular mounts** — equipped `mainEngine` / `maneuverThruster` items only (`PlumeDraw.js`); same path for player, hangar visitors, and ambient traffic; intensity from physics thruster bag
 - **Plume flow** (`computePlumeFlow`) — leading cue/wash + crosswind lean from relative wind (`−velocity`); trailing stretch; ship-local particles on the player, world-space on visitors/ambient
 - **Modular ships** — `src/ships/`: swap groups, full section/item ID matrix (parametric), `createPlayerStarter()`, shared `ShipRenderer` (top-down + 16 angled views)
@@ -196,12 +208,16 @@ src/
 
 - Match existing module style: one class/export per file, relative `.js` imports
 - Keep diffs minimal; don't add dependencies without discussion
-- **In-game UI over browser chrome** — player-facing confirms, renames, and text entry use **canvas HUD modals** on the relevant cockpit panel (copper frame, typed input via `InputSystem.modalTextCapture`, OK/CANCEL). Avoid `window.prompt` / `alert` / `confirm` in gameplay; title/pause DOM menus are the exception. **Boot failures** (module import / `GameEngine` init before the title loop runs) use `src/loadErrorOverlay.js`: a DOM error card + short `alert`, with **Copy error** for pasting into bug reports.
+- **In-game UI over browser chrome** — player-facing confirms, renames, and text entry use **canvas HUD modals** on the relevant cockpit panel (copper frame, typed input via `InputSystem.modalTextCapture`, OK/CANCEL). Avoid `window.prompt` / `alert` / `confirm` in gameplay; title/pause DOM menus are the exception. **`src/loadErrorOverlay.js`** — boot failures (module import / `GameEngine` init) and **runtime** frame/mode-transition errors show a copy-friendly DOM error card (**Copy error** / **Select all**); boot also shows a short `alert` pointing at the panel.
 - Update `CHANGELOG.md` for user-visible changes
 - Update `GDD.md` when design intent changes; update this file when architecture or handoff facts change
 - On **commit and push**, the agent checks whether handoff docs need a sync and asks before including those updates (see `.cursor/rules/hyperdrift.mdc`)
 
 ## Known gaps / next steps
+
+### World geography (v0.1.287)
+
+Full plan + deferred follow-ups: [`WORLD_GEOGRAPHY_PLAN.md`](WORLD_GEOGRAPHY_PLAN.md). **Shipped in v0.1.287** — Thera system layout v2, orbital motion, gravity, ring backdrop, traffic-law stubs, warp gates, dev sector editor, and **`InteriorSession`** (hangar instancing with frozen exterior + launch handoff catch-up). Edge benchmarks ~75 FPS hangar + quick launch (Jul 2026).
 
 ### Polish / follow-ups
 - **Thruster cup size** — tune via Blueprint Author sliders / `visualTuning.js` (still subjective)
@@ -231,7 +247,8 @@ Cosmetic / lower priority:
 **Not yet exercised live end-to-end:** clicking an in-world/band blip to select (ship kept leaving range), comms target population, and the fire/alert overlay (needs `ship.status.fires` populated). Recommended manual pass: hover near Jennings at low speed, select a band blip + a POI-rim dot, exercise pip loadouts (save/apply/partial apply via dev Generator at 3), and temporarily push a fake fire into `ship.status.fires` to verify the alert banner. Plan of record: `.cursor/plans/scanner_subsystem_roadmap_fe068679.plan.md` (do **not** edit the plan file).
 
 ### Shipped recently (context)
-- **v0.1.285** TELEMETRY/ZOOM corner readouts; viewport target distances (contact / nav / POI); cockpit HUD layout + spill fixes; sector map footer + bearing format polish
+- **v0.1.287** Thera system geography v2; `InteriorSession` hangar instancing; traffic law stubs; orbit assists (PRO/SYNC); runtime error panel; hangar launch handoff + perf polish
+- **v0.1.286** Radar/display/hangar scanner nomenclature alignment
 - **v0.1.284** Nav route queue; pip loadouts + PIPS/STATUS rework; MODES corner (PREC/ORIENT/VIEW); scanner sweep paints + full SCAN + Mk5 tiers; sector map / Travel Log drawers; boot error overlay; WT shared launch tabs
 - **v0.1.283** Scanner subsystem model + six live cockpit panels + POI ring + pip pool scaffold
 - **v0.1.267** Title wordmark: locked pose; STRANGER bronze plate windows + smile arch; GALAXY nebula windows

@@ -4,6 +4,9 @@
 
 import { RADAR } from '../core/Constants.js';
 import { formatDistKm } from './ViewportTelemetry.js';
+import { gravityMu, circularSpeed } from '../world/OrbitKinematics.js';
+import { getSectorLayout, radiusAt } from '../world/SectorLayout.js';
+import { postedSpeedLimitAt } from '../world/SpeedLimitSystem.js';
 
 const CARDINAL16 = [
   'N', 'NNE', 'NE', 'ENE', 'E', 'ESE', 'SE', 'SSE',
@@ -427,6 +430,16 @@ export function buildNavTelemetry(engine) {
     courseCardinal = headingToCardinal16(courseDeg);
   }
 
+  const layout = getSectorLayout();
+  const shipR = radiusAt(ship.position.x, ship.position.y, layout);
+  const influence = layout.planet?.influenceRadius ?? 700000;
+  let prograde = null;
+  let postedLimit = null;
+  if (shipR > (layout.planet?.radius ?? 35000) && shipR < influence * 1.05) {
+    prograde = Math.round(circularSpeed(shipR, gravityMu(layout)));
+    postedLimit = Math.round(postedSpeedLimitAt(ship.position.x, ship.position.y, engine.gameTime || 0).limit);
+  }
+
   return {
     speed: Math.round(speed),
     headingDeg,
@@ -437,6 +450,9 @@ export function buildNavTelemetry(engine) {
     courseCardinal,
     posX: Math.round(ship.position.x),
     posY: Math.round(ship.position.y),
+    prograde,
+    postedLimit,
+    overLimit: postedLimit != null && speed > postedLimit,
   };
 }
 
@@ -574,15 +590,27 @@ export function drawNavCorner(ctx, screen, data) {
   const box = cornerLiveContentBox(screen);
   clipRect(ctx, box.x, box.y, box.w, box.h, () => {
     const navRows = data.courseStr ? 3 : 2;
+    const extraRows = (data.prograde != null ? 1 : 0) + (data.postedLimit != null ? 1 : 0);
     const divH = 2;
     const divGap = 2;
     const divSlot = divH + divGap;
-    const rowCount = navRows + 1;
+    const rowCount = navRows + 1 + extraRows;
     const { rowGap, rowH, fs } = cornerRowMetrics(box.h, rowCount, { divSlot });
     let y = box.y;
 
-    drawLabelValueRow(ctx, box, y, rowH, 'SPD', String(data.speed).padStart(4, ' '), { fs });
+    const spdColor = data.overLimit ? 'rgba(255, 120, 90, 0.95)' : undefined;
+    drawLabelValueRow(ctx, box, y, rowH, 'SPD', String(data.speed).padStart(4, ' '), { fs, valueColor: spdColor });
     y += rowH + rowGap;
+
+    if (data.postedLimit != null) {
+      drawLabelValueRow(ctx, box, y, rowH, 'LIM', String(data.postedLimit).padStart(4, ' '), { fs });
+      y += rowH + rowGap;
+    }
+
+    if (data.prograde != null) {
+      drawLabelValueRow(ctx, box, y, rowH, 'PRO', String(data.prograde).padStart(4, ' '), { fs });
+      y += rowH + rowGap;
+    }
 
     drawHeadingRow(ctx, box, y, rowH, 'HDG', data.headingStr, data.headingCardinal, { fs });
     y += rowH + rowGap;

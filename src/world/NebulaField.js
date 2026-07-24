@@ -23,6 +23,10 @@ export class NebulaField {
     this._plateCtx = null;
     this._plateSide = 0;
     this._spriteCache = new Map();
+    /** Cached ambient blit — rebuild when camera cell / zoom / time bucket changes. */
+    this._ambientCacheKey = '';
+    this._ambientCachePlate = null;
+    this._ambientCacheSide = 0;
   }
 
   /**
@@ -33,23 +37,58 @@ export class NebulaField {
     const glowPad = Math.min(this._maxGlowPx * 0.25, Math.max(160, coverRadius * 0.25));
     const worldSide = coverRadius * 2 + glowPad * 2;
     const plateSide = Math.max(64, Math.ceil(worldSide * PLATE_SCALE));
+    const drawSide = plateSide / PLATE_SCALE;
+
+    const cell = 2800;
+    const timeBucket = Math.floor(time * 4);
+    const cacheKey = `${Math.floor(cameraX / cell)},${Math.floor(cameraY / cell)}|${Math.round(zoom * 80)}|${Math.round(coverRadius / 250)}|${timeBucket}|${plateSide}`;
+
+    if (this._ambientCacheKey === cacheKey && this._ambientCachePlate) {
+      ctx.save();
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(
+        this._ambientCachePlate,
+        0,
+        0,
+        plateSide,
+        plateSide,
+        -drawSide / 2,
+        -drawSide / 2,
+        drawSide,
+        drawSide
+      );
+      ctx.restore();
+      return;
+    }
+
     this._ensurePlate(plateSide);
 
     const pctx = this._plateCtx;
     pctx.setTransform(1, 0, 0, 1, 0, 0);
-    // Clear the full backing store — reused larger plates must not leave stale pixels
     pctx.clearRect(0, 0, this._plateSide, this._plateSide);
     pctx.setTransform(PLATE_SCALE, 0, 0, PLATE_SCALE, plateSide / 2, plateSide / 2);
 
     this.renderProcedural(pctx, cameraX, cameraY, time, coverRadius, zoom);
 
+    if (!this._ambientCachePlate || this._ambientCacheSide < plateSide) {
+      const s = Math.ceil(plateSide);
+      this._ambientCachePlate = document.createElement('canvas');
+      this._ambientCachePlate.width = s;
+      this._ambientCachePlate.height = s;
+      this._ambientCacheSide = s;
+    }
+    const blitCtx = this._ambientCachePlate.getContext('2d', { alpha: true });
+    blitCtx.setTransform(1, 0, 0, 1, 0, 0);
+    blitCtx.clearRect(0, 0, plateSide, plateSide);
+    blitCtx.drawImage(this._plate, 0, 0, plateSide, plateSide);
+    this._ambientCacheKey = cacheKey;
+
     ctx.save();
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    const drawSide = plateSide / PLATE_SCALE;
-    // Source-rect = active plate only (not the whole reused canvas)
     ctx.drawImage(
-      this._plate,
+      this._ambientCachePlate,
       0,
       0,
       plateSide,

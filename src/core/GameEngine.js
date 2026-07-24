@@ -22,6 +22,12 @@ import { PoiSystem } from '../world/PoiSystem.js';
 import { SectorMap, trailDistance } from '../world/SectorMap.js';
 import { TravelLog } from '../world/TravelLog.js';
 import { loadNavProfile, saveNavProfile } from '../world/NavPersistence.js';
+import { bootstrapSectorWorld, syncStationAnchor } from '../world/SectorBootstrap.js';
+import { WarpGateSystem } from '../world/WarpGateSystem.js';
+import { TrafficRecord } from '../world/TrafficRecord.js';
+import { TrafficEnforcement } from '../world/TrafficEnforcement.js';
+import { drawRingBackdrop } from '../world/RingBackdrop.js';
+import { getSiteById, siteWorldPosition } from '../world/SectorLayout.js';
 import { NavRoute } from '../world/NavRoute.js';
 import { SectorMapView } from '../systems/SectorMapView.js';
 import { WeaponSystem } from '../systems/WeaponSystem.js';
@@ -30,8 +36,8 @@ import { PhysicsSystem } from '../systems/PhysicsSystem.js';
 import { Starfield } from '../world/Starfield.js';
 import { NebulaField } from '../world/NebulaField.js';
 import { SpeedStreaks } from '../world/SpeedStreaks.js';
+import { InteriorSession } from './InteriorSession.js';
 import {
-  HangarBay,
   hangarDefaultZoom,
   hangarElevatorZoom,
   hangarZoomMax,
@@ -134,6 +140,7 @@ export class GameEngine {
     this.navRoute = new NavRoute();
     this._navArrivalFlashUntil = 0;
     this._navArrivalFlashText = '';
+    this._lastFineToast = '';
     this.sectorMap = new SectorMap();
     this.travelLog = new TravelLog();
     this.sectorMapView = new SectorMapView();
@@ -156,11 +163,16 @@ export class GameEngine {
     this.speedStreaks = new SpeedStreaks();
     this.titleScreen = new TitleScreen();
     this.titleScreen.bindSpacer(document.getElementById('title-art-spacer'));
-    this.hangarBay = new HangarBay();
+    /** Active station interior instance (hangar); null in exterior space/title. */
+    this.interior = null;
     this.station = new Station();
-    this.ambientTraffic = new AmbientTrafficSystem();
     /** Place → Area → Feature registry (Jennings default hangar) */
     this.placeRegistry = placeRegistry;
+    bootstrapSectorWorld({ poiSystem: this.poiSystem, station: this.station, placeRegistry: this.placeRegistry });
+    this.trafficRecord = new TrafficRecord();
+    this.trafficEnforcement = new TrafficEnforcement(this.trafficRecord);
+    this.warpGateSystem = new WarpGateSystem();
+    this.ambientTraffic = new AmbientTrafficSystem();
     /** Stub: player entered vessel interior graph (walker TBD) */
     this.interiorActive = false;
     this.interiorPlaceId = null;
@@ -212,10 +224,7 @@ export class GameEngine {
     this._dockPos = { x: 0, y: 0 };
     /** Bay index 0/1/2 where the controlled ship is seated */
     this.playerBayIndex = 1;
-    /** Hangar sim stays live across space flights (pad lights / AI handoff) */
-    this._hangarLive = false;
-    /** Accumulated hangar sim time under distance LOD (space only) */
-    this._hangarLodAccum = 0;
+
     /**
      * Dev hangar control target — who receives thruster/weapon input.
      * @type {null|{ kind:'player' }|{ kind:'visitor', bayIndex:number }}
@@ -230,6 +239,8 @@ export class GameEngine {
     this._hangarPuppet = null;
     /** Continues title-screen space drift; shown through hangar bay doors */
     this._spaceCam = { x: 0, y: 0 };
+    /** Cosmetic peephole vista lives on InteriorSession when active. */
+
     /** @type {null|{kind:'launch'|'land', phase:string, t:number}} */
     this._hangarSeq = null;
     /** 0 = settled on pad, 1 = hovering (launch lift / land approach) */
@@ -289,7 +300,11 @@ export class GameEngine {
   }
 
   _loadNavProfile() {
-    const data = loadNavProfile();
+    const { profile: data, staleVersion } = loadNavProfile();
+    if (staleVersion) {
+      this._navArrivalFlashText = 'NAV PROFILE RESET (v4)';
+      this._navArrivalFlashUntil = 4;
+    }
     if (!data) {
       this.pipLoadouts.seedDefaultIfEmpty();
       return;
@@ -309,6 +324,7 @@ export class GameEngine {
       }
     }
     if (data.navRoute) this.navRoute.hydrateFromSave(data.navRoute);
+    if (data.trafficRecord) this.trafficRecord.fromJSON(data.trafficRecord);
   }
 
   persistNavProfile() {
@@ -320,7 +336,49 @@ export class GameEngine {
       nextLoadoutId: this.pipLoadouts._nextId,
       activeLoadoutId: this.pipLoadouts.activeId,
       navRoute: this.navRoute.exportForSave(),
+      trafficRecord: this.trafficRecord.toJSON(),
     });
+  }
+
+  _computeSyncAssist() {
+    const contact = this.radarSystem?.getSelected?.();
+    if (!contact || !this.ship) return { score: 0, target: null };
+    const tvx = contact.vx ?? 0;
+    const tvy = contact.vy ?? 0;
+    const targetSpeed = Math.hypot(tvx, tvy);
+    if (targetSpeed < 8) return { score: 0, target: null };
+    const playerSpeed = this.ship.velocity.length();
+    const speedMatch =
+      targetSpeed > 0 ? Math.max(0, 1 - Math.abs(playerSpeed - targetSpeed) / targetSpeed) : 0;
+    let headingMatch = 0;
+    if (playerSpeed > 10 && targetSpeed > 10) {
+      const pH = Math.atan2(this.ship.velocity.y, this.ship.velocity.x);
+      const tH = Math.atan2(tvy, tvx);
+      headingMatch = Math.max(0, (Math.cos(pH - tH) + 1) * 0.5);
+    }
+    const score = (speedMatch * 0.5 + headingMatch * 0.5) * 100;
+    return {
+      score,
+      target: { vx: tvx, vy: tvy },
+      enabled: score >= 95,
+    };
+  }
+
+  _tickIronCrownStub() {
+    if (!this.ship || this.mode !== 'playing') return;
+    const site = getSiteById('site.landmark.capital.wreck');
+    if (!site) return;
+    const pos = siteWorldPosition(site, this.gameTime);
+    const d = Math.hypot(this.ship.position.x - pos.x, this.ship.position.y - pos.y);
+    if (d > 12000) {
+      this._ironCrownNotified = false;
+      return;
+    }
+    if (!this._ironCrownNotified) {
+      this._ironCrownNotified = true;
+      this._navArrivalFlashText = 'IRON CROWN — DERELICT CAPITAL (stub)';
+      this._navArrivalFlashUntil = (this.gameTime || 0) + 3;
+    }
   }
 
   /** @deprecated use navRoute — sector map tooltip hook */
@@ -399,7 +457,8 @@ export class GameEngine {
     let bestPoi = null;
     let bestPd = tolWorld;
     for (const poi of this.poiSystem.mapPois()) {
-      const d = Math.hypot(poi.x - worldX, poi.y - worldY);
+      const pos = this.poiSystem.worldPosition(poi, this.gameTime || 0);
+      const d = Math.hypot(pos.x - worldX, pos.y - worldY);
       if (d < bestPd) {
         bestPd = d;
         bestPoi = poi;
@@ -559,6 +618,26 @@ export class GameEngine {
     ctx.restore();
   }
 
+  /** Copy-friendly runtime error panel (see loadErrorOverlay.js). */
+  _reportTransitionError(label, err) {
+    const seq = this._hangarSeq;
+    const seqBit = seq ? ` seq=${seq.kind}/${seq.phase}` : '';
+    const intBit = this.interior ? ' interior=active' : ' interior=null';
+    window.__hyperdriftReportRuntimeError?.(
+      `${label} (mode=${this.mode}${seqBit}${intBit})`,
+      err
+    );
+  }
+
+  _guardTransition(label, fn) {
+    try {
+      return fn();
+    } catch (err) {
+      this._reportTransitionError(label, err);
+      throw err;
+    }
+  }
+
   /** Begin the title-screen loop (live Jennings space sim + wordmark). */
   startTitle() {
     this.mode = 'title';
@@ -580,6 +659,11 @@ export class GameEngine {
    * @param {{ fadeIn?: boolean }} [opts]
    */
   _enterTitleSim({ fadeIn = false } = {}) {
+    return this._guardTransition('Enter title sim', () => this._enterTitleSimBody({ fadeIn }));
+  }
+
+  _enterTitleSimBody({ fadeIn = false } = {}) {
+    this._destroyInterior();
     this._clearPlaySession();
     this._hangarSeq = null;
     HangarLayoutEditor.exit();
@@ -588,18 +672,9 @@ export class GameEngine {
 
     syncHangarSidePadFromLayout(null);
     this.playerBayIndex = 1;
-    this.hangarBay.reset(null, {
-      playerBayIndex: this.playerBayIndex,
-      placeId: placeRegistry.activePlaceId,
-    });
-    this.hangarBay.warmStartHeadless();
-    this.hangarBay.clearControlledPadAfterLaunch();
-    this.hangarBay.preferExternalDoorTraffic = true;
-    this._hangarLive = true;
-    this._hangarLodAccum = 0;
+    this.station.setBaySignals(['green', 'green', 'green']);
 
     this.ambientTraffic.reset();
-    this.station.setBaySignals(this.hangarBay.getBaySignals());
 
     this.camera.rotation = TITLE_LAYOUT.rotation;
     this.camera.offset.set(0, 0);
@@ -627,7 +702,7 @@ export class GameEngine {
     this.ambientTraffic.update(1 / 60, {
       player: null,
       station: this.station,
-      hangarBay: this.hangarBay,
+      hangarBay: null,
       asteroids: this.asteroidSystem.getActiveAsteroids(),
       particles: this.particleSystem,
       camera: view,
@@ -651,9 +726,12 @@ export class GameEngine {
     const w = (Math.PI * 2) / period;
     const bob = Math.sin(time * w);
     const bob2 = Math.sin(time * w * 0.73 + 1.1);
+    syncStationAnchor(this.station, this.gameTime || 0);
+    const anchorX = this.station.x;
+    const anchorY = this.station.y;
     this.camera.position.set(
-      V.lookX + bob * V.bobAmpX,
-      V.lookY + bob2 * V.bobAmpY
+      anchorX + V.lookX + bob * V.bobAmpX,
+      anchorY + V.lookY + bob2 * V.bobAmpY
     );
     this.camera.offset.set(0, 0);
     const z = V.zoom + Math.sin(time * w * 0.55 + 0.4) * V.bobZoom;
@@ -666,6 +744,10 @@ export class GameEngine {
 
   /** Quick-launch into playable flight near Jennings Station. */
   beginPlay() {
+    return this._guardTransition('Quick launch → playing', () => this._beginPlayBody());
+  }
+
+  _beginPlayBody() {
     this.camera.rotation = 0;
     this._clearPlaySession();
     // Pick exit bay first — spawn lane + departing pad light must match
@@ -675,31 +757,26 @@ export class GameEngine {
     this._applyPendingBlueprint(this.ship);
     this.ship.angle = spawn.angle;
     this.ship.turretAngle = spawn.angle;
-    // Match hangar-exit feel: engine already engaged northbound
-    this.ship.velocity.set(0, -220);
+    syncStationAnchor(this.station, this.gameTime || 0);
+    const exitPush = Vec2.fromAngle(spawn.angle, 220);
+    this.ship.velocity.set(
+      (this.station.vx || 0) + exitPush.x,
+      (this.station.vy || 0) + exitPush.y
+    );
     this.ship.thrusters.mainEngine = 1;
     this.ship.exitBurn = true;
+    this.ship.affectedByGravity = true;
     this._beginExitBurn();
     this.precisionActive = false;
     this.entityManager.add(this.ship, 'ship');
     this.mode = 'playing';
     this.paused = false;
+    this.interiorActive = false;
     this._resetSimSpeedUnlessDev();
     this._hangarSeq = null;
 
-    // Live hangar behind the station (LOD by distance) so visitors land/leave in space
     syncHangarSidePadFromLayout(null);
     this._bindPlayerVessel(this.ship);
-    this.hangarBay.reset(this.ship, {
-      playerBayIndex: this.playerBayIndex,
-      placeId: placeRegistry.activePlaceId,
-    });
-    this.hangarBay.warmStartHeadless();
-    this.hangarBay.clearControlledPadAfterLaunch();
-    this.hangarBay.preferExternalDoorTraffic = true;
-    this._hangarLive = true;
-    this._hangarLodAccum = 0;
-
     this.ambientTraffic.reset();
     this._setTitleFade(1);
     this.canvas.style.opacity = '1';
@@ -727,86 +804,97 @@ export class GameEngine {
     entryTurret = null,
     targetBay = null,
   } = {}) {
+    return this._guardTransition('Enter hangar (new InteriorSession)', () =>
+      this._beginHangarBody({ landing, fromMenu, entryAngle, entryTurret, targetBay })
+    );
+  }
+
+  _beginHangarBody({
+    landing = false,
+    fromMenu = false,
+    entryAngle = null,
+    entryTurret = null,
+    targetBay = null,
+  } = {}) {
     if (landing && this._expeditionActive) {
       this._archiveExpeditionOnSettle = true;
     }
     this.camera.rotation = 0;
-    this._spaceCam.x = this.camera.position.x;
-    this._spaceCam.y = this.camera.position.y;
+    this._destroyInterior();
+    this.interior = new InteriorSession();
+    this.interior.freezeExterior(this);
+    this.interior.resetBackdrop();
     this.input.consumeZoomDelta();
 
-    // Keep the live controlled hull across space → hangar (no starter reload)
+    const hb = this.interior.hangarBay;
     const carried = this.ship;
     const carriedDef = carried?.shipDef ? cloneShipDef(carried.shipDef) : null;
 
     this.entityManager.clear();
     this.particleSystem.clear();
+    this.interior.entityManager.clear();
+    this.interior.particleSystem.clear();
     this.precisionActive = false;
     this.speedStreaks = new SpeedStreaks();
     this._exitBurn = false;
     this._exitBurnFailsafe = 0;
     this._approachHoldAI = null;
 
-    syncHangarSidePadFromLayout(null);
+    syncHangarSidePadFromLayout(hb);
 
     const bayFromLane =
       targetBay != null && Number.isFinite(targetBay)
         ? ((targetBay | 0) + 3) % 3
         : null;
 
-    if (!this._hangarLive || fromMenu) {
-      // Fresh hangar (title Home Base / first enter)
+    if (landing && carried) {
+      const prefer = bayFromLane ?? this.playerBayIndex ?? 1;
+      this.ship = carried;
+      if (carriedDef) this.ship.shipDef = carriedDef;
+      this._bindPlayerVessel(this.ship);
+      hb.reset(this.ship, {
+        playerBayIndex: prefer,
+        placeId: placeRegistry.activePlaceId,
+      });
+      hb.warmStartHeadless();
+      if (
+        !hb.claimEmptyBayForControlled(prefer, this.ship)
+      ) {
+        const free = hb.getBaySignals().findIndex((s) => s === 'green');
+        if (free >= 0) hb.claimEmptyBayForControlled(free, this.ship);
+      }
+      this.playerBayIndex = hb.getPlayerBayIndex();
+    } else {
       this.playerBayIndex =
         bayFromLane != null ? bayFromLane : ((Math.random() * 3) | 0);
       this._dockPos.x = hangarPadX(this.playerBayIndex);
       this._dockPos.y = 0;
-      this.ship = new Ship(this._dockPos.x, this._dockPos.y);
+      this.ship =
+        carried && !fromMenu
+          ? carried
+          : new Ship(this._dockPos.x, this._dockPos.y);
       if (carriedDef) this.ship.shipDef = carriedDef;
-      else this._applyPendingBlueprint(this.ship);
+      else if (!carried || fromMenu) this._applyPendingBlueprint(this.ship);
       this._bindPlayerVessel(this.ship);
-      this.hangarBay.reset(this.ship, {
+      hb.reset(this.ship, {
         playerBayIndex: this.playerBayIndex,
         placeId: placeRegistry.activePlaceId,
       });
-      this.hangarBay.warmStartHeadless();
-      this._hangarLive = true;
-    } else {
-      // Returning from space — hangar already running; seat on chosen green bay
-      const prefer =
-        bayFromLane != null ? bayFromLane : this.playerBayIndex;
-      this.ship =
-        carried ||
-        new Ship(hangarPadX(prefer), 0);
-      if (carriedDef && this.ship) this.ship.shipDef = carriedDef;
-      this._bindPlayerVessel(this.ship);
-      const seated = this.hangarBay.claimEmptyBayForControlled(
-        prefer,
-        this.ship
-      );
-      if (!seated) {
-        // Hold should have prevented this; fall back to any green
-        const signals = this.hangarBay.getBaySignals();
-        const free = signals.findIndex((s) => s === 'green');
-        if (free >= 0) {
-          this.hangarBay.claimEmptyBayForControlled(free, this.ship);
-        }
-      }
-      this.playerBayIndex = this.hangarBay.getPlayerBayIndex();
+      hb.warmStartHeadless();
     }
 
     this._dockPos.x = hangarPadX(this.playerBayIndex);
     this._dockPos.y = 0;
     this.ship.position.set(this._dockPos.x, this._dockPos.y);
-    this.entityManager.add(this.ship, 'ship');
+    this.ship.affectedByGravity = false;
+    this.interior.entityManager.add(this.ship, 'ship');
     this._dockLocked = true;
     this._hangarSeq = null;
     this._hangarHover = 0;
     this.hangarControlTarget = { kind: 'player' };
     this._hangarSelectPress = null;
-    this.hangarBay.setDevControlBay(this.playerBayIndex);
-    this.hangarBay.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
-    // Inside hangar: door fills play locally (not as space approaches)
-    this.hangarBay.preferExternalDoorTraffic = false;
+    hb.setDevControlBay(this.playerBayIndex);
+    hb.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
 
     this.resetHangarCameraToDock();
 
@@ -825,9 +913,7 @@ export class GameEngine {
     this._positionLaunchBtn();
 
     if (landing) {
-      // Headless runway prep may have opened doors / started doorArrive — never
-      // skip the on-screen land cinematic (that caused instant pad settle).
-      this.hangarBay.abortPlayerSpaceApproachForLanding();
+      hb.abortPlayerSpaceApproachForLanding();
       this._startLandingSequence(entryAngle, entryTurret);
     } else if (fromMenu) {
       this._startElevatorArrivalSequence();
@@ -838,12 +924,16 @@ export class GameEngine {
 
   /** Leave hangar and restore the title screen loop. */
   exitHangar() {
+    return this._guardTransition('Exit hangar → title', () => this._exitHangarBody());
+  }
+
+  _exitHangarBody() {
     if (this.mode !== 'hangar') return;
     if (this._hangarSeq) return;
     this.input.hangarPanEnabled = false;
     this.input.disable();
     this.input.consumeZoomDelta();
-    this.hangarBay.clearOps();
+    this._destroyInterior();
     this.mode = 'title';
     this.paused = false;
     this._titleHasDrawn = true;
@@ -1035,10 +1125,10 @@ export class GameEngine {
     this.interiorActive = false;
     placeRegistry.interiorMode = 'none';
     // Restore hangar/station place focus when leaving vessel interior
-    if (this.mode === 'hangar' || this._hangarLive) {
+    if (this.mode === 'hangar' && this.interior) {
       placeRegistry.setActive(
-        this.hangarBay.placeId || 'place.jennings',
-        this.hangarBay.areaId || null
+        this.interior.hangarBay.placeId || 'place.jennings',
+        this.interior.hangarBay.areaId || null
       );
     }
     return true;
@@ -1070,12 +1160,12 @@ export class GameEngine {
   applyPlacePreset(placeId) {
     const place = placeRegistry.applyPreset(placeId);
     if (!place) return false;
-    if (this.mode === 'hangar' || this._hangarLive) {
-      this.hangarBay.reset(this.ship, {
+    if (this.mode === 'hangar' && this.interior) {
+      this.interior.hangarBay.reset(this.ship, {
         playerBayIndex: this.playerBayIndex,
         placeId: place.id,
       });
-      if (this.mode === 'hangar') this.hangarBay.warmStartHeadless();
+      this.interior.hangarBay.warmStartHeadless();
     }
     DevTools.status = `Place: ${place.label}`;
     return true;
@@ -1124,7 +1214,7 @@ export class GameEngine {
     }
     this.input.disable();
     this.input.consumeZoomDelta();
-    this.hangarBay.clearOps();
+    this._destroyInterior();
     this._hangarSeq = null;
     this.mode = 'title';
     this._titleHasDrawn = true;
@@ -1132,6 +1222,7 @@ export class GameEngine {
   }
 
   _clearPlaySession() {
+    this._destroyInterior();
     this.entityManager.clear();
     this.particleSystem.clear();
     this.ship = null;
@@ -1140,80 +1231,8 @@ export class GameEngine {
     this._exitBurn = false;
     this._exitBurnFailsafe = 0;
     this._approachHoldAI = null;
-    this._hangarLodAccum = 0;
   }
 
-  /**
-   * World positions of real human pilots (local player today; multiplayer later).
-   * NPCs / ambient must not wake the hangar LOD.
-   * @returns {{ x: number, y: number }[]}
-   */
-  _humanPilotPositions() {
-    const out = [];
-    if (this.ship?.position && this.mode === 'playing') {
-      out.push({ x: this.ship.position.x, y: this.ship.position.y });
-    }
-    return out;
-  }
-
-  /** Distance from station center to the closest human pilot (∞ if none). */
-  _closestHumanDistToStation() {
-    const humans = this._humanPilotPositions();
-    if (!humans.length) return Infinity;
-    const sx = this.station.x;
-    const sy = this.station.y;
-    let best = Infinity;
-    for (const h of humans) {
-      const d = Math.hypot(h.x - sx, h.y - sy);
-      if (d < best) best = d;
-    }
-    return best;
-  }
-
-  /**
-   * Hangar sim tick rate from distance LOD: 1 at/inside FULL, 0 at/beyond PAUSE.
-   * @param {number} dist
-   */
-  _hangarLodRateForDist(dist) {
-    const full = STATION.HANGAR_LOD_FULL_DIST;
-    const pause = STATION.HANGAR_LOD_PAUSE_DIST;
-    if (!(dist < Infinity)) return 0;
-    if (dist <= full) return 1;
-    if (dist >= pause) return 0;
-    const u = (dist - full) / Math.max(1e-6, pause - full);
-    return clamp(1 - u, 0, 1);
-  }
-
-  /**
-   * Space-only: tick live hangar at a distance-scaled rate (pause when far).
-   * Hangar mode always runs at full rate elsewhere.
-   */
-  _tickHangarLiveLod(deltaTime) {
-    if (!this._hangarLive) return;
-
-    const rate = this._hangarLodRateForDist(this._closestHumanDistToStation());
-    this.hangarBay.spaceTrafficActive = rate > 0;
-    if (rate <= 0) {
-      // Frozen — keep last pad/door/crew state for lights when you return
-      this._hangarLodAccum = 0;
-      return;
-    }
-
-    if (rate >= 0.999) {
-      this.hangarBay.update(deltaTime, null, {});
-      this._hangarLodAccum = 0;
-      return;
-    }
-
-    // Slow band: accumulate sim time; fewer/heavier updates as rate drops
-    this._hangarLodAccum += deltaTime * rate;
-    const maxStep = 0.05;
-    while (this._hangarLodAccum >= 1 / 120) {
-      const step = Math.min(this._hangarLodAccum, maxStep);
-      this.hangarBay.update(step, null, {});
-      this._hangarLodAccum -= step;
-    }
-  }
 
   /** True when captain is commanding thrusters / engine / brake / yaw. */
   _playerWantsFlightControl() {
@@ -1264,9 +1283,8 @@ export class GameEngine {
     }
 
     const station = this.station;
-    const signals = this._hangarLive
-      ? this.hangarBay.getBaySignals()
-      : station._padOccupancy || station.baySignals;
+    const frameOpts = { frameVx: station.vx ?? 0, frameVy: station.vy ?? 0 };
+    const signals = station._padOccupancy || station.baySignals;
     station.setBaySignals(signals);
     const greens = [0, 1, 2].filter((i) => station.padAvailable(i, ship));
 
@@ -1296,6 +1314,7 @@ export class GameEngine {
           arrivalR: AMBIENT.HOLD_ARRIVAL_R,
           speedBand: AMBIENT.COAST_SPEED_BAND,
           headingTol: AMBIENT.COAST_HEADING_TOL,
+          ...frameOpts,
         });
         return;
       }
@@ -1326,6 +1345,7 @@ export class GameEngine {
           arrivalR: AMBIENT.HOLD_ARRIVAL_R,
           speedBand: AMBIENT.COAST_SPEED_BAND,
           headingTol: AMBIENT.COAST_HEADING_TOL,
+          ...frameOpts,
         });
         return;
       }
@@ -1345,9 +1365,9 @@ export class GameEngine {
       yawMult: nearMouth ? 1.35 : 1.15,
       speedBand: AMBIENT.COAST_SPEED_BAND,
       headingTol: nearMouth ? 0.35 : AMBIENT.COAST_HEADING_TOL,
+      ...frameOpts,
     });
-    const speed = ship.velocity.length();
-    if (station.shouldAutoIngress(ship, speed)) {
+    if (station.shouldAutoIngress(ship)) {
       this._releaseHoldingPattern();
       this.requestDock({ force: true });
     }
@@ -1396,6 +1416,10 @@ export class GameEngine {
   }
 
   requestLaunch() {
+    return this._guardTransition('Hangar launch request', () => this._requestLaunchBody());
+  }
+
+  _requestLaunchBody() {
     if (this.mode !== 'hangar' || this._hangarSeq) return;
     // Dev hijack: launch whichever pad ship the pilot seat selected
     const ctrl = this.hangarControlTarget;
@@ -1433,10 +1457,8 @@ export class GameEngine {
   requestDock(opts = {}) {
     if (this.mode !== 'playing' || this.paused || !this.ship) return;
     if (this._approachHoldAI) return; // AI already working the approach
-    const speed = this.ship.velocity.length();
-    if (this._hangarLive) {
-      this.station.setBaySignals(this.hangarBay.getBaySignals());
-    }
+    const vx = this.ship.velocity.x;
+    const vy = this.ship.velocity.y;
     // Station full → Enter/Click engages AI holding pattern (then land when open)
     if (this.station.allBaysBlocked(this.ship)) {
       if (this.station.inApproach(this.ship.position.x, this.ship.position.y)) {
@@ -1445,10 +1467,10 @@ export class GameEngine {
       return;
     }
     if (!opts.force) {
-      if (!this.station.canRequestDock(this.ship.position.x, this.ship.position.y, speed)) {
+      if (!this.station.canRequestDock(this.ship.position.x, this.ship.position.y, vx, vy)) {
         return;
       }
-    } else if (!this.station.isSafeDockSpeed(speed)) {
+    } else if (!this.station.isSafeDockSpeed(vx, vy)) {
       return;
     }
     const edge = this.station.ingressEdgeWorld(this.ship);
@@ -1552,6 +1574,7 @@ export class GameEngine {
     this.ship.velocity.set(0, 0);
     this.ship.angle = SHIP.SPAWN_ANGLE;
     this.ship.turretAngle = SHIP.SPAWN_ANGLE;
+    this.ship.affectedByGravity = false;
     this.ship.visualScale = 1;
     this._clearShipThrusters(this.ship);
     this.hangarBay.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
@@ -1566,10 +1589,29 @@ export class GameEngine {
   }
 
   _finishLaunchToSpace() {
+    return this._guardTransition('Hangar launch → space handoff', () =>
+      this._finishLaunchToSpaceBody()
+    );
+  }
+
+  _finishLaunchToSpaceBody() {
     const ship = this.ship;
     if (!ship) return;
 
     const launchBay = this.playerBayIndex;
+    if (this.interior) {
+      this.interior.hangarBay.clearOps(launchBay);
+      this.interior.hangarBay.clearControlledPadAfterLaunch();
+    }
+
+    const t = this.gameTime || 0;
+    if (this.interior?.spaceFrozen) {
+      this.interior.catchUpExterior(this);
+    } else {
+      syncStationAnchor(this.station, t);
+      this.poiSystem.syncPositions(t);
+    }
+
     const spawn = this.station.getExitSpawn(launchBay);
     // Hangar thrust is north (−Y). Emerge from the open bay mouth with a
     // clear outbound push so the handoff reads as leaving the station.
@@ -1577,16 +1619,14 @@ export class GameEngine {
     const speed = clamp(Math.max(hangarSpeed, 180), 180, 280);
     const nose = Number.isFinite(spawn.angle) ? spawn.angle : SHIP.SPAWN_ANGLE;
     const exitVel = Vec2.fromAngle(nose, speed);
+    exitVel.x += this.station.vx ?? 0;
+    exitVel.y += this.station.vy ?? 0;
 
-    this.hangarBay.clearOps(launchBay);
-    this.hangarBay.clearControlledPadAfterLaunch();
-    this.hangarBay.preferExternalDoorTraffic = true;
-    this._hangarLive = true;
-    this._hangarLodAccum = 0;
     this._hangarSeq = null;
     this._hangarSeqZoomPlayer = false;
     this._hangarHover = 0;
     this._dockLocked = true;
+    this._destroyInterior();
     this.entityManager.clear();
     this.particleSystem.clear();
     // Relocate the live ship (keep loadout) — don't respawn a fresh hull
@@ -1599,12 +1639,14 @@ export class GameEngine {
     this._clearShipThrusters(ship);
     ship.thrusters.mainEngine = 1;
     ship.exitBurn = true;
+    ship.affectedByGravity = true;
     this._beginExitBurn();
     this.ship = ship;
     this.entityManager.add(ship, 'ship');
 
     this.input.hangarPanEnabled = false;
     this.mode = 'playing';
+    this.interiorActive = false;
     this._resetSimSpeedUnlessDev();
     // Keep ambient; hangar stays live so pad lights / AI traffic persist
     if (!this.ambientTraffic.ships?.length) this.ambientTraffic.reset();
@@ -1624,6 +1666,10 @@ export class GameEngine {
   }
 
   _finishLanding() {
+    return this._guardTransition('Space landing → hangar settle', () => this._finishLandingBody());
+  }
+
+  _finishLandingBody() {
     this._hangarSeq = null;
     this._dockLocked = true;
     this._hangarHover = 0;
@@ -1631,6 +1677,7 @@ export class GameEngine {
     this.ship.velocity.set(0, 0);
     this.ship.angle = SHIP.SPAWN_ANGLE;
     this.ship.turretAngle = SHIP.SPAWN_ANGLE;
+    this.ship.affectedByGravity = false;
     this.ship.visualScale = 1;
     this._clearShipThrusters(this.ship);
     this.hangarBay.setPlayerPadAngle(SHIP.SPAWN_ANGLE);
@@ -1700,57 +1747,62 @@ export class GameEngine {
   _loop(timestamp) {
     if (!this.running) return;
 
-    this._updateFps(timestamp);
+    try {
+      this._updateFps(timestamp);
 
-    const rawDt = Math.min((timestamp - this.lastTime) / 1000, 0.05);
-    this.lastTime = timestamp;
+      const rawDt = Math.min((timestamp - this.lastTime) / 1000, 0.05);
+      this.lastTime = timestamp;
 
-    if (this.mode === 'playing' && this.input.consumePauseToggle()) {
-      this.togglePause();
-    } else if (this.mode === 'hangar' && this.input.consumePauseToggle()) {
-      if (!this._hangarSeq) {
-        this.exitHangar();
-        if (typeof this.onHangarExit === 'function') this.onHangarExit();
+      if (this.mode === 'playing' && this.input.consumePauseToggle()) {
+        this.togglePause();
+      } else if (this.mode === 'hangar' && this.input.consumePauseToggle()) {
+        if (!this._hangarSeq) {
+          this.exitHangar();
+          if (typeof this.onHangarExit === 'function') this.onHangarExit();
+        }
+      } else if (this.mode === 'controls' && this.input.consumePauseToggle()) {
+        const dest = this.exitControls();
+        if (typeof this.onControlsExit === 'function') this.onControlsExit(dest);
+      } else if (this.mode === 'blueprint' && this.input.consumePauseToggle()) {
+        const dest = this.exitBlueprint();
+        if (typeof this.onBlueprintExit === 'function') this.onBlueprintExit(dest);
       }
-    } else if (this.mode === 'controls' && this.input.consumePauseToggle()) {
-      const dest = this.exitControls();
-      if (typeof this.onControlsExit === 'function') this.onControlsExit(dest);
-    } else if (this.mode === 'blueprint' && this.input.consumePauseToggle()) {
-      const dest = this.exitBlueprint();
-      if (typeof this.onBlueprintExit === 'function') this.onBlueprintExit(dest);
+
+      const speed = this.simSpeed;
+      // Title always ticks (sim-speed pause must not leave a hangar zoom stuck on the backdrop).
+      if (this.mode === 'title') {
+        const deltaTime = Math.min(rawDt, 0.05);
+        this._lastFrameDt = deltaTime;
+        this.gameTime += deltaTime;
+        this._updateTitle(deltaTime);
+      } else if (!this.paused && speed > 0) {
+        const deltaTime = Math.min(rawDt * speed, 0.05 * Math.max(1, speed));
+        this.gameTime += deltaTime;
+        if (this.mode === 'hangar') {
+          this._updateHangar(deltaTime);
+        } else if (this.mode === 'controls') {
+          this._updateControls(deltaTime);
+        } else if (this.mode === 'blueprint') {
+          this._updateBlueprint(deltaTime);
+        } else {
+          this.update(deltaTime);
+        }
+      } else if (this.paused || speed <= 0) {
+        // Menu pause or sim-speed pause — keep HUD/readouts, freeze sim.
+        // Hangar layout edit freezes crew via simSpeed 0 but still needs pointer + camera.
+        if (this.mode === 'hangar' && HangarLayoutEditor.isActive()) {
+          this._tickHangarEditFrozen(rawDt);
+        } else if (this.ship && this.mode === 'playing') {
+          this._updateHUD();
+        }
+      }
+
+      this.render();
+      if (this.mode === 'hangar') this._positionLaunchBtn();
+    } catch (err) {
+      console.error('[Hyperdrift] frame error', err);
+      this._reportTransitionError('Frame tick', err);
     }
-
-    const speed = this.simSpeed;
-    // Title always ticks (sim-speed pause must not leave a hangar zoom stuck on the backdrop).
-    if (this.mode === 'title') {
-      const deltaTime = Math.min(rawDt, 0.05);
-      this._lastFrameDt = deltaTime;
-      this.gameTime += deltaTime;
-      this._updateTitle(deltaTime);
-    } else if (!this.paused && speed > 0) {
-      const deltaTime = Math.min(rawDt * speed, 0.05 * Math.max(1, speed));
-      this.gameTime += deltaTime;
-      if (this.mode === 'hangar') {
-        this._updateHangar(deltaTime);
-      } else if (this.mode === 'controls') {
-        this._updateControls(deltaTime);
-      } else if (this.mode === 'blueprint') {
-        this._updateBlueprint(deltaTime);
-      } else {
-        this.update(deltaTime);
-      }
-    } else if (this.paused || speed <= 0) {
-      // Menu pause or sim-speed pause — keep HUD/readouts, freeze sim.
-      // Hangar layout edit freezes crew via simSpeed 0 but still needs pointer + camera.
-      if (this.mode === 'hangar' && HangarLayoutEditor.isActive()) {
-        this._tickHangarEditFrozen(rawDt);
-      } else if (this.ship && this.mode === 'playing') {
-        this._updateHUD();
-      }
-    }
-
-    this.render();
-    if (this.mode === 'hangar') this._positionLaunchBtn();
     requestAnimationFrame((t) => this._loop(t));
   }
 
@@ -1776,19 +1828,13 @@ export class GameEngine {
 
     this.asteroidSystem.update(this.camera.position.x, this.camera.position.y);
     const asteroids = this.asteroidSystem.getActiveAsteroids();
-
-    // Keep hangar + ambient alive so bay traffic flies the runway
-    if (this._hangarLive) {
-      this.hangarBay.preferExternalDoorTraffic = true;
-      this.hangarBay.spaceTrafficActive = true;
-      this.hangarBay.update(deltaTime, null, {});
-      this.station.setBaySignals(this.hangarBay.getBaySignals());
-    }
+    this._frameAsteroids = asteroids;
+    this._frameAsteroids = asteroids;
 
     this.ambientTraffic.update(deltaTime, {
       player: null,
       station: this.station,
-      hangarBay: this._hangarLive ? this.hangarBay : null,
+      hangarBay: null,
       asteroids,
       particles: this.particleSystem,
       camera: {
@@ -1818,13 +1864,6 @@ export class GameEngine {
       });
     }
     this.station.refreshLaneReservations(reserveEntries);
-    if (this._hangarLive) {
-      const claims = this.station.getLaneReservationClaims().map((c) => ({
-        ...c,
-        playerShip: null,
-      }));
-      this.hangarBay.syncSpaceApproachReservations(claims);
-    }
 
     this.particleSystem.update(deltaTime);
 
@@ -1851,17 +1890,31 @@ export class GameEngine {
     }
   }
 
+  /** Hangar bay sim when an interior instance is loaded; null in exterior space. */
+  get hangarBay() {
+    return this.interior?.hangarBay ?? null;
+  }
+
+  _destroyInterior() {
+    if (!this.interior) return;
+    this.interior.destroy();
+    this.interior = null;
+  }
+
+  /** @returns {InteriorSession|null} */
+  _activeInterior() {
+    return this.interior;
+  }
+
   _coverRadius() {
     return Math.hypot(this.renderer.centerX, this.renderer.centerY) + 40;
   }
 
   _updateHangar(deltaTime) {
-    if (!this.ship) return;
-
-    this._titleHeading += TITLE_TURN_RATE * deltaTime;
-    this._spaceCam.x += Math.cos(this._titleHeading) * TITLE_DRIFT_SPEED * deltaTime;
-    this._spaceCam.y += Math.sin(this._titleHeading) * TITLE_DRIFT_SPEED * deltaTime;
-    this.asteroidSystem.update(this._spaceCam.x, this._spaceCam.y);
+    if (!this.ship || !this.interior) return;
+    this.interior.applyFrozenAnchor(this.station);
+    const intEm = this.interior.entityManager;
+    const intPs = this.interior.particleSystem;
 
     const editing = HangarLayoutEditor.isActive();
     const seqLock = !!this._hangarSeq;
@@ -1917,8 +1970,8 @@ export class GameEngine {
         ? { x: 0, y: 0 }
         : this.input.consumePanDelta();
 
-    this.entityManager.update(deltaTime);
-    this.particleSystem.update(deltaTime);
+    intEm.update(deltaTime);
+    intPs.update(deltaTime);
 
     if (!editing) {
       const ctrl = this.hangarControlTarget;
@@ -1948,14 +2001,10 @@ export class GameEngine {
         muzzleY,
       });
 
-      // Dev door/elev owns pose via playerFlight. Launch/land/elevate
-      // sequences write ship.position directly — do not snap them back to the pad.
       if (!this._hangarSeq) {
         this._syncPlayerHangarPose();
       }
 
-      // Keep player plumes cold unless this ship is live, in a Dev scene, or
-      // mid launch/land/elevate (seq owns thruster cues — never wipe those).
       if (
         !this._hangarSeq &&
         !playerLive &&
@@ -1969,10 +2018,9 @@ export class GameEngine {
       if (!this._hangarSeq && weaponShip) {
         this.hangarBay.applyWeaponHits(
           weaponShip,
-          [...this.entityManager.getByType('projectile')],
+          [...intEm.getByType('projectile')],
           deltaTime
         );
-        // Visitor draw reads pad state — sync laser beam length after hits
         if (visitorLive && ctrl?.kind === 'visitor') {
           const pad = this.hangarBay._sidePadForBay?.(ctrl.bayIndex);
           if (pad) {
@@ -2046,7 +2094,7 @@ export class GameEngine {
       this.ship.angle = this.hangarBay.playerPadAngle ?? SHIP.SPAWN_ANGLE;
       const savedDown = this.input.mouseDown;
       if (blockFire) this.input.mouseDown = false;
-      this.weaponSystem.update(this.ship, this.input, aimWorld, true, [], deltaTime);
+      this.interior?.weaponSystem.update(this.ship, this.input, aimWorld, true, [], deltaTime);
       this.input.mouseDown = savedDown;
       this._applyHangarHoverVisual(0);
     } else if (ctrl?.kind === 'visitor') {
@@ -2082,7 +2130,7 @@ export class GameEngine {
       cur.kind === hit.kind &&
       (hit.kind === 'player' || cur.bayIndex === hit.bayIndex);
     // Drop primary (no-attachId) ship-local exhaust on retarget
-    this.particleSystem.clearShipSpace(null);
+    this.interior?.particleSystem.clearShipSpace(null);
     if (cur?.kind === 'visitor') this._muteHangarVisitorWeapons(cur.bayIndex);
     if (same) {
       this.hangarControlTarget = null;
@@ -2166,7 +2214,7 @@ export class GameEngine {
 
     const savedDown = this.input.mouseDown;
     if (blockFire) this.input.mouseDown = false;
-    this.weaponSystem.update(puppet, this.input, aimWorld, true, [], deltaTime);
+    this.interior?.weaponSystem.update(puppet, this.input, aimWorld, true, [], deltaTime);
     this.input.mouseDown = savedDown;
     puppet.update(deltaTime);
 
@@ -2247,6 +2295,8 @@ export class GameEngine {
   }
 
   _emitHangarThrusterParticles() {
+    const intPs = this.interior?.particleSystem;
+    if (!intPs) return;
     const sceneBusy = this.hangarBay.isPlayerDevSceneActive();
     const playerLive =
       this.hangarControlTarget?.kind === 'player' &&
@@ -2263,7 +2313,7 @@ export class GameEngine {
       (sceneBusy && this.hangarBay.isPlayerShipVisible()) ||
       playerLive
     ) {
-      this.renderer.emitThrusterParticles(this.ship, this.particleSystem);
+      this.renderer.emitThrusterParticles(this.ship, intPs);
     }
 
     // Hangar visitors — same ship-local exhaust as the player (per-hull attachId)
@@ -2277,7 +2327,7 @@ export class GameEngine {
         velocity: { x: pad.shipVx || 0, y: pad.shipVy || 0 },
         angularVelocity: 0,
       };
-      this.renderer.emitThrusterParticles(shipLike, this.particleSystem, {
+      this.renderer.emitThrusterParticles(shipLike, intPs, {
         attachId: `v${pad.bayIndex}`,
       });
     }
@@ -2807,7 +2857,8 @@ export class GameEngine {
   }
 
   update(deltaTime) {
-    if (!this.ship) return;
+    if (!this.ship || this.mode !== 'playing') return;
+    this._lastFrameDt = deltaTime;
 
     const zoomWheel = this.input.consumeZoomDelta();
     // Full SCAN: wheel steps one pip-ring of scope zoom (camera zoom unchanged).
@@ -2831,7 +2882,12 @@ export class GameEngine {
       this.cockpitPanels.processSectorMapInput(this, this.input, zoomWheel)
     ) {
       camZoomWheel = 0;
-    } else if (this.mode === 'playing') {
+    } else if (
+      this.mode === 'playing' &&
+      (zoomWheel !== 0 ||
+        this.input.mouseDown ||
+        this.cockpitPanels._mapDragTracking)
+    ) {
       this.cockpitPanels.processSectorMapInput(this, this.input, 0);
     }
 
@@ -2878,6 +2934,37 @@ export class GameEngine {
     this._processCockpitMiddleClicks();
     this._processCockpitRightClicks();
 
+    syncStationAnchor(this.station, this.gameTime || 0);
+    this.poiSystem.syncPositions(this.gameTime || 0);
+
+    if (this.ship) {
+      this.input.tryToggleZeroHold(this.ship.velocity.length());
+      const fi = this.input.getFlightInput();
+      if (
+        this.input.zeroHoldActive &&
+        (fi.forward ||
+          fi.reverse ||
+          fi.left ||
+          fi.right ||
+          fi.mainEngine ||
+          fi.afterburner)
+      ) {
+        this.input.cancelZeroHold();
+      } else if (
+        this.input.zeroHoldActive &&
+        this.ship.velocity.length() > PHYSICS.ZERO_HOLD_CANCEL_SPEED
+      ) {
+        this.input.cancelZeroHold();
+      } else if (this.input.zeroHoldBlurRecover && this.input.zeroHoldActive && this.ship) {
+        this.input.zeroHoldBlurRecover = false;
+        this.ship.velocity.set(0, 0);
+      }
+    }
+
+    const syncAssist = this._computeSyncAssist();
+    this._syncAssistScore = syncAssist.score;
+    this._syncAssistEnabled = syncAssist.enabled;
+
     // Cockpit MODES keybinds: R flips ORIENT (ship/north), V flips VIEW (ship/scan).
     if (this.input.consumeTap('r')) this.toggleViewMode();
     if (this.input.consumeTap('v')) this.toggleScanView();
@@ -2892,11 +2979,18 @@ export class GameEngine {
           this.ship,
           this.input,
           this.precisionActive,
-          deltaTime
+          deltaTime,
+          syncAssist.enabled && this.input.getFlightInput().syncHold ? syncAssist.target : null
         );
       }
     } else {
-      this.shipController.update(this.ship, this.input, this.precisionActive, deltaTime);
+      this.shipController.update(
+        this.ship,
+        this.input,
+        this.precisionActive,
+        deltaTime,
+        syncAssist.enabled && this.input.getFlightInput().syncHold ? syncAssist.target : null
+      );
     }
     // Hangar→space: hold main-engine plume until near the outer approach lights
     if (this._exitBurn) {
@@ -2913,7 +3007,31 @@ export class GameEngine {
     }
     this.ship.update(deltaTime);
 
+    if (this.mode === 'playing') {
+      this.warpGateSystem.update(this.ship, this.gameTime || 0, deltaTime);
+      this.trafficEnforcement.update(this, deltaTime);
+      const fineToast = this.trafficEnforcement.getToast();
+      if (fineToast && fineToast !== this._lastFineToast) {
+        this._lastFineToast = fineToast;
+        this._navArrivalFlashText = fineToast;
+        this._navArrivalFlashUntil = (this.gameTime || 0) + 3;
+      } else if (!fineToast) {
+        this._lastFineToast = '';
+      }
+      this._tickIronCrownStub();
+      this.poiSystem.update({
+        ship: this.ship,
+        gameTime: this.gameTime || 0,
+        onDiscover: () => this.persistNavProfile(),
+      });
+      this.sectorMap.update({
+        ship: this.ship,
+        scanRange: this.radarSystem.on ? this.radarSystem.range : 0,
+      });
+    }
+
     const asteroids = this.asteroidSystem.getActiveAsteroids();
+    this._frameAsteroids = asteroids;
     this.weaponSystem.update(
       this.ship,
       this.input,
@@ -2924,8 +3042,8 @@ export class GameEngine {
     );
     this.weaponSystem.checkCollisions(asteroids);
 
-    // Crew-driven vessel interior sim (background while flying)
-    if (this.ship?.interiorPlaceId) {
+    // Interior crew sim only while the player is inside the vessel graph (not during spaceflight).
+    if (this.interiorActive && this.ship?.interiorPlaceId) {
       const vPlace = placeRegistry.get(this.ship.interiorPlaceId);
       if (vPlace) tickVesselInteriorCrew(this.ship, vPlace, deltaTime);
     }
@@ -2953,6 +3071,8 @@ export class GameEngine {
     }
 
     const speedAfter = this.ship.velocity.length();
+    const shipVx = this.ship.velocity.x;
+    const shipVy = this.ship.velocity.y;
     this.speedStreaks.update(
       { x: this.ship.velocity.x, y: this.ship.velocity.y },
       speedAfter,
@@ -2963,14 +3083,7 @@ export class GameEngine {
 
     this.renderer.emitThrusterParticles(this.ship, this.particleSystem);
 
-    // Hangar sim LOD: full near station → slow with distance → pause far out
-    if (this._hangarLive) {
-      this.hangarBay.preferExternalDoorTraffic = true;
-    }
-    this._tickHangarLiveLod(deltaTime);
-    const baySignals = this._hangarLive
-      ? this.hangarBay.getBaySignals()
-      : ['green', 'green', 'green'];
+    const baySignals = ['green', 'green', 'green'];
     // Exit burn: departing light follows the lane the ship is actually in
     if (this._exitBurn && this.ship?.position) {
       const lane = this.station.laneIndexFromWorldX(this.ship.position.x);
@@ -2983,9 +3096,10 @@ export class GameEngine {
     this.ambientTraffic.update(deltaTime, {
       player: this.ship,
       station: this.station,
-      hangarBay: this._hangarLive ? this.hangarBay : null,
+      hangarBay: null,
       asteroids: asteroids,
       particles: this.particleSystem,
+      gameTime: this.gameTime || 0,
       camera: {
         x: this.camera.position.x,
         y: this.camera.position.y,
@@ -3022,15 +3136,28 @@ export class GameEngine {
       });
     }
     this.station.refreshLaneReservations(reserveEntries);
-    if (this._hangarLive) {
-      const claims = this.station.getLaneReservationClaims().map((c) => ({
-        ...c,
-        playerShip: c.isPlayer ? this.ship : null,
-      }));
-      this.hangarBay.syncSpaceApproachReservations(claims);
-    }
 
     this._updateHUD();
+
+    if (this.mode === 'playing' && this.radarSystem && this.renderer.radarBand) {
+      const geo = this._radarGeometry();
+      this.radarSystem.update(deltaTime, {
+        ship: this.ship,
+        station: this.station,
+        ambientTraffic: this.ambientTraffic,
+        asteroids,
+        camera: this.camera,
+        gameTime: this.gameTime || 0,
+        radarPips: this.pipSystem.get('radar'),
+        centerX: this.renderer.centerX,
+        centerY: this.renderer.centerY,
+        innerR: geo.innerR,
+        outerR: geo.outerR,
+        band: geo.band,
+        plotPad: geo.plotPad,
+        fullScope: geo.fullScope,
+      });
+    }
 
     const stationFull = this.station.allBaysBlocked(this.ship);
     const canDock =
@@ -3038,7 +3165,8 @@ export class GameEngine {
       this.station.canRequestDock(
         this.ship.position.x,
         this.ship.position.y,
-        speedAfter
+        shipVx,
+        shipVy
       ) &&
       this.station.padAvailable(
         this.station.laneIndexFromWorldX(
@@ -3048,7 +3176,7 @@ export class GameEngine {
       );
     const near = this.station.inApproach(this.ship.position.x, this.ship.position.y);
     const canEngageHold = stationFull && near && !this._approachHoldAI;
-    this.station.updateApproachLights(this.ship, speedAfter);
+    this.station.updateApproachLights(this.ship);
     this._setDockHud(near || !!this._approachHoldAI);
     if (this._dockHud) {
       this._dockHud.classList.toggle('ready', canDock || canEngageHold);
@@ -3068,7 +3196,7 @@ export class GameEngine {
       }
     }
     // Hull-edge past caution sill into a green lane (not while AI is holding)
-    if (!this._approachHoldAI && this.station.shouldAutoIngress(this.ship, speedAfter)) {
+    if (!this._approachHoldAI && this.station.shouldAutoIngress(this.ship)) {
       this.requestDock({ force: true });
     }
   }
@@ -3128,8 +3256,7 @@ export class GameEngine {
         shipDef: a.shipDef,
         id: a.id,
       };
-      const spd = Math.hypot(a.vx || 0, a.vy || 0);
-      if (this.station.shouldOccludeShip(pose, spd)) ambientOccluded.push(a);
+      if (this.station.shouldOccludeShip(pose)) ambientOccluded.push(a);
       else ambientClear.push(a);
     }
     const anyOccluded = ambientOccluded.length > 0;
@@ -3145,7 +3272,7 @@ export class GameEngine {
     }, this.camera);
 
     this.renderer.renderAsteroids(
-      this.asteroidSystem.getActiveAsteroids(),
+      this._frameAsteroids || this.asteroidSystem.getActiveAsteroids(),
       this.camera
     );
 
@@ -3327,7 +3454,8 @@ export class GameEngine {
       this.renderer,
       this.poiSystem,
       this.ship,
-      this.camera.rotation || 0
+      this.camera.rotation || 0,
+      this.gameTime || 0
     );
     this.cockpitFrame.drawNavRouteDot(
       this.renderer.ctx,
@@ -3345,6 +3473,10 @@ export class GameEngine {
   _renderPlayWorld() {
     this._renderBackground({ fullscreen: false, includeWorldNebulae: true });
 
+    this.renderer.renderWorldLayer((ctx) => {
+      drawRingBackdrop(ctx, this.camera);
+    }, this.camera);
+
     this.renderer.ctx.save();
     this.renderer.ctx.translate(
       this.renderer.centerX + this.camera.offset.x,
@@ -3354,11 +3486,9 @@ export class GameEngine {
     this.speedStreaks.render(this.renderer.ctx);
     this.renderer.ctx.restore();
 
-    const playSpeed = this.ship?.velocity?.length?.() ?? 0;
     const baySignals = this.station.baySignals;
-    // Tape + hangar roof over any ship in the mouth (controlled + ambient)
     const playerOccluded =
-      !!this.ship && this.station.shouldOccludeShip(this.ship, playSpeed);
+      !!this.ship && this.station.shouldOccludeShip(this.ship);
     const ambientOccluded = [];
     const ambientClear = [];
     for (const a of this.ambientTraffic.ships || []) {
@@ -3369,8 +3499,7 @@ export class GameEngine {
         shipDef: a.shipDef,
         id: a.id,
       };
-      const spd = Math.hypot(a.vx || 0, a.vy || 0);
-      if (this.station.shouldOccludeShip(pose, spd)) ambientOccluded.push(a);
+      if (this.station.shouldOccludeShip(pose)) ambientOccluded.push(a);
       else ambientClear.push(a);
     }
     const anyOccluded = playerOccluded || ambientOccluded.length > 0;
@@ -3379,14 +3508,13 @@ export class GameEngine {
       this.station.render(ctx, {
         time: this.gameTime,
         ship: this.ship,
-        speed: playSpeed,
         baySignals,
         layer: anyOccluded ? 'under' : 'all',
       });
     }, this.camera);
 
     this.renderer.renderAsteroids(
-      this.asteroidSystem.getActiveAsteroids(),
+      this._frameAsteroids || this.asteroidSystem.getActiveAsteroids(),
       this.camera
     );
 
@@ -3411,7 +3539,6 @@ export class GameEngine {
         this.station.render(ctx, {
           time: this.gameTime,
           ship: this.ship,
-          speed: playSpeed,
           baySignals,
           layer: 'over',
         });
@@ -3431,14 +3558,13 @@ export class GameEngine {
       this.station.render(ctx, {
         time: this.gameTime,
         ship: this.ship,
-        speed: playSpeed,
         baySignals,
         layer: 'bayBeacons',
       });
     }, this.camera);
 
     this.renderer.renderProjectiles(
-      [...this.entityManager.getByType('projectile')],
+      this.entityManager.getByType('projectile'),
       this.camera
     );
 
@@ -3670,8 +3796,9 @@ export class GameEngine {
     let best = null;
     let bestD = 16;
     for (const poi of this.poiSystem.ringPois()) {
+      const pos = this.poiSystem.worldPosition(poi, this.gameTime || 0);
       const b =
-        Math.atan2(poi.y - this.ship.position.y, poi.x - this.ship.position.x) + camRot;
+        Math.atan2(pos.y - this.ship.position.y, pos.x - this.ship.position.x) + camRot;
       const px = rim.cx + Math.cos(b) * rim.rimR;
       const py = rim.cy + Math.sin(b) * rim.rimR;
       const d = Math.hypot(px - x, py - y);
@@ -3687,35 +3814,7 @@ export class GameEngine {
     const r = this.renderer;
     if (!r.radarBand || !this.ship) return;
 
-    const dt = this._lastFrameDt || 1 / 60;
-    const radarPips = this.pipSystem.get('radar');
     const geo = this._radarGeometry();
-
-    this.radarSystem.update(dt, {
-      ship: this.ship,
-      station: this.station,
-      ambientTraffic: this.ambientTraffic,
-      asteroids: this.asteroidSystem.getActiveAsteroids(),
-      camera: this.camera,
-      radarPips,
-      centerX: r.centerX,
-      centerY: r.centerY,
-      innerR: geo.innerR,
-      outerR: geo.outerR,
-      band: geo.band,
-      plotPad: geo.plotPad,
-      fullScope: geo.fullScope,
-    });
-
-    // POI discovery (proximity) + sector-map fog reveal ride the scan.
-    this.poiSystem.update({
-      ship: this.ship,
-      onDiscover: () => this.persistNavProfile(),
-    });
-    this.sectorMap.update({
-      ship: this.ship,
-      scanRange: this.radarSystem.on ? this.radarSystem.range : 0,
-    });
 
     this.radarDisplay.render(r.ctx, {
       centerX: r.centerX,
@@ -3791,7 +3890,7 @@ export class GameEngine {
     ctx.fill();
 
     this.renderer.renderProjectiles(
-      [...this.entityManager.getByType('projectile')],
+      this.entityManager.getByType('projectile'),
       this.camera
     );
     this.renderer.renderParticles(
@@ -4093,18 +4192,20 @@ export class GameEngine {
   }
 
   _renderHangar() {
+    if (!this.interior?.hangarBay) return;
     this._syncHangarDevControlPad();
     const ctx = this.renderer.ctx;
     ctx.fillStyle = '#0a1018';
     ctx.fillRect(0, 0, this.renderer.width, this.renderer.height);
 
+    const bd = this.interior?.backdrop || { x: 0, y: -68000 };
     const space = {
       starfield: this.starfield,
       nebulaField: this.nebulaField,
-      spaceX: this._spaceCam.x,
-      spaceY: this._spaceCam.y,
+      spaceX: bd.x,
+      spaceY: bd.y,
       time: this.gameTime,
-      nebulae: this.asteroidSystem.getNebulae(),
+      backdropSession: this.interior?.backdropSession | 0,
     };
 
     const doorLip = this.hangarBay.getDoorLipY();
@@ -4143,12 +4244,12 @@ export class GameEngine {
     }, this.camera);
 
     this.renderer.renderProjectiles(
-      [...this.entityManager.getByType('projectile')],
+      this.interior.entityManager.getByType('projectile'),
       this.camera
     );
 
     this.renderer.renderParticles(
-      this.particleSystem.particles,
+      this.interior.particleSystem.particles,
       this.camera,
       this.ship,
       { hulls: this._exhaustHullPoses() }

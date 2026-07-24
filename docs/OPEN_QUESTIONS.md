@@ -209,13 +209,13 @@ Hangar pad status boards still show display Mk stubs; modular catalog now define
 
 ## 9. Prototype sector map & harvesting (direction set — details TBD)
 
-**Direction (2026-07):** Play space becomes a **planet + asteroid rings** layout authored in `src/world/data/sectorLayout.js`. Sector Map shows planet/rings; proc gen weights asteroids by ring **composition** tags (`iron`, `ice`, `silicate`, `carbonaceous`, `rare`, …). Mining/harvest loop still prototype — `Asteroid.composition` is scaffold only.
+**Direction (2026-07):** Play space is the bounded **Thera system** — **Therissa Prime** (short **Thera**) at Planet Center `(0,0)`, three asteroid ring bands, 12 outlaw-country orbital stations (Jennings + clones), five planetary surface sites, six ring warp gates, and deep fringe stubs. Authored in `src/world/data/sectorLayout.js` v2; bootstrapped via `SectorBootstrap.js`. Sector Map shows rotating planet/rings with fog-tier brightness; proc gen respects site exclusion zones and ring **composition** tags. Mining/harvest loop still prototype — `Asteroid.composition` is scaffold only.
 
-| # | Question | Why it matters |
-|---|----------|----------------|
-| 9.1 | Move Jennings off world origin to an authored orbit slot? | Saved POI coords, approach vectors, sector map center |
-| 9.2 | Water-from-ice: cargo unit, consumable, or station commodity first? | Ties ice-rich outer rings to gameplay |
-| 9.3 | Full **Dev sector editor** (ring handles, POI drag, composition sliders) vs drawer-only? | Content authoring throughput |
+| # | Question | Status |
+|---|----------|--------|
+| 9.1 | Move Jennings off world origin to an authored orbit slot? | **Resolved (2026-07-23):** yes — Jennings at ~480k u orbit; Planet Center at origin; nav persistence bumped to v4 |
+| 9.2 | Water-from-ice: cargo unit, consumable, or station commodity first? | Open — ties ice-rich outer rings to gameplay |
+| 9.3 | Full **Dev sector editor** (ring handles, POI drag, composition sliders) vs drawer-only? | **Partial:** validator + orbit helpers + bake gate shipped; full canvas editor polish ongoing |
 
 ---
 
@@ -228,4 +228,4 @@ Hangar pad status boards still show display Mk stubs; modular catalog now define
 
 ---
 
-*Last updated: 2026-07-16*
+*Last updated: 2026-07-23*

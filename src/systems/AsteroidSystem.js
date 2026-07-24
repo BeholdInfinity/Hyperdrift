@@ -7,6 +7,16 @@ export class AsteroidSystem {
     this.generator = new ProceduralGeneration();
     this.chunks = new Map();
     this.activeAsteroids = new Set();
+    /** Reused each frame — invalidated on chunk load/unload. */
+    this._activeList = [];
+    this._listDirty = true;
+    this._nebulaeCache = [];
+    this._nebulaeDirty = true;
+  }
+
+  _markDirty() {
+    this._listDirty = true;
+    this._nebulaeDirty = true;
   }
 
   _chunkKey(cx, cy) {
@@ -58,6 +68,7 @@ export class AsteroidSystem {
       this.entityManager.add(asteroid, 'asteroid');
       this.activeAsteroids.add(asteroid);
     }
+    this._markDirty();
   }
 
   _unloadChunk(key) {
@@ -70,14 +81,18 @@ export class AsteroidSystem {
     }
 
     this.chunks.delete(key);
+    this._markDirty();
   }
 
   getNebulae() {
-    const nebulae = [];
-    for (const chunk of this.chunks.values()) {
-      nebulae.push(...chunk.nebulae);
+    if (this._nebulaeDirty) {
+      this._nebulaeCache.length = 0;
+      for (const chunk of this.chunks.values()) {
+        for (const n of chunk.nebulae) this._nebulaeCache.push(n);
+      }
+      this._nebulaeDirty = false;
     }
-    return nebulae;
+    return this._nebulaeCache;
   }
 
   getStarDensityAt(x, y) {
@@ -88,6 +103,13 @@ export class AsteroidSystem {
   }
 
   getActiveAsteroids() {
-    return [...this.activeAsteroids].filter((a) => a.active);
+    if (this._listDirty) {
+      this._activeList.length = 0;
+      for (const a of this.activeAsteroids) {
+        if (a.active) this._activeList.push(a);
+      }
+      this._listDirty = false;
+    }
+    return this._activeList;
   }
 }

@@ -286,12 +286,18 @@ export function cruiseTo(ship, tx, ty, cruiseSpeed, dt, opts = {}) {
   /** Don't main-burn if nose is more than this off the burn axis (~35°). */
   const burnAlign = opts.burnAlign ?? 0.6;
 
+  const frameVx = opts.frameVx ?? 0;
+  const frameVy = opts.frameVy ?? 0;
+  const useFrame = 'frameVx' in opts || 'frameVy' in opts;
+
   const dx = tx - ship.position.x;
   const dy = ty - ship.position.y;
   const dist = Math.hypot(dx, dy);
   const desired = Math.atan2(dy, dx);
   const cruise = Math.max(40, cruiseSpeed);
-  const speed = ship.velocity.length();
+  const speed = useFrame
+    ? Math.hypot(ship.velocity.x - frameVx, ship.velocity.y - frameVy)
+    : ship.velocity.length();
   const velAng = travelAngle(ship, 6) ?? desired;
   const trackErr = angleDifference(velAng, desired);
   const headingErr = angleDifference(ship.angle, desired);
@@ -546,6 +552,8 @@ export function followWaypointRing(ship, corners, cruiseSpeed, dt, opts = {}) {
     headingTol: opts.headingTol,
     yawMult: opts.yawMult,
     brakeForArrival: opts.brakeForArrival ?? true,
+    frameVx: opts.frameVx,
+    frameVy: opts.frameVy,
   });
   if (result.arrived || result.dist < arrivalR) {
     const dir = opts.reverse ? -1 : 1;

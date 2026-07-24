@@ -659,6 +659,16 @@ export class CockpitPanels {
         });
       }
     });
+    if (engine._syncAssistScore != null && scan.selectedId) {
+      const syncLabel = engine._syncAssistEnabled
+        ? `SYNC ${Math.round(engine._syncAssistScore)}% · hold X`
+        : `SYNC ${Math.round(engine._syncAssistScore)}%`;
+      this._text(ctx, syncLabel, box.x, listY + listH - 4, {
+        size: 10,
+        color: engine._syncAssistEnabled ? ACCENT : DIM,
+        weight: 600,
+      });
+    }
   }
 
   // ---- 2 COMMS -----------------------------------------------------------
@@ -1220,6 +1230,18 @@ export class CockpitPanels {
     }
     const mx = input.mouseScreen.x;
     const my = input.mouseScreen.y;
+    if (!zoomWheel && !input.mouseDown && !this._mapDragTracking) {
+      const overMap = view.mapBody && view.containsMapPoint(mx, my);
+      const overLog =
+        view.tabs.sector === 1 && view.containsTravelLogList(mx, my);
+      if (!overMap && !overLog) {
+        if (view.hoverWorld) {
+          view.hoverWorld = null;
+          view.mapHoverTooltip = null;
+        }
+        return false;
+      }
+    }
     if (
       zoomWheel !== 0 &&
       view.tabs.sector === 1 &&

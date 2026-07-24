@@ -22,6 +22,10 @@ export const PHYSICS = {
   PRECISION_BURST_MULT: 0.66,
   /** Double-tap window (seconds) for QWEASD burst */
   DOUBLE_TAP_WINDOW: 0.32,
+  /** Double-tap Alt arms zero-hold only below this speed (world u/s). */
+  ZERO_HOLD_ARM_SPEED: 100,
+  /** Zero-hold disengages if speed exceeds this while active. */
+  ZERO_HOLD_CANCEL_SPEED: 120,
 };
 
 export const SHIP = {
@@ -63,6 +67,8 @@ export const WORLD = {
   LOAD_RADIUS: 3,
   UNLOAD_RADIUS: 5,
   SEED: 42,
+  USE_MAX_SPEED_CAP: false,
+  SOFT_EDGE_RADIUS: 750000,
 };
 
 export const CAMERA = {
@@ -243,6 +249,8 @@ export const STATION = {
   SCALE: STATION_SCALE,
   WORLD_X: 0,
   WORLD_Y: 0,
+  WORLD_VX: 0,
+  WORLD_VY: 0,
   RADIUS: 160 * STATION_SCALE,
   /**
    * Dock / official entrance on the north rim (must match RADIUS).
@@ -321,13 +329,6 @@ export const STATION = {
   INGRESS_CORRIDOR_PAD_Y: 28 * STATION_SCALE,
   INGRESS_CORRIDOR_PAD_X: 10 * STATION_SCALE,
   INGRESS_MOUTH_SLACK: 4 * STATION_SCALE,
-  /**
-   * Hangar sim LOD while flying (distance from station to closest human pilot).
-   * ≤ FULL → real-time tick; FULL→PAUSE → rate falls 1→0; ≥ PAUSE → frozen.
-   * Multiplayer: use nearest real human, not NPCs.
-   */
-  HANGAR_LOD_FULL_DIST: 900 * STATION_SCALE,
-  HANGAR_LOD_PAUSE_DIST: 2800 * STATION_SCALE,
   /** Exterior arms / core set dressing */
   ARM_ROOT: 70 * STATION_SCALE,
   ARM_LEN: 110 * STATION_SCALE,

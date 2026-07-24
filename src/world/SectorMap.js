@@ -32,6 +32,8 @@ export class SectorMap {
     this._lastTrail = null;
     /** Live in-range cell keys (rebuilt each update). */
     this._inRange = new Set();
+    /** Bumps when fog-of-war reveal set grows (sector map cache invalidation). */
+    this.fogRevision = 0;
     this.cellSize = CELL;
   }
 
@@ -40,6 +42,7 @@ export class SectorMap {
     this.trail.length = 0;
     this._lastTrail = null;
     this._inRange.clear();
+    this.fogRevision = 0;
   }
 
   _key(cx, cy) {
@@ -50,6 +53,7 @@ export class SectorMap {
     if (!ship) return;
     const px = ship.position.x;
     const py = ship.position.y;
+    const prevRevealed = this.revealed.size;
 
     // Trail sampling (every ~600 world units).
     if (!this._lastTrail || Math.hypot(px - this._lastTrail.x, py - this._lastTrail.y) > 600) {
@@ -59,7 +63,10 @@ export class SectorMap {
     }
 
     this._inRange.clear();
-    if (!scanRange) return;
+    if (!scanRange) {
+      if (this.revealed.size > prevRevealed) this.fogRevision++;
+      return;
+    }
     const r = scanRange;
     const c0x = Math.floor((px - r) / CELL);
     const c1x = Math.floor((px + r) / CELL);
@@ -77,6 +84,7 @@ export class SectorMap {
         }
       }
     }
+    if (this.revealed.size > prevRevealed) this.fogRevision++;
   }
 
   /** 0 unseen, 1 stale, 2 in-range. */

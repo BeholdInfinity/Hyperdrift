@@ -19,6 +19,18 @@ export class InputSystem {
     this.zoomDelta = 0;
     this.pauseToggle = false;
     this.capsLockDesired = false;
+    /** Latched "stay at zero" hover — toggled by double-tap Alt when slow. */
+    this.zeroHoldActive = false;
+    this._altTapLast = -Infinity;
+    this._altDoubleTap = false;
+    /** Set on window focus while zero-hold latched — one-frame velocity recover. */
+    this.zeroHoldBlurRecover = false;
+    /** Latched "stay at zero" hover — toggled by double-tap Alt when slow. */
+    this.zeroHoldActive = false;
+    this._altTapLast = -Infinity;
+    this._altDoubleTap = false;
+    /** Set on window focus while zero-hold latched — one-frame velocity recover. */
+    this.zeroHoldBlurRecover = false;
     /** Hangar: LMB drag pans the camera (fire still uses LMB when a ship is selected). */
     this.hangarPanEnabled = false;
     this._pan = {
@@ -63,8 +75,10 @@ export class InputSystem {
     this.canvas.addEventListener('wheel', (e) => this._onWheel(e), { passive: false });
     this.canvas.addEventListener('contextmenu', (e) => e.preventDefault());
     document.addEventListener('fullscreenchange', this._onFullscreenChange);
-    window.addEventListener('focus', () => this._syncCapsLock());
-
+    window.addEventListener('focus', () => {
+      this._syncCapsLock();
+      if (this.zeroHoldActive) this.zeroHoldBlurRecover = true;
+    });
     window.addEventListener('blur', () => {
       this.keys.clear();
       this._taps.clear();
@@ -73,6 +87,7 @@ export class InputSystem {
       this._middleClickPos = null;
       this._resetPan();
       this._clearBurstArms();
+      // Keep zero-hold latch across app/window focus changes.
     });
   }
 
@@ -95,6 +110,9 @@ export class InputSystem {
     this._taps.clear();
     this._resetPan();
     this._clearBurstArms();
+    this.zeroHoldActive = false;
+    this._altDoubleTap = false;
+    this.zeroHoldBlurRecover = false;
   }
 
   _resetPan() {
@@ -184,6 +202,13 @@ export class InputSystem {
     // Alt alone can focus the browser menu bar — swallow while playing
     if (key === 'alt') {
       e.preventDefault();
+      if (!e.repeat) {
+        const now = performance.now() / 1000;
+        if (now - this._altTapLast <= PHYSICS.DOUBLE_TAP_WINDOW) {
+          this._altDoubleTap = true;
+        }
+        this._altTapLast = now;
+      }
     }
 
     // Must run in capture (see _bindEvents) — Alt+letter menu chords, etc.
@@ -403,6 +428,19 @@ export class InputSystem {
     return this.isKeyDown(key) && this._burst[key].armed;
   }
 
+  /** Double-tap Alt toggles zero-hold when speed is below arm threshold. */
+  tryToggleZeroHold(speed) {
+    if (!this._altDoubleTap) return false;
+    this._altDoubleTap = false;
+    if (speed >= PHYSICS.ZERO_HOLD_ARM_SPEED) return false;
+    this.zeroHoldActive = !this.zeroHoldActive;
+    return true;
+  }
+
+  cancelZeroHold() {
+    this.zeroHoldActive = false;
+  }
+
   getFlightInput() {
     return {
       forward: this.isKeyDown('w'),
@@ -420,6 +458,8 @@ export class InputSystem {
       mainEngine: this.isKeyDown(' '),
       afterburner: this.isKeyDown('shift'),
       brake: this.isKeyDown('alt'),
+      zeroHold: this.zeroHoldActive,
+      syncHold: this.isKeyDown('x'),
       capsDesired: this.capsLockDesired,
       // Hangar: LMB fires while a ship is selected and also pans on drag.
       // Deselect the ship to stop shooting; GameEngine suppresses fire on ship-click.

@@ -31,6 +31,8 @@ export class Station {
   constructor() {
     this.x = STATION.WORLD_X;
     this.y = STATION.WORLD_Y;
+    this.vx = STATION.WORLD_VX ?? 0;
+    this.vy = STATION.WORLD_VY ?? 0;
     /** @type {'yellow'|'green'|'red'|'fullBlinkRed'|'exitReverseRed'} */
     this.approachLightMode = 'yellow';
     /**
@@ -49,6 +51,26 @@ export class Station {
      * @type {Map<string|number, { lane: number, ship: object, shipDef?: object, isPlayer?: boolean, visitorId?: string }>}
      */
     this.laneReservations = new Map();
+  }
+
+  /** Move overworld anchor (Jennings orbit). */
+  setWorldAnchor(x, y, vx = 0, vy = 0) {
+    this.x = x;
+    this.y = y;
+    this.vx = vx;
+    this.vy = vy;
+  }
+
+  /** Speed relative to the station's orbital frame. */
+  relativeSpeed(vx, vy) {
+    return Math.hypot(vx - (this.vx || 0), vy - (this.vy || 0));
+  }
+
+  _shipVelocity(ship) {
+    return {
+      vx: ship?.velocity?.x ?? ship?.vx ?? 0,
+      vy: ship?.velocity?.y ?? ship?.vy ?? 0,
+    };
   }
 
   /**
@@ -82,16 +104,14 @@ export class Station {
    * @param {number} [speed]
    * @returns {number|null} lane 0–2 or null
    */
-  computeLaneReservation(ship, speed) {
+  computeLaneReservation(ship) {
     if (!ship?.position || !Number.isFinite(ship.angle)) return null;
-    const spd = Number.isFinite(speed)
-      ? speed
-      : Math.hypot(ship.velocity?.x || 0, ship.velocity?.y || 0);
-    if (!this.isSafeDockSpeed(spd)) return null;
+    const { vx, vy } = this._shipVelocity(ship);
+    if (!this.isSafeDockSpeed(vx, vy)) return null;
     if (!this.inApproachLights(ship.position.x, ship.position.y)) return null;
     if (!this.isIngressHeading(ship.angle)) return null;
     // Outbound traffic does not claim a pad
-    if ((ship.velocity?.y ?? 0) < -4) return null;
+    if (vy - (this.vy || 0) < -4) return null;
     const hw = STATION.MOUTH_HALF_W + STATION.INGRESS_MOUTH_SLACK;
     if (Math.abs(ship.position.x - this.x) > hw) return null;
     return this.laneIndexFromWorldX(ship.position.x);
@@ -106,7 +126,7 @@ export class Station {
     for (const entry of entries || []) {
       const ship = entry?.ship;
       if (!ship) continue;
-      const lane = this.computeLaneReservation(ship, entry.speed);
+      const lane = this.computeLaneReservation(ship);
       if (lane == null) continue;
       const id = this._shipLatchId(ship);
       next.set(id, {
@@ -346,7 +366,7 @@ export class Station {
    * under the structure (rotating under the tape must not pop on top).
    * Exit burn: any speed until clear. Otherwise: safe-speed hysteresis only.
    */
-  shouldOccludeShip(ship, speed) {
+  shouldOccludeShip(ship) {
     const id = this._shipLatchId(ship);
     if (!ship?.position) {
       this._occludeLatchByShip.delete(id);
@@ -363,6 +383,8 @@ export class Station {
       return true;
     }
 
+    const { vx, vy } = this._shipVelocity(ship);
+    const speed = this.relativeSpeed(vx, vy);
     // Under the entrance: geometry wins over heading. Only drop if too fast.
     const enter = STATION.DOCK_MAX_SPEED;
     const leave = enter + STATION.OCCLUDE_SPEED_SLACK;
@@ -386,10 +408,10 @@ export class Station {
   }
 
   /** Tight zone + slow enough to request landing (Enter/Click ready). */
-  canRequestDock(shipX, shipY, speed) {
+  canRequestDock(shipX, shipY, vx, vy) {
     const dx = shipX - this.x;
     const dy = shipY - this.dockFaceY();
-    return Math.hypot(dx, dy) < STATION.DOCK_RADIUS && speed < STATION.DOCK_MAX_SPEED;
+    return Math.hypot(dx, dy) < STATION.DOCK_RADIUS && this.isSafeDockSpeed(vx, vy);
   }
 
   /**
@@ -408,8 +430,8 @@ export class Station {
     );
   }
 
-  isSafeDockSpeed(speed) {
-    return speed < STATION.DOCK_MAX_SPEED;
+  isSafeDockSpeed(vx, vy) {
+    return this.relativeSpeed(vx, vy) < STATION.DOCK_MAX_SPEED;
   }
 
   /** Nose-in: facing into the bay (south) within slack. */
@@ -431,10 +453,11 @@ export class Station {
    * Safe enter approach from the correct angle: aligned (nose-in or reverse),
    * slow enough, in the light corridor / mouth.
    */
-  isSafeIngressApproach(ship, speed) {
+  isSafeIngressApproach(ship) {
     if (!ship?.position) return false;
     if (!this.isIngressHeading(ship.angle)) return false;
-    if (!this.isSafeDockSpeed(speed)) return false;
+    const { vx, vy } = this._shipVelocity(ship);
+    if (!this.isSafeDockSpeed(vx, vy)) return false;
     return this.inApproachLights(ship.position.x, ship.position.y);
   }
 
@@ -470,9 +493,10 @@ export class Station {
    * Auto-trigger landing: safe speed, nose-in or reverse heading, in a **green**
    * pad lane, after the inbound hull edge has crossed past the caution paint.
    */
-  shouldAutoIngress(ship, speed) {
+  shouldAutoIngress(ship) {
     if (!ship?.position) return false;
-    if (!this.isSafeDockSpeed(speed)) return false;
+    const { vx, vy } = this._shipVelocity(ship);
+    if (!this.isSafeDockSpeed(vx, vy)) return false;
     if (!this.isIngressHeading(ship.angle)) return false;
     if (this.allBaysBlocked(ship)) return false;
 
@@ -483,8 +507,8 @@ export class Station {
     const lane = this.laneIndexFromWorldX(edge.x);
     if (!this.padAvailable(lane, ship)) return false;
 
-    const vy = ship.velocity?.y || 0;
-    if (vy < 6) return false;
+    const rvy = vy - (this.vy || 0);
+    if (rvy < 6) return false;
 
     const stripeY = this.stripeWorldY();
     const triggerY = stripeY + STATION.INGRESS_EDGE_OVERHANG;
@@ -497,7 +521,7 @@ export class Station {
    * Update approach-light color mode from bay status + controlled ship.
    * @returns {'yellow'|'green'|'red'|'fullBlinkRed'|'exitReverseRed'}
    */
-  updateApproachLights(ship, speed) {
+  updateApproachLights(ship) {
     if (this.anyBayDeparting()) {
       this.approachLightMode = 'exitReverseRed';
       return this.approachLightMode;
@@ -511,7 +535,8 @@ export class Station {
       this.approachLightMode = 'yellow';
       return this.approachLightMode;
     }
-    this.approachLightMode = this.isSafeDockSpeed(speed) ? 'green' : 'red';
+    const { vx, vy } = this._shipVelocity(ship);
+    this.approachLightMode = this.isSafeDockSpeed(vx, vy) ? 'green' : 'red';
     return this.approachLightMode;
   }
 
@@ -526,7 +551,7 @@ export class Station {
     if (opts.baySignals) this.setBaySignals(opts.baySignals);
     if (opts.ship) this._latchPlayerRef = opts.ship;
     if (opts.ship && layer !== 'over') {
-      this.updateApproachLights(opts.ship, opts.speed ?? 0);
+      this.updateApproachLights(opts.ship);
     }
 
     ctx.save();

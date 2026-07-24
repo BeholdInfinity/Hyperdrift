@@ -3,7 +3,8 @@
  */
 
 import { IFF, NAV } from '../core/Constants.js';
-import { getSectorLayout } from '../world/SectorLayout.js';
+import { getSectorLayout, listSites, siteWorldPosition, stationTrafficZonesFor } from '../world/SectorLayout.js';
+import { planetSpinAngle } from '../world/PlanetSpin.js';
 import { formatTripDate } from '../world/TravelLog.js';
 import { trailDistance } from '../world/SectorMap.js';
 import {
@@ -24,6 +25,32 @@ const TXT = 'rgba(200, 224, 246, 0.9)';
 const DIM = 'rgba(150, 178, 202, 0.55)';
 const COPPER = 'rgba(230, 171, 109, 0.92)';
 const ACCENT = 'rgba(120, 200, 255, 0.85)';
+
+/** Offscreen cache for panned sector map (follow-ship mode pans every frame). */
+const _mapStaticCache = { canvas: null, ctx: null, w: 0, h: 0, key: '' };
+
+function ensureMapStaticCache(w, h) {
+  if (!_mapStaticCache.canvas || _mapStaticCache.w !== w || _mapStaticCache.h !== h) {
+    _mapStaticCache.canvas = document.createElement('canvas');
+    _mapStaticCache.canvas.width = w;
+    _mapStaticCache.canvas.height = h;
+    _mapStaticCache.ctx = _mapStaticCache.canvas.getContext('2d');
+    _mapStaticCache.w = w;
+    _mapStaticCache.h = h;
+    _mapStaticCache.key = '';
+  }
+}
+
+function mapStaticCacheKey(box, engine, view, span, fog) {
+  const pan = view.panCenter;
+  const px = Math.round(pan.x / 350);
+  const py = Math.round(pan.y / 350);
+  const z = Math.round(view.zoom * 600);
+  const spin = Math.floor((engine.gameTime || 0) * 3);
+  const fogRev = engine.sectorMap.fogRevision || 0;
+  const trails = engine.travelLog.visibleEntries().length;
+  return `${box.w}x${box.h}|${px},${py}|${z}|${Math.round(span)}|${spin}|${fogRev}|${trails}|${fog ? 1 : 0}`;
+}
 
 export function drawSectorMapPanel(ctx, box, engine, panels) {
   const view = engine.sectorMapView;
@@ -125,33 +152,100 @@ function drawMapCanvas(ctx, box, engine, view, { fog, liveTrail }) {
   view.syncFollow(ship);
   const scale = view.scaleForBox(box.w, box.h);
   const span = view.worldSpan(box.w, box.h);
-  const cell = map.cellSize;
+  const useStaticCache = !view.followShip;
 
   ctx.save();
   ctx.beginPath();
   ctx.rect(box.x, box.y, box.w, box.h);
   ctx.clip();
+
+  if (useStaticCache) {
+    const cacheKey = mapStaticCacheKey(box, engine, view, span, fog);
+    ensureMapStaticCache(box.w, box.h);
+    if (_mapStaticCache.key !== cacheKey) {
+      const sctx = _mapStaticCache.ctx;
+      sctx.setTransform(1, 0, 0, 1, 0, 0);
+      sctx.clearRect(0, 0, box.w, box.h);
+      drawMapStaticLayers(sctx, { x: 0, y: 0, w: box.w, h: box.h }, engine, view, {
+        fog,
+        scale,
+        span,
+      });
+      _mapStaticCache.key = cacheKey;
+    }
+    ctx.drawImage(_mapStaticCache.canvas, box.x, box.y);
+  } else {
+    ctx.fillStyle = 'rgba(8, 16, 24, 0.6)';
+    ctx.fillRect(box.x, box.y, box.w, box.h);
+    drawMapStaticLayers(ctx, box, engine, view, { fog, scale, span });
+  }
+
+  drawMapDynamicLayers(ctx, box, engine, view, { liveTrail, ship });
+
+  ctx.restore();
+}
+
+function drawMapStaticLayers(ctx, box, engine, view, { fog, scale, span }) {
+  const map = engine.sectorMap;
+  const cell = map.cellSize;
+
   ctx.fillStyle = 'rgba(8, 16, 24, 0.6)';
   ctx.fillRect(box.x, box.y, box.w, box.h);
 
   const layout = getSectorLayout();
   const pr = layout.planet.radius;
+  const spin = planetSpinAngle(engine.gameTime || 0, layout);
   const ps = view.worldToScreen(0, 0, box);
   const prScreen = pr * scale;
+  const fogAt = (wx, wy) => {
+    const cx = Math.floor(wx / cell);
+    const cy = Math.floor(wy / cell);
+    return map.cellLevel(cx, cy);
+  };
+  const geoAlpha = (wx, wy, active = 0.85, stale = 0.35, unseen = 0.12) => {
+    const lvl = fogAt(wx, wy);
+    if (lvl >= 2) return active;
+    if (lvl === 1) return stale;
+    return unseen;
+  };
+
   if (prScreen > 2) {
+    ctx.save();
+    ctx.translate(ps.x, ps.y);
+    ctx.rotate(spin);
+    const planetAlpha = geoAlpha(0, 0);
+    ctx.globalAlpha = planetAlpha;
     ctx.fillStyle = layout.planet.palette?.ocean || '#1a3a4a';
     ctx.beginPath();
-    ctx.arc(ps.x, ps.y, prScreen, 0, Math.PI * 2);
+    ctx.arc(0, 0, prScreen, 0, Math.PI * 2);
     ctx.fill();
     ctx.strokeStyle = 'rgba(100, 140, 160, 0.35)';
     ctx.lineWidth = 1;
     ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(0, -prScreen);
+    ctx.lineTo(0, -prScreen - Math.max(4, prScreen * 0.08));
+    ctx.strokeStyle = 'rgba(180, 220, 240, 0.55)';
+    ctx.stroke();
+    ctx.restore();
+    if (span > layout.planet.radius * 4) {
+      ctx.fillStyle = `rgba(200, 224, 246, ${0.35 * planetAlpha})`;
+      ctx.font = `600 ${Math.max(9, Math.min(12, prScreen * 0.08))}px ${FONT}`;
+      ctx.textAlign = 'center';
+      ctx.fillText(
+        span > 400000 ? layout.planet.nameOfficial || 'Therissa Prime' : layout.planet.nameShort || 'Thera',
+        ps.x,
+        ps.y - prScreen - 10
+      );
+    }
   }
   for (const ring of layout.rings || []) {
     const ri = ring.innerR * scale;
     const ro = ring.outerR * scale;
     if (ro < 2) continue;
-    ctx.strokeStyle = 'rgba(80, 100, 120, 0.12)';
+    const midR = (ring.innerR + ring.outerR) * 0.5;
+    const ringAlpha = geoAlpha(Math.cos(spin) * midR, Math.sin(spin) * midR, 0.22, 0.14, 0.06);
+    ctx.strokeStyle = `rgba(80, 100, 120, ${ringAlpha})`;
     ctx.lineWidth = 1;
     ctx.beginPath();
     ctx.arc(ps.x, ps.y, ri, 0, Math.PI * 2);
@@ -161,6 +255,23 @@ function drawMapCanvas(ctx, box, engine, view, { fog, liveTrail }) {
     ctx.stroke();
   }
 
+  if (span < 120000) {
+    for (const site of listSites('station', layout)) {
+      if (site.trafficPolicy === 'none') continue;
+      const pos = siteWorldPosition(site, engine.gameTime || 0, layout);
+      const ss = view.worldToScreen(pos.x, pos.y, box);
+      const zones = stationTrafficZonesFor(site, layout);
+      for (const z of zones) {
+        const zr = z.maxDist * scale;
+        if (zr < 3) continue;
+        ctx.strokeStyle = 'rgba(120, 160, 190, 0.14)';
+        ctx.beginPath();
+        ctx.arc(ss.x, ss.y, zr, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+    }
+  }
+
   if (fog) {
     const half = span / 2;
     const c0x = Math.floor((view.panCenter.x - half) / cell);
@@ -168,15 +279,32 @@ function drawMapCanvas(ctx, box, engine, view, { fog, liveTrail }) {
     const c0y = Math.floor((view.panCenter.y - half) / cell);
     const c1y = Math.floor((view.panCenter.y + half) / cell);
     const cs = cell * scale;
-    for (let cx = c0x; cx <= c1x; cx++) {
-      for (let cy = c0y; cy <= c1y; cy++) {
-        const lvl = map.cellLevel(cx, cy);
-        if (!lvl) continue;
-        const wx = cx * cell;
-        const wy = cy * cell;
-        const s = view.worldToScreen(wx, wy, box);
-        ctx.fillStyle = lvl === 2 ? 'rgba(60, 120, 170, 0.28)' : 'rgba(50, 70, 90, 0.16)';
-        ctx.fillRect(s.x, s.y, cs + 0.5, cs + 0.5);
+    if (cs >= 1.25) {
+      const nx = c1x - c0x + 1;
+      const ny = c1y - c0y + 1;
+      const total = nx * ny;
+      const MAX_FOG_CELLS = 4800;
+      const stride =
+        total > MAX_FOG_CELLS ? Math.ceil(Math.sqrt(total / MAX_FOG_CELLS)) : 1;
+      const drawW = cs * stride + 0.5;
+      for (let cx = c0x; cx <= c1x; cx += stride) {
+        for (let cy = c0y; cy <= c1y; cy += stride) {
+          let lvl = 0;
+          if (stride > 1) {
+            for (let dx = 0; dx < stride && lvl < 2; dx++) {
+              for (let dy = 0; dy < stride && lvl < 2; dy++) {
+                lvl = Math.max(lvl, map.cellLevel(cx + dx, cy + dy));
+              }
+            }
+          } else {
+            lvl = map.cellLevel(cx, cy);
+          }
+          if (!lvl) continue;
+          const s = view.worldToScreen(cx * cell, cy * cell, box);
+          ctx.fillStyle =
+            lvl === 2 ? 'rgba(60, 120, 170, 0.28)' : 'rgba(50, 70, 90, 0.16)';
+          ctx.fillRect(s.x, s.y, drawW, drawW);
+        }
       }
     }
   }
@@ -185,14 +313,9 @@ function drawMapCanvas(ctx, box, engine, view, { fog, liveTrail }) {
     strokeTrail(ctx, entry.trail, box, view, engine.travelLog.colorForEntry(entry));
   }
 
-  if (liveTrail && map.trail.length > 1) {
-    strokeTrail(ctx, map.trail, box, view, 'rgba(120, 200, 255, 0.45)');
-  }
-
-  drawNavRouteOnMap(ctx, box, engine, view);
-
   for (const poi of engine.poiSystem.mapPois()) {
-    const s = view.worldToScreen(poi.x, poi.y, box);
+    const pos = engine.poiSystem.worldPosition(poi, engine.gameTime || 0);
+    const s = view.worldToScreen(pos.x, pos.y, box);
     const sel = poi.id === engine.poiSystem.selectedId;
     const isPin = engine.poiSystem.isUserPin(poi);
     if (isPin) {
@@ -211,6 +334,17 @@ function drawMapCanvas(ctx, box, engine, view, { fog, liveTrail }) {
       }
     }
   }
+  ctx.globalAlpha = 1;
+}
+
+function drawMapDynamicLayers(ctx, box, engine, view, { liveTrail, ship }) {
+  const map = engine.sectorMap;
+
+  if (liveTrail && map.trail.length > 1) {
+    strokeTrail(ctx, map.trail, box, view, 'rgba(120, 200, 255, 0.45)');
+  }
+
+  drawNavRouteOnMap(ctx, box, engine, view);
 
   const scan = engine.radarSystem;
   for (const c of scan.contacts) {
@@ -237,8 +371,6 @@ function drawMapCanvas(ctx, box, engine, view, { fog, liveTrail }) {
   ctx.closePath();
   ctx.fill();
   ctx.restore();
-
-  ctx.restore();
 }
 
 function strokeTrail(ctx, trail, box, view, color) {
@@ -259,7 +391,6 @@ function drawNavRouteOnMap(ctx, box, engine, view) {
   const route = engine.navRoute;
   const ship = engine.ship;
   if (!route?.stops?.length || !ship) return;
-  route.resolvePosition(engine);
   const stops = route.stops;
   const chain = [{ x: ship.position.x, y: ship.position.y }, ...stops.map((s) => ({ x: s.x, y: s.y }))];
 
@@ -375,7 +506,8 @@ export function pickSectorMapMarkerAtScreen(engine, sx, sy, mapBox, view) {
   };
 
   for (const poi of engine.poiSystem.mapPois()) {
-    const s = view.worldToScreen(poi.x, poi.y, mapBox);
+    const pos = engine.poiSystem.worldPosition(poi, engine.gameTime || 0);
+    const s = view.worldToScreen(pos.x, pos.y, mapBox);
     const isPin = engine.poiSystem.isUserPin(poi);
     if (isPin) {
       tryHit(s.x, s.y - 3, 12, poi.name, 'pin', poi.id);

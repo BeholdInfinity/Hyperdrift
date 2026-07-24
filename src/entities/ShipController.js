@@ -1,6 +1,7 @@
 import { Vec2, clamp } from '../utils/MathUtils.js';
 import { PHYSICS } from '../core/Constants.js';
 import { PhysicsSystem } from '../systems/PhysicsSystem.js';
+import { gravityAccelAt } from '../world/GravitySystem.js';
 
 const TRANSLATION_INTENSITY = 1;
 const YAW_INTENSITY_MIN = 0.25;
@@ -39,7 +40,7 @@ export class ShipController {
     this.physics = new PhysicsSystem();
   }
 
-  update(ship, input, precisionActive, deltaTime) {
+  update(ship, input, precisionActive, deltaTime, syncTarget = null) {
     const flight = input.getFlightInput();
     const thrusters = ship.thrusters;
 
@@ -87,8 +88,45 @@ export class ShipController {
     const right = ship.getRight();
     const totalForce = new Vec2();
     const precisionScale = precisionActive ? PHYSICS.PRECISION_THRUST_MULT : 1;
+    let gravityForce = null;
+    if (ship.affectedByGravity) {
+      const { ax, ay } = gravityAccelAt(ship.position.x, ship.position.y);
+      gravityForce = new Vec2(ax * ship.mass, ay * ship.mass);
+    }
 
-    if (flight.brake) {
+    if (flight.zeroHold) {
+      const holdScale = PHYSICS.PRECISION_THRUST_MULT;
+      const brake = this.physics.computeBrakingThrust(
+        new Vec2(ship.velocity.x, ship.velocity.y),
+        ship.angle
+      );
+      totalForce.add(brake.force.clone().scale(holdScale));
+      if (brake.retroBurn) {
+        thrusters.retroBurn = true;
+        thrusters.mainEngine = Math.min(1, ship.velocity.length() / 300) * holdScale;
+      } else {
+        this._lightFace(thrusters, 'aft', brake.aft * holdScale);
+        this._lightFace(thrusters, 'nose', brake.nose * holdScale);
+        this._lightFace(thrusters, 'starboard', brake.starboard * holdScale);
+        this._lightFace(thrusters, 'port', brake.port * holdScale);
+      }
+      if (gravityForce) {
+        totalForce.sub(gravityForce);
+        const gLen = gravityForce.length();
+        if (gLen > 1) {
+          const gDir = gravityForce.clone().normalize();
+          const counter = gDir.clone().scale(-1);
+          const face = ship.getForward();
+          const star = ship.getRight();
+          const fComp = clamp(Vec2.dot(face, counter), -1, 1);
+          const sComp = clamp(Vec2.dot(star, counter), -1, 1);
+          this._lightFace(thrusters, 'aft', Math.max(0, fComp) * holdScale);
+          this._lightFace(thrusters, 'nose', Math.max(0, -fComp) * holdScale);
+          this._lightFace(thrusters, 'port', Math.max(0, sComp) * holdScale);
+          this._lightFace(thrusters, 'starboard', Math.max(0, -sComp) * holdScale);
+        }
+      }
+    } else if (flight.brake) {
       const brake = this.physics.computeBrakingThrust(
         new Vec2(ship.velocity.x, ship.velocity.y),
         ship.angle
@@ -139,11 +177,37 @@ export class ShipController {
         thrusters.mainEngine =
           (flight.afterburner && !ship.exitBurn ? 1.5 : 1) * precisionScale;
       }
+
+      if (flight.syncHold && syncTarget) {
+        const syncScale = PHYSICS.PRECISION_THRUST_MULT;
+        const errX = syncTarget.vx - ship.velocity.x;
+        const errY = syncTarget.vy - ship.velocity.y;
+        const errLen = Math.hypot(errX, errY);
+        if (errLen > 2) {
+          const gain = Math.min(1, errLen / 120);
+          totalForce.add(
+            new Vec2(errX / errLen, errY / errLen).scale(PHYSICS.MANEUVER_THRUST * syncScale * gain)
+          );
+          const desired = Math.atan2(syncTarget.vy, syncTarget.vx);
+          const face = ship.getForward();
+          const star = ship.getRight();
+          const fComp = clamp(Vec2.dot(face, new Vec2(Math.cos(desired), Math.sin(desired))), -1, 1);
+          const sComp = clamp(Vec2.dot(star, new Vec2(Math.cos(desired), Math.sin(desired))), -1, 1);
+          this._lightFace(thrusters, 'aft', Math.max(0, fComp) * syncScale);
+          this._lightFace(thrusters, 'nose', Math.max(0, -fComp) * syncScale);
+          this._lightFace(thrusters, 'port', Math.max(0, sComp) * syncScale);
+          this._lightFace(thrusters, 'starboard', Math.max(0, -sComp) * syncScale);
+        }
+      }
+    }
+
+    if (!flight.zeroHold && gravityForce) {
+      totalForce.add(gravityForce);
     }
 
     this.physics.applyForce(ship, totalForce, deltaTime);
 
-    if (flight.brake && ship.velocity.length() < PHYSICS.VELOCITY_THRESHOLD) {
+    if ((flight.brake || flight.zeroHold) && ship.velocity.length() < PHYSICS.VELOCITY_THRESHOLD) {
       ship.velocity.set(0, 0);
     }
 

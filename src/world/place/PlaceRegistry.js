@@ -87,6 +87,64 @@ export function createPoorShedPlace() {
   };
 }
 
+export function createStationClonePlace(placeId, label, socialTier = 'mid') {
+  const themes = {
+    military: { theme: 'militaryOlive', colorway: 'armorGray', techLevel: 'elite', condition: 0.82 },
+    elite: { theme: 'stationYard', colorway: 'jenningsBlue', techLevel: 'high', condition: 0.78 },
+    home: { theme: 'stationYard', colorway: 'jenningsBlue', techLevel: 'high', condition: 0.72 },
+    upper: { theme: 'stationYard', colorway: 'jenningsBlue', techLevel: 'mid', condition: 0.65 },
+    mid: { theme: 'stationYard', colorway: 'jenningsBlue', techLevel: 'mid', condition: 0.58 },
+    guild: { theme: 'backwaterRust', colorway: 'rustSteel', techLevel: 'mid', condition: 0.5 },
+    poor: { theme: 'backwaterRust', colorway: 'rustSteel', techLevel: 'low', condition: 0.35 },
+    derelict: { theme: 'derelictRust', colorway: 'coldDark', techLevel: 'broken', condition: 0.12 },
+    pirate: { theme: 'derelictRust', colorway: 'coldDark', techLevel: 'low', condition: 0.28 },
+  };
+  const look = themes[socialTier] || themes.mid;
+  const hangar = createJenningsHangarArea();
+  hangar.id = 'area.hangar-main';
+  hangar.label = `${label} Hangar`;
+  hangar.shell = defaultShell(look);
+  hangar.shared.visitorFilter = socialTier === 'military' ? 'military' : 'civilian';
+  return {
+    id: placeId,
+    placeKind: PLACE_KINDS.station,
+    label,
+    shell: cloneShell(hangar.shell),
+    dockPolicy: socialTier === 'military' ? 'restricted' : 'welcoming',
+    areaOrder: [hangar.id],
+    areas: { [hangar.id]: hangar },
+    defaultHangarAreaId: hangar.id,
+  };
+}
+
+export function createPlanetaryOutpostPlace(placeId, label) {
+  const hangar = createPoorShedHangarArea();
+  hangar.id = 'area.landing';
+  hangar.label = 'Landing apron';
+  hangar.shell = defaultShell({
+    condition: 0.35,
+    techLevel: 'low',
+    theme: 'backwaterRust',
+    colorway: 'rustSteel',
+  });
+  const farm = stubArea('area.surface', AREA_TYPES.farm, 'Surface district', {
+    condition: 0.4,
+    techLevel: 'low',
+    theme: 'backwaterRust',
+    colorway: 'rustSteel',
+  });
+  return {
+    id: placeId,
+    placeKind: PLACE_KINDS.outpost,
+    label,
+    shell: cloneShell(hangar.shell),
+    dockPolicy: 'welcoming',
+    areaOrder: [hangar.id, farm.id],
+    areas: { [hangar.id]: hangar, [farm.id]: farm },
+    defaultHangarAreaId: hangar.id,
+  };
+}
+
 /** Registry stubs — undrawn, for Dev picker + future dock/land. */
 export function createTraderStubPlace() {
   const hangar = createJenningsHangarArea();
@@ -200,6 +258,26 @@ const PRESET_BUILDERS = {
   'place.flag-cruiser-stub': createFlagCruiserStubPlace,
   'place.outpost-dust': createOutpostDustStubPlace,
 };
+
+export function registerLayoutPlaces(registry, layout) {
+  if (!registry?.places || !layout?.sites) return;
+  for (const site of layout.sites) {
+    if (site.kind === 'station') {
+      const placeId = site.placeId || `place.${site.id.replace(/^site\./, '')}`;
+      if (registry.places.has(placeId)) continue;
+      if (placeId === 'place.jennings' || placeId === 'place.derelict-home') continue;
+      registry.places.set(
+        placeId,
+        createStationClonePlace(placeId, site.name, site.socialTier || 'mid')
+      );
+    }
+    if (site.kind === 'planetary') {
+      const placeId = site.placeId || `place.${site.id.replace(/^site\./, '')}`;
+      if (registry.places.has(placeId)) continue;
+      registry.places.set(placeId, createPlanetaryOutpostPlace(placeId, site.name));
+    }
+  }
+}
 
 export class PlaceRegistry {
   constructor() {

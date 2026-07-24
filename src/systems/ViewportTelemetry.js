@@ -194,11 +194,12 @@ export function renderViewportTelemetry(ctx, opts) {
 
   const poi = poiSystem?.getSelected?.();
   const samePoi = poi && stop?.kind === 'poi' && stop.poiId === poi.id;
+  const gt = engine?.gameTime || 0;
   if (poi && !samePoi) {
     targets.push({
-      dist: poiSystem.range(ship, poi),
-      bearing: poiSystem.bearing(ship, poi) + rot,
-      text: formatDistKm(poiSystem.range(ship, poi)),
+      dist: poiSystem.range(ship, poi, gt),
+      bearing: poiSystem.bearing(ship, poi, gt) + rot,
+      text: formatDistKm(poiSystem.range(ship, poi, gt)),
       color: poiSystem.color(poi),
       slot: slot++,
     });

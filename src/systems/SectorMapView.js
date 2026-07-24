@@ -4,9 +4,15 @@
 
 import { createTravelLogTableState } from '../world/TravelLogTable.js';
 
-export const MAP_BASE_SPAN = 70000;
-export const MAP_ZOOM_MIN = 0.25;
-export const MAP_ZOOM_MAX = 8;
+export const MAP_BASE_SPAN = 850000;
+export const MAP_ZOOM_MIN = 0.08;
+export const MAP_ZOOM_MAX = 12;
+
+export function mapZoomTier(zoom) {
+  if (zoom >= 2.5) return 'local';
+  if (zoom >= 0.45) return 'system';
+  return 'chart';
+}
 
 export class SectorMapView {
   constructor() {

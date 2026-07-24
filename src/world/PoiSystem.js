@@ -1,16 +1,12 @@
 /**
- * PoiSystem — the Points-of-Interest address book + waypoint tracker model.
+ * PoiSystem — POI address book + waypoint tracker.
  *
- * POIs register via four discovery sources (proximity / mission / manual /
- * purchase). Each POI carries an IFF color and two independent toggles: show on
- * the POI ring (bearing-only dots, no sweep) and show on the sector map. One
- * POI can be selected → its details fill the Destination panel.
- *
- * Bearing to a POI works at any distance (find your way back to Jennings from
- * thousands of km out); range is informational.
+ * Authored sites come from sectorLayout v2 via SectorBootstrap.
+ * worldPosition(poi, t) resolves orbital + surface sites each frame.
  */
 
-import { STATION, POI, IFF } from '../core/Constants.js';
+import { POI, IFF } from '../core/Constants.js';
+import { siteWorldPosition, getSiteById } from './SectorLayout.js';
 
 let _nextId = 1;
 
@@ -24,46 +20,63 @@ export class PoiSystem {
     this.list = [];
     /** @type {string|null} */
     this.selectedId = null;
-    this._seed();
+    /** @type {Map<string, object>} */
+    this._siteById = new Map();
   }
 
-  _seedJenningsOnly() {
-    this.register(
-      {
-        x: STATION.WORLD_X,
-        y: STATION.WORLD_Y,
-        name: 'Jennings Station',
-        iff: 'blue',
-        discovered: true,
-        onRing: true,
-        onMap: true,
-      },
-      POI.SOURCE.PROXIMITY
-    );
+  bootstrapFromLayout(layout) {
+    this.list = [];
+    this.selectedId = null;
+    this._siteById.clear();
+    for (const site of layout.sites ?? []) {
+      const pos = siteWorldPosition(site, 0, layout);
+      const poi = this.register(
+        {
+          x: pos.x,
+          y: pos.y,
+          name: site.name,
+          defaultName: site.name,
+          iff: site.iff ?? 'blue',
+          discovered: site.id === 'site.jennings',
+          onRing: site.id === 'site.jennings',
+          onMap: site.id === 'site.jennings',
+          siteId: site.id,
+          kind: site.kind,
+          motion: site.motion,
+          orbit: site.orbit ? { ...site.orbit } : undefined,
+          surfaceAngle: site.surfaceAngle,
+          placeId: site.placeId,
+        },
+        site.id === 'site.jennings' ? POI.SOURCE.PROXIMITY : POI.SOURCE.MANUAL,
+        site.id,
+      );
+      this._siteById.set(site.id, poi);
+    }
   }
 
-  _seed() {
-    this._seedJenningsOnly();
-    // Scaffold POIs discovered by proximity as you explore.
-    const S = STATION.SCALE;
-    this.register(
-      { x: 3200 * S, y: -1400 * S, name: 'Derelict Freighter', iff: 'yellow' },
-      POI.SOURCE.PROXIMITY
-    );
-    this.register(
-      { x: -2600 * S, y: 2200 * S, name: 'Nav Beacon Kesta', iff: 'blue' },
-      POI.SOURCE.PROXIMITY
-    );
-    this.register(
-      { x: 800 * S, y: 3600 * S, name: 'Ore Field Marker', iff: 'green' },
-      POI.SOURCE.PROXIMITY
-    );
+  /** Live world xy for authored sites; static for manual pins. */
+  worldPosition(poi, gameTime = 0) {
+    if (!poi) return { x: 0, y: 0 };
+    if (poi.siteId) {
+      const site = getSiteById(poi.siteId);
+      if (site) return siteWorldPosition(site, gameTime);
+    }
+    return { x: poi.x ?? 0, y: poi.y ?? 0 };
   }
 
-  /**
-   * @param {{x:number,y:number,name:string,iff?:string,discovered?:boolean,onRing?:boolean,onMap?:boolean}} p
-   * @param {string} source
-   */
+  syncPositions(gameTime = 0) {
+    for (const poi of this.list) {
+      if (!poi.siteId) continue;
+      const pos = this.worldPosition(poi, gameTime);
+      poi.x = pos.x;
+      poi.y = pos.y;
+    }
+  }
+
+  getBySiteId(siteId) {
+    return this._siteById.get(siteId) ?? null;
+  }
+
   register(p, source = POI.SOURCE.MANUAL, id = null) {
     const defaultName = (p.defaultName ?? p.name) || 'Waypoint';
     const poi = {
@@ -78,13 +91,18 @@ export class PoiSystem {
       onRing: p.onRing != null ? p.onRing : !!p.discovered,
       onMap: p.onMap != null ? p.onMap : !!p.discovered,
       locked: !!p.locked,
+      siteId: p.siteId ?? null,
+      kind: p.kind,
+      motion: p.motion,
+      orbit: p.orbit,
+      surfaceAngle: p.surfaceAngle,
+      placeId: p.placeId,
     };
-    if (!id) _nextId = Math.max(_nextId, parseInt(poi.id.replace(/\D/g, ''), 10) + 1 || _nextId);
+    if (!id) _nextId = Math.max(_nextId, parseInt(String(poi.id).replace(/\D/g, ''), 10) + 1 || _nextId);
     this.list.push(poi);
     return poi;
   }
 
-  /** Drop a manual map pin (POI book + sector map). */
   addManualPin(x, y) {
     const num = this._nextPinNumber();
     const defaultName = `Pin #${num}`;
@@ -104,7 +122,6 @@ export class PoiSystem {
     );
   }
 
-  /** @deprecated use addManualPin */
   addManualWaypoint(x, y, name = 'Marker') {
     if (name && name !== 'Marker') {
       const poi = this.addManualPin(x, y);
@@ -117,7 +134,7 @@ export class PoiSystem {
   _nextPinNumber() {
     let max = 0;
     for (const p of this.list) {
-      if (p.source !== POI.SOURCE.MANUAL) continue;
+      if (p.source !== POI.SOURCE.MANUAL || p.siteId) continue;
       const label = p.defaultName || p.name;
       const m = String(label).match(/^Pin #(\d+)/);
       if (m) max = Math.max(max, parseInt(m[1], 10));
@@ -126,7 +143,7 @@ export class PoiSystem {
   }
 
   isUserPin(poi) {
-    return poi && poi.source === POI.SOURCE.MANUAL && poi.name !== 'Jennings Station';
+    return poi && poi.source === POI.SOURCE.MANUAL && !poi.siteId;
   }
 
   isPoiRenamed(poi) {
@@ -148,14 +165,15 @@ export class PoiSystem {
     if (p && this.isUserPin(p)) p.locked = !p.locked;
   }
 
-  update({ ship, onDiscover }) {
+  update({ ship, gameTime = 0, onDiscover }) {
     if (!ship) return;
     const px = ship.position.x;
     const py = ship.position.y;
     let discoveredNew = false;
     for (const poi of this.list) {
       if (poi.discovered) continue;
-      if (Math.hypot(poi.x - px, poi.y - py) <= POI.DISCOVER_RANGE) {
+      const pos = this.worldPosition(poi, gameTime);
+      if (Math.hypot(pos.x - px, pos.y - py) <= POI.DISCOVER_RANGE) {
         poi.discovered = true;
         poi.onRing = true;
         poi.onMap = true;
@@ -204,25 +222,25 @@ export class PoiSystem {
     return IFF[poi.iff] || IFF.yellow;
   }
 
-  /** Bearing (world radians) from ship to a POI. */
-  bearing(ship, poi) {
-    return Math.atan2(poi.y - ship.position.y, poi.x - ship.position.x);
+  bearing(ship, poi, gameTime = 0) {
+    const pos = this.worldPosition(poi, gameTime);
+    return Math.atan2(pos.y - ship.position.y, pos.x - ship.position.x);
   }
 
-  range(ship, poi) {
-    return Math.hypot(poi.x - ship.position.x, poi.y - ship.position.y);
+  range(ship, poi, gameTime = 0) {
+    const pos = this.worldPosition(poi, gameTime);
+    return Math.hypot(pos.x - ship.position.x, pos.y - ship.position.y);
   }
 
   deletePoi(id) {
     const p = this.list.find((q) => q.id === id);
-    if (!p || p.name === 'Jennings Station') return false;
+    if (!p || p.siteId === 'site.jennings') return false;
     if (p.locked) return false;
     if (this.selectedId === id) this.selectedId = null;
     this.list = this.list.filter((q) => q.id !== id);
     return true;
   }
 
-  /** @returns {{ toRemove: object[], renamedUnlocked: object[] }} */
   previewDeleteAllUnlocked() {
     const toRemove = this.list.filter((p) => this.isUserPin(p) && !p.locked);
     const renamedUnlocked = toRemove.filter((p) => this.isPoiRenamed(p));
@@ -238,29 +256,31 @@ export class PoiSystem {
   }
 
   exportForSave() {
-    return this.list.map((p) => ({
-      id: p.id,
-      x: p.x,
-      y: p.y,
-      name: p.name,
-      iff: p.iff,
-      source: p.source,
-      discovered: p.discovered,
-      onRing: p.onRing,
-      onMap: p.onMap,
-      locked: !!p.locked,
-      defaultName: p.defaultName,
-    }));
+    return this.list
+      .filter((p) => !p.siteId)
+      .map((p) => ({
+        id: p.id,
+        x: p.x,
+        y: p.y,
+        name: p.name,
+        iff: p.iff,
+        source: p.source,
+        discovered: p.discovered,
+        onRing: p.onRing,
+        onMap: p.onMap,
+        locked: !!p.locked,
+        defaultName: p.defaultName,
+      }));
   }
 
-  /** Merge saved POIs; always keep Jennings at home. */
   hydrateFromSave(savedPois) {
     if (!savedPois?.length) return;
-    const jennings = savedPois.find((p) => p.name === 'Jennings Station') || savedPois[0];
-    this.list = [];
+    const authored = this.list.filter((p) => p.siteId);
+    this.list = [...authored];
     this.selectedId = null;
     let maxId = 1;
     for (const raw of savedPois) {
+      if (raw.siteId || String(raw.id || '').startsWith('site.')) continue;
       const id = raw.id || `poi${maxId++}`;
       const num = parseInt(String(id).replace(/\D/g, ''), 10);
       if (num >= maxId) maxId = num + 1;
@@ -277,12 +297,9 @@ export class PoiSystem {
           locked: !!raw.locked,
         },
         raw.source || POI.SOURCE.MANUAL,
-        id
+        id,
       );
     }
     setPoiIdCounter(maxId);
-    if (!this.list.some((p) => p.name === 'Jennings Station')) {
-      this._seedJenningsOnly();
-    }
   }
 }

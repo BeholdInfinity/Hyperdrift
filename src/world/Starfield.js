@@ -30,57 +30,88 @@ export class Starfield {
     }
   }
 
-  render(ctx, cameraX, cameraY, viewportRadius, time, zoom = 1) {
+  render(ctx, cameraX, cameraY, viewportRadius, time, zoom = 1, opts = {}) {
+    const lite = !!opts.lite;
     const z = Math.max(zoom, 0.01);
-    const margin = 160;
+    const margin = lite ? 120 : 160;
     const cover = viewportRadius + margin;
     const coverSq = cover * cover;
     const halfTile = this.tileSize / 2;
     const tileScreen = this.tileSize * z;
-    // Cap tile stamps — extreme zoom-out repeating the same field reads as a lattice
     const tilesOut = Math.min(
-      2,
+      lite ? 1 : 2,
       Math.max(0, Math.ceil(cover / Math.max(tileScreen, 1) - 0.5))
     );
 
-    /**
-     * Mid/low zoom (title + hangar door/window peepholes at 0.55) packs
-     * thousands of dots into a woven mesh — thin far layers.
-     */
-    const farCut = z < 0.22 ? 4 : z < 0.35 ? 2 : z < 0.65 ? 1 : 0;
-    const dens =
-      z >= 0.75 ? 1 : Math.max(0.08, Math.pow(z / 0.75, 1.4));
+    const farCut = lite
+      ? z < 0.75
+        ? 3
+        : 2
+      : z < 0.22
+        ? 4
+        : z < 0.35
+          ? 2
+          : z < 0.65
+            ? 1
+            : 0;
+    const dens = lite
+      ? z >= 0.75
+        ? 0.7
+        : Math.max(0.06, Math.pow(z / 0.75, 1.5) * 0.55)
+      : z >= 0.75
+        ? 1
+        : Math.max(0.08, Math.pow(z / 0.75, 1.4));
 
-    for (const star of this.stars) {
-      if (star.layer < farCut) continue;
-      if (dens < 1) {
-        const layerKeep = 0.2 + 0.8 * (star.layer / (this.layers.length - 1));
-        if (star.hash > dens * layerKeep) continue;
+    for (let layerIdx = farCut; layerIdx < this.layers.length; layerIdx++) {
+      const config = this.layers[layerIdx];
+      /** Alpha bucket → [x,y,r,...] screen coords for fillRect batching. */
+      const buckets = new Map();
+
+      for (const star of this.stars) {
+        if (star.layer !== layerIdx) continue;
+        if (dens < 1) {
+          const layerKeep = 0.2 + 0.8 * (star.layer / (this.layers.length - 1));
+          if (star.hash > dens * layerKeep) continue;
+        }
+
+        const px = star.x - cameraX * config.parallax;
+        const py = star.y - cameraY * config.parallax;
+        const baseX = ((px % this.tileSize) + this.tileSize) % this.tileSize - halfTile;
+        const baseY = ((py % this.tileSize) + this.tileSize) % this.tileSize - halfTile;
+
+        let alpha;
+        if (lite) {
+          alpha = clamp(star.brightness, 0, 1);
+        } else {
+          const wave = Math.sin(time * star.twinkleSpeed + star.twinklePhase);
+          const blink = Math.pow(Math.max(0, wave), 16);
+          alpha = clamp(star.brightness * (1 - config.twinkle * blink), 0, 1);
+        }
+        const alphaKey = lite ? Math.round(alpha * 8) / 8 : Math.round(alpha * 10) / 10;
+        const r = star.size;
+        const diam = r * 2;
+
+        for (let ox = -tilesOut; ox <= tilesOut; ox++) {
+          for (let oy = -tilesOut; oy <= tilesOut; oy++) {
+            const drawX = (baseX + ox * this.tileSize) * z;
+            const drawY = (baseY + oy * this.tileSize) * z;
+            if (drawX * drawX + drawY * drawY > coverSq) continue;
+
+            let batch = buckets.get(alphaKey);
+            if (!batch) {
+              batch = [];
+              buckets.set(alphaKey, batch);
+            }
+            batch.push(drawX - r, drawY - r, diam, diam);
+          }
+        }
       }
 
-      const config = this.layers[star.layer];
-      const px = star.x - cameraX * config.parallax;
-      const py = star.y - cameraY * config.parallax;
-
-      const baseX = ((px % this.tileSize) + this.tileSize) % this.tileSize - halfTile;
-      const baseY = ((py % this.tileSize) + this.tileSize) % this.tileSize - halfTile;
-
-      const wave = Math.sin(time * star.twinkleSpeed + star.twinklePhase);
-      const blink = Math.pow(Math.max(0, wave), 16);
-      const alpha = clamp(star.brightness * (1 - config.twinkle * blink), 0, 1);
-      const r = star.size;
-
-      for (let ox = -tilesOut; ox <= tilesOut; ox++) {
-        for (let oy = -tilesOut; oy <= tilesOut; oy++) {
-          const drawX = (baseX + ox * this.tileSize) * z;
-          const drawY = (baseY + oy * this.tileSize) * z;
-          if (drawX * drawX + drawY * drawY > coverSq) continue;
-
-          ctx.beginPath();
-          ctx.arc(drawX, drawY, r, 0, Math.PI * 2);
-          ctx.fillStyle = config.color;
-          ctx.globalAlpha = alpha;
-          ctx.fill();
+      ctx.fillStyle = config.color;
+      for (const [alphaKey, rects] of buckets) {
+        ctx.globalAlpha = alphaKey;
+        for (let i = 0; i < rects.length; i += 4) {
+          ctx.fillRect(rects[i], rects[i + 1], rects[i + 2], rects[i + 3]);
         }
       }
     }

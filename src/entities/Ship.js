@@ -37,6 +37,7 @@ export class Ship extends Entity {
     this.miningLaserBeamLength = SHIP.MINING_LASER_RANGE;
     /** Hangar hover altitude cue (1 = lifted; scales draw size) */
     this.visualScale = 1;
+    this.affectedByGravity = true;
   }
 
   /** Resolved mounts from modular definition (falls back to legacy HARDPOINTS). */

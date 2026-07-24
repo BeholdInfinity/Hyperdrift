@@ -21,6 +21,22 @@
 
 ---
 
+## World geography (Thera system)
+
+The prototype play space is a **bounded single system** — not infinite void:
+
+| Layer | Notes |
+|-------|-------|
+| **Planet Center** `(0,0)` | **Therissa Prime** (official) · **Thera** (short). Gravity anchor + sector-map origin |
+| **Planet disc** | ~350 km radius; spins once per **30 game-hours**; five surface-fixed POIs |
+| **Ring bands** | Inner / mid / outer annuli (~800–3800 km); composition-weighted proc gen |
+| **Station shell** | 12 orbital ports (Jennings + outlaw-country clones); social tier ↓ as orbit radius ↑ |
+| **Fringe** | Iron Crown capital wreck + instance gate stubs; soft empty edge ~7500 km |
+
+**Flight model:** player ship feels planetary gravity; belt rocks and stations use kinematic orbits. No global hard speed cap — TELEMETRY **PRO** shows circular prograde at your radius; **SYNC** (`X` hold at ≥95%) trims to a selected contact's live velocity. Posted **LIM** is regulatory (fines when caught), not a physics clamp — **local station shells** measure excess speed **relative to that station's orbit** (same frame as docking: match orbit, then bleed down for the mouth). Departures inherit the station's live velocity. Six **ring warp gates** teleport paired hops through the planet hub.
+
+---
+
 ## Vision (prototype scope)
 
 Hyperdrift is a browser-based spaceflight sandbox set in a vast procedural universe. The player pilots a single spacecraft through asteroid fields, nebula regions, and open void, mastering inertia-based flight while exploring an effectively infinite cosmos. Near-term work prioritizes a **polished flight model**, **modular ships**, **hangar feel**, and **convincing depth** — building the engine for the long-term game, not reshaping into campaign narrative yet.
@@ -177,6 +193,7 @@ Ship silhouette is a **modular composition**: sections + hardpoint items from `s
 | Space | Main engine (aft) | Strongest forward thrust (orange plume) |
 | Shift | Afterburner | Extra main-engine thrust (scaled in Precision) |
 | Alt | Space brakes | Soft brake via thruster face pairs; main-engine retro-burn when nose faces into velocity. During play, Alt and Alt+QWEASD/Space are `preventDefault`’d so browser menus / address-bar chords are less likely to steal focus |
+| Alt ×2 (slow) | Zero-hold latch | When speed **< 100 u/s**, double-tap Alt toggles **stay at zero** — thrusters hold zero velocity and counter gravity until toggled off, manual thrust, or speed **> 120 u/s** |
 | Caps Lock | Precision | See Precision mode below |
 
 **Double-tap then hold** on **Q W E A S D** boosts that axis:

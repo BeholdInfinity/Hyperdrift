@@ -64,7 +64,9 @@ export {
   createPoorShedPlace,
   createTraderStubPlace,
   createFlagCruiserStubPlace,
-  createOutpostDustStubPlace,
+  createStationClonePlace,
+  createPlanetaryOutpostPlace,
+  registerLayoutPlaces,
   PRESET_BUILDERS,
 } from './PlaceRegistry.js';
 

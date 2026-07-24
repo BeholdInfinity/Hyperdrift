@@ -1,9 +1,9 @@
 /**
- * Boot-time failure UI — module import / GameEngine init errors.
+ * Boot-time + runtime failure UI — copy/paste friendly error panel.
  * Loaded as a classic script before `main.js` so import parse errors are caught.
  */
 (function () {
-  let reported = false;
+  let bootReported = false;
 
   function formatError(err, extra) {
     const parts = [];
@@ -94,16 +94,16 @@
     return root;
   }
 
-  function showLoadFailure(title, detail) {
-    if (reported) return;
-    reported = true;
+  function showFailure(title, detail, { alertUser = false, once = false } = {}) {
+    if (once && bootReported) return;
+    if (once) bootReported = true;
 
     const stamp = new Date().toISOString();
     const body = `[${stamp}] ${title}\n\n${detail}`;
     const root = ensureOverlay();
     const textEl = root.querySelector('#load-error-text');
     const titleEl = root.querySelector('#load-error-title');
-    if (titleEl) titleEl.textContent = title || 'Hyperdrift failed to load';
+    if (titleEl) titleEl.textContent = title || 'Hyperdrift error';
     if (textEl) {
       textEl.value = body;
       textEl.scrollTop = 0;
@@ -112,18 +112,29 @@
     textEl?.focus();
     textEl?.select();
 
-    // Short native notice so failures are obvious even if the card is missed.
-    try {
-      window.alert(
-        'Hyperdrift failed to load.\n\nAn error panel is open with the full message — use Copy error and paste it into chat.'
-      );
-    } catch {
-      /* ignore */
+    if (alertUser) {
+      try {
+        window.alert(
+          'Hyperdrift failed to load.\n\nAn error panel is open with the full message — use Copy error and paste it into chat.'
+        );
+      } catch {
+        /* ignore */
+      }
     }
   }
 
   window.__hyperdriftReportLoadError = function (title, err, extra) {
-    showLoadFailure(title || 'Hyperdrift failed to load', formatError(err, extra));
+    showFailure(title || 'Hyperdrift failed to load', formatError(err, extra), {
+      alertUser: true,
+      once: true,
+    });
+  };
+
+  window.__hyperdriftReportRuntimeError = function (context, err, extra) {
+    showFailure(context || 'Hyperdrift runtime error', formatError(err, extra), {
+      alertUser: false,
+      once: false,
+    });
   };
 
   window.__hyperdriftMarkBootOk = function () {
@@ -133,19 +144,35 @@
   window.addEventListener(
     'error',
     function (event) {
-      if (window.__hyperdriftBootComplete) return;
+      if (window.__hyperdriftBootComplete) {
+        window.__hyperdriftReportRuntimeError(
+          'Uncaught script error',
+          formatWindowError(event)
+        );
+        return;
+      }
       const tag = event.target?.tagName;
       if (tag && tag !== 'SCRIPT') return;
-      showLoadFailure('Module / script error', formatWindowError(event));
+      showFailure('Module / script error', formatWindowError(event), {
+        alertUser: true,
+        once: true,
+      });
     },
     true
   );
 
   window.addEventListener('unhandledrejection', function (event) {
-    if (window.__hyperdriftBootComplete) return;
-    showLoadFailure(
+    if (window.__hyperdriftBootComplete) {
+      window.__hyperdriftReportRuntimeError(
+        'Unhandled promise rejection',
+        formatError(event.reason)
+      );
+      return;
+    }
+    showFailure(
       'Unhandled promise rejection during load',
-      formatError(event.reason)
+      formatError(event.reason),
+      { alertUser: true, once: true }
     );
   });
 })();

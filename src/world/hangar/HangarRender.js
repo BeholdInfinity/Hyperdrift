@@ -607,10 +607,6 @@ export function attachHangarRender(HangarBay) {
     const vpW = BAY.VIEWPORT_W;
     const vpH = BAY.VIEWPORT_H;
     const vpY = -h - 40;
-    const EXT = 2200;
-
-    ctx.fillStyle = '#06090e';
-    ctx.fillRect(-EXT, -EXT, EXT * 2, EXT * 2);
 
     const northY = -h - 80;
     const northH = 80 + BAY.DOOR_H;
@@ -936,7 +932,7 @@ export function attachHangarRender(HangarBay) {
     const right = pads[pads.length - 1] + vpW / 2;
     const midX = (left + right) / 2;
     const midY = vpY + vpH / 2;
-    const cover = Math.hypot(right - left, vpH) / 2 + 40;
+    const cover = this._hangarSpaceCover();
 
     ctx.save();
     ctx.beginPath();
@@ -963,11 +959,7 @@ export function attachHangarRender(HangarBay) {
     const midY = vpY + vpH / 2;
     const doorTop = -BAY.HALF_H;
     const doorH = BAY.DOOR_H;
-    // Cover must reach door bottoms (south of window mid) without changing windows
-    const cover = Math.max(
-      Math.hypot(right - left, vpH) / 2 + 40,
-      Math.hypot(right - left, (doorTop + doorH - midY) * 2) / 2 + 40
-    );
+    const cover = this._hangarSpaceCover();
 
     ctx.save();
     ctx.beginPath();

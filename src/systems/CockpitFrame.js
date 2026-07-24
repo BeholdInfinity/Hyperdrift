@@ -89,13 +89,14 @@ export class CockpitFrame {
    * @param {object} ship
    * @param {number} camRot
    */
-  drawPoiDots(ctx, r, poiSystem, ship, camRot = 0) {
+  drawPoiDots(ctx, r, poiSystem, ship, camRot = 0, gameTime = 0) {
     if (!this.layout || !ship) return;
     const { cx, cy, radarOuterR, circleR } = this.layout;
     const rimR = (radarOuterR + circleR) / 2;
     ctx.save();
     for (const poi of poiSystem.ringPois()) {
-      const bearing = Math.atan2(poi.y - ship.position.y, poi.x - ship.position.x) + camRot;
+      const pos = poiSystem.worldPosition(poi, gameTime);
+      const bearing = Math.atan2(pos.y - ship.position.y, pos.x - ship.position.x) + camRot;
       const dx = cx + Math.cos(bearing) * rimR;
       const dy = cy + Math.sin(bearing) * rimR;
       const color = poiSystem.color(poi);
