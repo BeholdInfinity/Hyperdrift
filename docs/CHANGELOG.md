@@ -6,6 +6,25 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Planned
+
+- Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
+- Full player crane trolley control feel + on-foot weld loop for turret swap
+- Shared 2.5D interior walker (`shipInterior`) on vessel Place graphs
+- Unique silhouette polish per catalog variant
+- Hand-art polish for hero variants (bell-quality)
+- Asteroid fragmentation on destroy
+- Fuel system for afterburner
+- Audio
+- Resource drops (guns vs mining laser yield tradeoff)
+- Ambient NPC mining HP drain
+- Blueprint per-hardpoint item **category** swap
+- More hangar `decor` wall-art variants
+
+---
+
+## [0.1.285] — 2026-07-23
+
 ### Added
 - **Split corner readouts** — top-left **ZOOM** (`ZOOM` %, `VIEW` radius km, **RADAR** pip rings with active plot ring highlighted) and top-right **TELEMETRY** (`SPD`, `HDG` with 16-point cardinal + leading-zero degrees, `CRS` when speed > 0, `POS`). New [`TelemetryCorner.js`](src/systems/TelemetryCorner.js).
 - **Viewport target distances** — selected contact, active nav-route stop, and selected POI (when distinct from the stop) now show range in the viewport / SCAN scope via `ViewportTelemetry.js`, staggered to avoid overlapping the speed readout on the velocity ray. Visual-range contacts label beside the hull brackets; band contacts, POI, and nav stops label on the inner ring bearing.
@@ -32,23 +51,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 - **Degree symbol** — all compass bearing readouts (TELEMETRY, DESTINATION/POI BRG, sector map strip) append **°** in a reserved cell beside the tabular digits.
 - **Cardinal alignment** — 16-point labels right-align within their reserved slot (HDG/CRS/BRG).
 
-### Changed
 - **MODES corner panel** — switch rows fit strictly inside the content box; toggles share one width and cap column, filling the space from labels to the panel’s right inset.
-
-### Planned
-
-- Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
-- Full player crane trolley control feel + on-foot weld loop for turret swap
-- Shared 2.5D interior walker (`shipInterior`) on vessel Place graphs
-- Unique silhouette polish per catalog variant
-- Hand-art polish for hero variants (bell-quality)
-- Asteroid fragmentation on destroy
-- Fuel system for afterburner
-- Audio
-- Resource drops (guns vs mining laser yield tradeoff)
-- Ambient NPC mining HP drain
-- Blueprint per-hardpoint item **category** swap
-- More hangar `decor` wall-art variants
 
 ---
 

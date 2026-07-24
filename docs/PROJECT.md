@@ -232,6 +232,7 @@ Cosmetic / lower priority:
 **Not yet exercised live end-to-end:** clicking an in-world/band blip to select (ship kept leaving range), comms target population, and the fire/alert overlay (needs `ship.status.fires` populated). Recommended manual pass: hover near Jennings at low speed, select a band blip + a POI-rim dot, exercise pip loadouts (save/apply/partial apply via dev Generator at 3), and temporarily push a fake fire into `ship.status.fires` to verify the alert banner. Plan of record: `.cursor/plans/scanner_subsystem_roadmap_fe068679.plan.md` (do **not** edit the plan file).
 
 ### Shipped recently (context)
+- **v0.1.285** TELEMETRY/ZOOM corner readouts; viewport target distances (contact / nav / POI); cockpit HUD layout + spill fixes; sector map footer + bearing format polish
 - **v0.1.284** Nav route queue; pip loadouts + PIPS/STATUS rework; MODES corner (PREC/ORIENT/VIEW); scanner sweep paints + full SCAN + Mk5 tiers; sector map / Travel Log drawers; boot error overlay; WT shared launch tabs
 - **v0.1.283** Scanner subsystem model + six live cockpit panels + POI ring + pip pool scaffold
 - **v0.1.267** Title wordmark: locked pose; STRANGER bronze plate windows + smile arch; GALAXY nebula windows
