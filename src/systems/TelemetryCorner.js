@@ -159,9 +159,11 @@ export function drawNavRangeBearingRow(ctx, box, y, rowH, rngKm, bearingRad, { f
   return fs + 4;
 }
 
-/** POS readout — tabular cells; no excess padding that overflows narrow panels. */
+/** POS readout — tabular cells; km-scale keeps wide world coords inside the corner. */
 export function formatPosTabular(x, y) {
-  return `${Math.round(x)},${Math.round(y)}`;
+  const kx = Math.round(x / 100);
+  const ky = Math.round(y / 100);
+  return `${kx},${ky}`;
 }
 
 const POS_STRIP_FIELD = 6;
@@ -515,10 +517,11 @@ function cornerLiveContentBox(screen) {
 
 /** Row height + font size scaled to fill a corner content band. */
 function cornerRowMetrics(bandH, rowCount, { gapFrac = 0.04, divSlot = 0 } = {}) {
-  const rowGap = Math.max(2, Math.floor(bandH * gapFrac));
+  const rowGap = Math.max(1, Math.floor(bandH * gapFrac));
   const slots = rowGap * Math.max(0, rowCount - 1) + divSlot;
-  const rowH = Math.max(16, (bandH - slots) / Math.max(1, rowCount));
-  const fs = Math.max(11, Math.min(15, rowH - 2));
+  const rowH = Math.max(11, (bandH - slots) / Math.max(1, rowCount));
+  const fsCap = rowCount >= 6 ? 10 : rowCount >= 5 ? 11 : 15;
+  const fs = Math.max(8, Math.min(fsCap, rowH - 2));
   return { rowGap, rowH, fs };
 }
 
@@ -589,41 +592,67 @@ export function drawNavCorner(ctx, screen, data) {
   if (!screen || !data) return;
   const box = cornerLiveContentBox(screen);
   clipRect(ctx, box.x, box.y, box.w, box.h, () => {
-    const navRows = data.courseStr ? 3 : 2;
-    const extraRows = (data.prograde != null ? 1 : 0) + (data.postedLimit != null ? 1 : 0);
-    const divH = 2;
-    const divGap = 2;
-    const divSlot = divH + divGap;
-    const rowCount = navRows + 1 + extraRows;
-    const { rowGap, rowH, fs } = cornerRowMetrics(box.h, rowCount, { divSlot });
+    const hasLim = data.postedLimit != null;
+    const hasPro = data.prograde != null;
+    const hasCrs = !!data.courseStr;
+    let rowCount = 3 + (hasCrs ? 1 : 0); // SPD, HDG, POS + optional CRS
+    if (hasLim && hasPro) rowCount += 1;
+    else {
+      if (hasLim) rowCount += 1;
+      if (hasPro) rowCount += 1;
+    }
+
+    const useDivider = rowCount <= 5;
+    const divSlot = useDivider ? 4 : 0;
+    const { rowGap, rowH, fs } = cornerRowMetrics(box.h, rowCount, {
+      divSlot,
+      gapFrac: rowCount > 5 ? 0.02 : 0.04,
+    });
     let y = box.y;
 
     const spdColor = data.overLimit ? 'rgba(255, 120, 90, 0.95)' : undefined;
     drawLabelValueRow(ctx, box, y, rowH, 'SPD', String(data.speed).padStart(4, ' '), { fs, valueColor: spdColor });
     y += rowH + rowGap;
 
-    if (data.postedLimit != null) {
-      drawLabelValueRow(ctx, box, y, rowH, 'LIM', String(data.postedLimit).padStart(4, ' '), { fs });
+    if (hasLim && hasPro) {
+      drawLabelValueRow(
+        ctx,
+        box,
+        y,
+        rowH,
+        'L/P',
+        `${data.postedLimit}/${data.prograde}`,
+        { fs, tabular: false }
+      );
       y += rowH + rowGap;
-    }
-
-    if (data.prograde != null) {
-      drawLabelValueRow(ctx, box, y, rowH, 'PRO', String(data.prograde).padStart(4, ' '), { fs });
-      y += rowH + rowGap;
+    } else {
+      if (hasLim) {
+        drawLabelValueRow(ctx, box, y, rowH, 'LIM', String(data.postedLimit).padStart(4, ' '), { fs });
+        y += rowH + rowGap;
+      }
+      if (hasPro) {
+        drawLabelValueRow(ctx, box, y, rowH, 'PRO', String(data.prograde).padStart(4, ' '), { fs });
+        y += rowH + rowGap;
+      }
     }
 
     drawHeadingRow(ctx, box, y, rowH, 'HDG', data.headingStr, data.headingCardinal, { fs });
     y += rowH + rowGap;
 
-    if (data.courseStr) {
+    if (hasCrs) {
       drawHeadingRow(ctx, box, y, rowH, 'CRS', data.courseStr, data.courseCardinal, { fs });
       y += rowH + rowGap;
     }
 
-    drawDivider(ctx, box, y + divH / 2);
-    y += divSlot;
+    if (useDivider) {
+      drawDivider(ctx, box, y + 1);
+      y += divSlot;
+    }
 
-    drawLabelValueRow(ctx, box, y, rowH, 'POS', formatPosTabular(data.posX, data.posY), { fs });
+    drawLabelValueRow(ctx, box, y, rowH, 'POS', formatPosTabular(data.posX, data.posY), {
+      fs,
+      tabular: false,
+    });
   });
 }
 

@@ -23,6 +23,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.288] — 2026-07-24
+
+### Fixed
+- **TELEMETRY corner overflow** — row layout now counts every line (including POS); LIM+PRO merge to **L/P** when both show; POS displays km-scale coords; tighter font/gaps when six rows are active.
+
+---
+
 ## [0.1.287] — 2026-07-24
 
 ### Added
