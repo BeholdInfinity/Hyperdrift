@@ -5,8 +5,8 @@ import { ParticleSystem } from '../entities/Particle.js';
 import { InputSystem } from '../systems/InputSystem.js';
 import { CameraSystem } from '../systems/CameraSystem.js';
 import { Renderer } from '../systems/Renderer.js';
-import { Scanner } from '../systems/Scanner.js';
-import { ScannerSystem } from '../systems/ScannerSystem.js';
+import { RadarDisplay } from '../systems/RadarDisplay.js';
+import { RadarSystem } from '../systems/RadarSystem.js';
 import {
   contactScreenAabb,
   drawCornerBrackets,
@@ -121,8 +121,8 @@ export class GameEngine {
     this.lastTime = 0;
 
     this.renderer = new Renderer(canvas);
-    this.scanner = new Scanner();
-    this.scannerSystem = new ScannerSystem();
+    this.radarDisplay = new RadarDisplay();
+    this.radarSystem = new RadarSystem();
     this.pipSystem = new PipSystem();
     this.pipLoadouts = new PipLoadouts();
     this.pipLoadoutModal = null;
@@ -187,7 +187,7 @@ export class GameEngine {
     this.viewMode = 'ship';
     /**
      * Cockpit VIEW mode: 'ship' shows the world through the viewport with the
-     * thin scanner ring around it (default); 'scan' replaces both with one
+     * thin radar ring around it (default); 'scan' replaces both with one
      * full-disc radar scope (ship at center, blips plotted by range). The POI
      * rim ring is unchanged. Toggled from the cockpit MODES switch or the V key.
      */
@@ -376,17 +376,17 @@ export class GameEngine {
   }
 
   toggleContact(id) {
-    if (!this.scannerSystem) return;
-    if (!id || id === this.scannerSystem.selectedId) {
-      this.scannerSystem.clearSelection();
+    if (!this.radarSystem) return;
+    if (!id || id === this.radarSystem.selectedId) {
+      this.radarSystem.clearSelection();
       return;
     }
-    this.scannerSystem.select(id);
+    this.radarSystem.select(id);
   }
 
   selectContact(id) {
-    if (id) this.scannerSystem.select(id);
-    else this.scannerSystem.clearSelection();
+    if (id) this.radarSystem.select(id);
+    else this.radarSystem.clearSelection();
   }
 
   selectPoi(id) {
@@ -409,7 +409,7 @@ export class GameEngine {
       this.selectPoi(bestPoi.id);
       return;
     }
-    const scan = this.scannerSystem;
+    const scan = this.radarSystem;
     let bestC = null;
     let bestCd = tolWorld;
     for (const c of scan.contacts) {
@@ -2813,7 +2813,7 @@ export class GameEngine {
     // Full SCAN: wheel steps one pip-ring of scope zoom (camera zoom unchanged).
     let camZoomWheel = zoomWheel;
     if (this.scanView === 'scan' && zoomWheel !== 0) {
-      this.scannerSystem.stepPlotZoom(zoomWheel);
+      this.radarSystem.stepPlotZoom(zoomWheel);
       camZoomWheel = 0;
     }
     if (
@@ -3319,7 +3319,7 @@ export class GameEngine {
     else this._renderPlayWorld();
     this.renderer.endCircularClip();
 
-    this._renderScanner();
+    this._renderRadar();
     this._renderViewportTelemetry();
     this.cockpitFrame.render(this.renderer.ctx, this.renderer);
     this.cockpitFrame.drawPoiDots(
@@ -3464,15 +3464,15 @@ export class GameEngine {
 
   /** Corner brackets on the in-viewport hull when a contact is in visual range. */
   _renderSelectedContactViewport() {
-    if (this.scanView === 'scan' || !this.scannerSystem?.on) return;
-    const sel = this.scannerSystem.getSelected();
+    if (this.scanView === 'scan' || !this.radarSystem?.on) return;
+    const sel = this.radarSystem.getSelected();
     if (!sel || sel.state !== 'visual') return;
 
     const r = this.renderer;
     const box = contactScreenAabb(sel, this.camera, r.centerX, r.centerY);
     if (!box) return;
 
-    const pulse = this.scannerSystem.selectionPulse || 0;
+    const pulse = this.radarSystem.selectionPulse || 0;
     drawCornerBrackets(r.ctx, box.cx, box.cy, box.halfW, box.halfH, { pulse });
   }
 
@@ -3513,27 +3513,27 @@ export class GameEngine {
     this.scanView = this.scanView === 'scan' ? 'ship' : 'scan';
   }
 
-  /** Scanner ring geometry for the active VIEW (thin port ring vs full scope). */
-  _scannerGeometry() {
+  /** Radar ring geometry for the active VIEW (thin port ring vs full scope). */
+  _radarGeometry() {
     const r = this.renderer;
     if (this.scanView === 'scan') {
       return {
         innerR: 0,
-        outerR: r.scannerOuterRadius,
-        band: r.scannerOuterRadius,
+        outerR: r.radarOuterRadius,
+        band: r.radarOuterRadius,
         plotPad: 0.02,
         fullScope: true,
-        chevronBand: r.scannerBand || 40,
+        chevronBand: r.radarBand || 40,
       };
     }
     return {
       innerR: r.viewportRadius,
-      outerR: r.scannerOuterRadius,
-      band: r.scannerBand,
+      outerR: r.radarOuterRadius,
+      band: r.radarBand,
       // Full blue→orange band; edge blips get occluded by the ring strokes / POI rim.
       plotPad: 0,
       fullScope: false,
-      chevronBand: r.scannerBand,
+      chevronBand: r.radarBand,
     };
   }
 
@@ -3563,6 +3563,7 @@ export class GameEngine {
       systems: [
         { name: 'Engines', state: 'ok' },
         { name: 'Thrusters', state: 'ok' },
+        { name: 'Radar', state: 'ok' },
         { name: 'Scanner', state: 'ok' },
         { name: 'Life Support', state: 'ok' },
       ],
@@ -3576,7 +3577,7 @@ export class GameEngine {
     };
   }
 
-  /** Route space-cockpit LMB clicks: panels → scanner band → POI rim. */
+  /** Route space-cockpit LMB clicks: panels → radar band → POI rim. */
   _processCockpitClicks() {
     const click = this.input.consumeClickPos();
     if (!click) return;
@@ -3591,8 +3592,8 @@ export class GameEngine {
 
     if (this.cockpitPanels.trySectorMapClick(this, x, y, !!click.shiftKey)) return;
 
-    if (distC <= this.renderer.scannerOuterRadius) {
-      this._selectContactScannerClick(x, y);
+    if (distC <= this.renderer.radarOuterRadius) {
+      this._selectContactRadarClick(x, y);
       return;
     }
 
@@ -3613,7 +3614,7 @@ export class GameEngine {
     this.cockpitPanels.handleRightClick(x, y, this);
   }
 
-  /** Middle-click — contacts list rows + viewport hull + scanner blips. */
+  /** Middle-click — contacts list rows + viewport hull + radar blips. */
   _processCockpitMiddleClicks() {
     const click = this.input.consumeMiddleClickPos();
     if (!click) return;
@@ -3631,29 +3632,29 @@ export class GameEngine {
       return;
     }
 
-    if (distC <= this.renderer.scannerOuterRadius) {
-      this._selectContactScannerClick(x, y);
+    if (distC <= this.renderer.radarOuterRadius) {
+      this._selectContactRadarClick(x, y);
     }
   }
 
-  _selectContactScannerClick(sx, sy) {
-    if (!this.scannerSystem?.on) {
+  _selectContactRadarClick(sx, sy) {
+    if (!this.radarSystem?.on) {
       this.selectContact(null);
       return;
     }
     const tol =
       this.scanView === 'scan'
         ? Math.max(18, this.renderer.viewportRadius * 0.12)
-        : Math.max(18, this.renderer.scannerBand);
-    this.scannerSystem.toggleNearestScreen(sx, sy, tol);
+        : Math.max(18, this.renderer.radarBand);
+    this.radarSystem.toggleNearestScreen(sx, sy, tol);
   }
 
   _selectContactViewportClick(sx, sy) {
-    if (!this.scannerSystem?.on) {
+    if (!this.radarSystem?.on) {
       this.selectContact(null);
       return;
     }
-    this.scannerSystem.toggleViewportSelect(
+    this.radarSystem.toggleViewportSelect(
       sx,
       sy,
       this.camera,
@@ -3682,22 +3683,21 @@ export class GameEngine {
     this.selectPoi(best ? best.id : null);
   }
 
-  _renderScanner() {
+  _renderRadar() {
     const r = this.renderer;
-    if (!r.scannerBand || !this.ship) return;
+    if (!r.radarBand || !this.ship) return;
 
     const dt = this._lastFrameDt || 1 / 60;
     const radarPips = this.pipSystem.get('radar');
-    const geo = this._scannerGeometry();
+    const geo = this._radarGeometry();
 
-    this.scannerSystem.update(dt, {
+    this.radarSystem.update(dt, {
       ship: this.ship,
       station: this.station,
       ambientTraffic: this.ambientTraffic,
       asteroids: this.asteroidSystem.getActiveAsteroids(),
       camera: this.camera,
       radarPips,
-      scannerPips: radarPips,
       centerX: r.centerX,
       centerY: r.centerY,
       innerR: geo.innerR,
@@ -3714,10 +3714,10 @@ export class GameEngine {
     });
     this.sectorMap.update({
       ship: this.ship,
-      scanRange: this.scannerSystem.on ? this.scannerSystem.range : 0,
+      scanRange: this.radarSystem.on ? this.radarSystem.range : 0,
     });
 
-    this.scanner.render(r.ctx, {
+    this.radarDisplay.render(r.ctx, {
       centerX: r.centerX,
       centerY: r.centerY,
       innerR: geo.innerR,
@@ -3727,7 +3727,7 @@ export class GameEngine {
       fullScope: geo.fullScope,
       chevronBand: geo.chevronBand,
       ship: this.ship,
-      model: this.scannerSystem,
+      model: this.radarSystem,
       cameraRotation: this.camera.rotation || 0,
       time: this.gameTime,
       maxSpeed: PHYSICS.MAX_SPEED,
@@ -3737,8 +3737,8 @@ export class GameEngine {
   /** Speed + target distance labels laid out inside the viewport / scope. */
   _renderViewportTelemetry() {
     const r = this.renderer;
-    if (!r.scannerBand || !this.ship) return;
-    const geo = this._scannerGeometry();
+    if (!r.radarBand || !this.ship) return;
+    const geo = this._radarGeometry();
     renderViewportTelemetry(r.ctx, {
       centerX: r.centerX,
       centerY: r.centerY,
@@ -3750,7 +3750,7 @@ export class GameEngine {
       ship: this.ship,
       cameraRotation: this.camera.rotation || 0,
       maxSpeed: PHYSICS.MAX_SPEED,
-      scannerSystem: this.scannerSystem,
+      radarSystem: this.radarSystem,
       poiSystem: this.poiSystem,
       navRoute: this.navRoute,
       engine: this,
@@ -4195,9 +4195,9 @@ export class GameEngine {
 
   _updateHUD() {
     if (!this._hudSpeed || !this.ship) return;
-    // Lift the SPD/ZOOM/PRECISION row above the scanner ring band (POS lives in
+    // Lift the SPD/ZOOM/PRECISION row above the radar ring band (POS lives in
     // the ring). Sits just inside the lower edge of the space viewport.
-    if (this._hudEl && this.renderer.scannerBand) {
+    if (this._hudEl && this.renderer.radarBand) {
       const bottom = Math.round(
         this.renderer.height -
           (this.renderer.centerY + this.renderer.viewportRadius) +

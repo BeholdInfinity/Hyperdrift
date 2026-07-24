@@ -3960,11 +3960,11 @@ export function attachHangarRender(HangarBay) {
         sb,
       };
 
-      // Corner ship-scanners are permanent board hardware (glow while scanning)
+      // Twin Hangar Bay Scanners are permanent board hardware (glow while scanning)
       const scanAmp =
         hasShip && this._padBoardScanActive(pad) ? this._padBoardScanAmp(pad) : 0;
-      this._drawBoardScannerPod(ctx, x0 + 3.5, faceY - 1.5, scanAmp, bay, 0);
-      this._drawBoardScannerPod(ctx, x0 + w - 3.5, faceY - 1.5, scanAmp, bay, 1);
+      this._drawHangarBayScannerPod(ctx, x0 + 3.5, faceY - 1.5, scanAmp, bay, 0);
+      this._drawHangarBayScannerPod(ctx, x0 + w - 3.5, faceY - 1.5, scanAmp, bay, 1);
 
       ctx.fillStyle = '#c98020';
       ctx.font = 'bold 5.5px monospace';
@@ -3973,7 +3973,7 @@ export function attachHangarRender(HangarBay) {
     });
   };
 
-  HangarBay.prototype._drawBoardScannerPod = function (ctx, x, y, intensity, bay, side) {
+  HangarBay.prototype._drawHangarBayScannerPod = function (ctx, x, y, intensity, bay, side) {
     const on = intensity > 0.02;
     const pulse = on
       ? 0.72 + 0.28 * Math.sin(this.time * 14 + bay * 1.7 + side * 2.1)

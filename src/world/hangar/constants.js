@@ -351,7 +351,7 @@ const VISITOR_CARGO_MK = {
  */
 
 
-/** 0→1→0 triangle wave for scanner ping-pong. */
+/** 0→1→0 triangle wave for Hangar Bay Scanner ping-pong. */
 
 /**
  * Per-pick delays for captain pip reveal.

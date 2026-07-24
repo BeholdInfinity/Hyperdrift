@@ -1,16 +1,16 @@
 /**
- * ScannerSystem — the scanner *model* (the `Scanner` class is the renderer).
+ * RadarSystem — the 360° radar *model* (`RadarDisplay` is the renderer).
  *
  * Each update it gathers contacts (station, ambient ships, optional asteroids),
  * computes distance/bearing, assigns a stable id + IFF/type, and range-gates
  * them into states:
  *   - visual : within the viewport's visible world radius → collapses to a dot
- *              on the scanner's inner border (not a band pip) — PORT only
+ *              on the radar ring's inner border (not a band pip) — PORT only
  *   - in     : inside scan range, plotted by piecewise pip range map
  *   - edge   : near the outer scan range → ghosted
  *   - (out)  : beyond range → dropped
  *
- * Detection is tier-gated: `effectiveTier = min(scannerMk, radarPips)`.
+ * Detection is tier-gated: `effectiveTier = min(radarMk, radarPips)`.
  * Blip refresh is radar-stepped for band contacts (`in` / `edge`): they paint
  * when any sweep arm crosses their true bearing, clear when an arm revisits an
  * empty painted bearing, and fade with age between pings. **Visual-range**
@@ -24,7 +24,7 @@
  * Plot radius uses a piecewise pip map (near space gets more display radius).
  */
 
-import { SCANNER } from '../core/Constants.js';
+import { RADAR } from '../core/Constants.js';
 import { pickContactAtScreen } from './ContactSelectionDraw.js';
 
 const TWO_PI = Math.PI * 2;
@@ -57,10 +57,10 @@ export function contactFilterBucket(type) {
   return 'ship';
 }
 
-export class ScannerSystem {
+export class RadarSystem {
   constructor() {
-    /** Installed scanner mark (scaffold; Mk5 unlocks full 5-pip / 5-arm table). */
-    this.scannerMk = 5;
+    /** Installed radar mark (scaffold; Mk5 unlocks full 5-pip / 5-arm table). */
+    this.radarMk = 5;
     this.sweepAngle = 0;
     this._prevSweep = 0;
     this._time = 0;
@@ -95,11 +95,11 @@ export class ScannerSystem {
     this.rangeRingMarks = [];
     this.on = false;
     this.rings = 0;
-    this.includeAsteroids = SCANNER.INCLUDE_ASTEROIDS;
-    /** Dev range multiplier (SCANNER drawer slider). */
+    this.includeAsteroids = RADAR.INCLUDE_ASTEROIDS;
+    /** Dev range multiplier (RADAR drawer slider). */
     this.rangeScale = 1;
     /**
-     * CONTACTS panel chips — also gates scanner blips / pick / selection.
+     * CONTACTS panel chips — also gates radar blips / pick / selection.
      * Keys: ship, station, other.
      */
     this.contactFilters = { ship: true, station: true, other: true };
@@ -113,21 +113,21 @@ export class ScannerSystem {
   }
 
   effectiveTier(radarPips) {
-    const t = Math.min(this.scannerMk, radarPips | 0);
-    return Math.max(0, Math.min(SCANNER.TIERS.length - 1, t));
+    const t = Math.min(this.radarMk, radarPips | 0);
+    return Math.max(0, Math.min(RADAR.TIERS.length - 1, t));
   }
 
   sweepSpeed() {
-    const base = SCANNER.SWEEP_SPEED ?? SCANNER.SWEEP_BASE ?? 0.95;
-    const armMax = SCANNER.SWEEP_ARM_MAX ?? 3;
+    const base = RADAR.SWEEP_SPEED ?? RADAR.SWEEP_BASE ?? 0.95;
+    const armMax = RADAR.SWEEP_ARM_MAX ?? 3;
     const extra = Math.max(0, (this.tier | 0) - armMax);
-    const per = SCANNER.SWEEP_SPEED_PER_EXTRA_PIP ?? 0.4;
+    const per = RADAR.SWEEP_SPEED_PER_EXTRA_PIP ?? 0.4;
     return base + extra * per;
   }
 
   /** Sweep arms: 1…SWEEP_ARM_MAX (further pips boost speed instead). */
   sweepArmCount() {
-    const armMax = SCANNER.SWEEP_ARM_MAX ?? 3;
+    const armMax = RADAR.SWEEP_ARM_MAX ?? 3;
     return Math.max(1, Math.min(armMax, this.tier | 0));
   }
 
@@ -146,7 +146,7 @@ export class ScannerSystem {
 
   /** World range at a given tier index (respects rangeScale). */
   tierWorldRange(tierIndex) {
-    const row = SCANNER.TIERS[tierIndex] || SCANNER.TIERS[0];
+    const row = RADAR.TIERS[tierIndex] || RADAR.TIERS[0];
     return (row.range || 0) * this.rangeScale;
   }
 
@@ -219,7 +219,7 @@ export class ScannerSystem {
    * @param {number} dt
    * @param {{
    *   ship: object, station: object, ambientTraffic: object, asteroids?: object[],
-   *   camera: object, radarPips: number, scannerPips?: number,
+   *   camera: object, radarPips: number,
    *   centerX: number, centerY: number, innerR: number, outerR: number, band: number,
    * }} ctx
    */
@@ -232,10 +232,10 @@ export class ScannerSystem {
       return;
     }
 
-    this.tier = this.effectiveTier(ctx.radarPips ?? ctx.scannerPips);
+    this.tier = this.effectiveTier(ctx.radarPips);
     this.on = this.tier > 0;
     // PORT always plots full sensor reach; SCAN uses wheel plotZoom (1…tier).
-    // Adding scanner pips snaps plot zoom out to the new max ring; removing
+    // Adding radar pips snaps plot zoom out to the new max ring; removing
     // pips only clamps if the current zoom is past the new max.
     if (this.tier <= 0) {
       this.plotZoom = 0;
@@ -252,7 +252,7 @@ export class ScannerSystem {
 
     this._prevSweep = this.sweepAngle;
     if (this.on) this.sweepAngle = (this.sweepAngle + this.sweepSpeed() * dt) % TWO_PI;
-    const pulseDecay = SCANNER.SELECTION_PULSE_DECAY ?? 2.8;
+    const pulseDecay = RADAR.SELECTION_PULSE_DECAY ?? 2.8;
     this.selectionPulse = Math.max(0, this.selectionPulse - dt * pulseDecay);
 
     if (!this.on) {
@@ -270,7 +270,7 @@ export class ScannerSystem {
 
     // Temporary test gate: asteroids only within R1.
     const asteroidMaxR = this.tierWorldRange(
-      Math.min(SCANNER.ASTEROID_RANGE_TIER || 1, this.tier)
+      Math.min(RADAR.ASTEROID_RANGE_TIER || 1, this.tier)
     );
 
     const raw = [];
@@ -354,11 +354,11 @@ export class ScannerSystem {
     }
     // Edge ghosting uses the *plot* outer range so zoomed-in scopes still
     // fade contacts near the visible rim (farther sensor paints pin to rim).
-    const edgeStart = plotMax * (1 - SCANNER.EDGE_MARGIN);
+    const edgeStart = plotMax * (1 - RADAR.EDGE_MARGIN);
     const maxSize = ctx.fullScope ? 12 : Math.max(4, ctx.band * 0.26);
     const fadePeriod = TWO_PI / Math.max(1e-3, this.sweepSpeed());
-    const bearingEps = SCANNER.BLIP_BEARING_EPS ?? 0.04;
-    const fadeFloor = SCANNER.BLIP_FADE_FLOOR ?? 0.22;
+    const bearingEps = RADAR.BLIP_BEARING_EPS ?? 0.04;
+    const fadeFloor = RADAR.BLIP_FADE_FLOOR ?? 0.22;
 
     const candidates = [];
     /** Contacts present and in-range this frame (may still be waiting for first paint). */
@@ -559,12 +559,12 @@ export class ScannerSystem {
     const out = [];
     const kept = new Set();
     for (const c of primary) {
-      if (out.length >= SCANNER.MAX_CONTACTS) break;
+      if (out.length >= RADAR.MAX_CONTACTS) break;
       out.push(c);
       kept.add(c.id);
     }
     for (const c of rocks) {
-      if (out.length >= SCANNER.MAX_CONTACTS) break;
+      if (out.length >= RADAR.MAX_CONTACTS) break;
       out.push(c);
       kept.add(c.id);
     }

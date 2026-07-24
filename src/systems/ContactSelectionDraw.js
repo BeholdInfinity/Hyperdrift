@@ -1,11 +1,11 @@
 /**
- * Shared corner-bracket selection chrome for scanner blips and in-viewport contacts.
+ * Shared corner-bracket selection chrome for radar blips and in-viewport contacts.
  */
 
 import { STATION } from '../core/Constants.js';
 
 /**
- * Axis-aligned corner brackets (scanner ring + viewport hand-off).
+ * Axis-aligned corner brackets (radar ring + viewport hand-off).
  */
 export function drawCornerBrackets(ctx, cx, cy, halfW, halfH, opts = {}) {
   const pulse = opts.pulse || 0;

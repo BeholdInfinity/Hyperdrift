@@ -1,15 +1,15 @@
 /**
- * Scanner Output Screen renderer — draws the circular radar ring / full-disc
- * scope from a `ScannerSystem` model. Contacts plot at their (radar-stepped)
- * bearing with piecewise range mapping; ship/asteroid blips use silhouettes.
+ * RadarDisplay — draws the circular radar ring / full-disc scope from a
+ * `RadarSystem` model. Contacts plot at their (radar-stepped) bearing with
+ * piecewise range mapping; ship/asteroid blips use silhouettes.
  *
  * Indicators drawn here are ship telemetry (nose/tail heading, velocity /
  * anti-vector chevrons). Speed + target distance labels live in
  * `ViewportTelemetry.js`. Sweep, range rings, blips and selection only render
- * when the scanner is on.
+ * when radar is on.
  */
 
-import { IFF, SCANNER } from '../core/Constants.js';
+import { IFF, RADAR } from '../core/Constants.js';
 import { drawShipSilhouette } from '../ships/ShipRenderer.js';
 import { drawCornerBrackets } from './ContactSelectionDraw.js';
 
@@ -32,7 +32,7 @@ const COLORS = {
   ownShipStroke: '#3d4a58',
 };
 
-export class Scanner {
+export class RadarDisplay {
   constructor() {
     this.maxSpeed = 900;
   }
@@ -42,7 +42,7 @@ export class Scanner {
    * @param {{
    *   centerX: number, centerY: number,
    *   innerR: number, outerR: number, band: number,
-   *   ship: object, model: import('./ScannerSystem.js').ScannerSystem,
+   *   ship: object, model: import('./RadarSystem.js').RadarSystem,
    *   cameraRotation?: number, time?: number, maxSpeed?: number,
    *   fullScope?: boolean, plotPad?: number, chevronBand?: number,
    * }} opts
@@ -182,7 +182,7 @@ export class Scanner {
         const tr = Math.max(8, r - fontPx * 0.85);
         const tx = cx + Math.cos(labelAngle) * tr;
         const ty = cy + Math.sin(labelAngle) * tr;
-        const km = m.dist / (SCANNER.KM_SCALE || 100);
+        const km = m.dist / (RADAR.KM_SCALE || 100);
         // Tier rings are whole km (50 / 100 / 150 / …).
         const text = `${Math.round(km)} km`;
         ctx.fillText(text, tx, ty);

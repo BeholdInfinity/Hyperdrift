@@ -23,6 +23,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.286] — 2026-07-23
+
+### Changed
+- **Radar naming alignment** — 360° sweep stack renamed end-to-end: **`RadarSystem`** / **`RADAR`** (model + constants), **`RadarDisplay`** (ring/scope renderer), `GameEngine.radarSystem` + `radarDisplay`, `radarBand` / `radarOuterRadius`, `_renderRadar()` / `_radarGeometry()`. Hangar pad board hardware renamed **`hangarBayScanner`** / **Hangar Bay Scanner** (was module id `scanner` / “Corner scanners”). **`scanner`** pip channel still powers Forward Looking Scanner / cargo detail only.
+
+---
+
 ## [0.1.285] — 2026-07-23
 
 ### Added

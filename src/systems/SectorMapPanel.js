@@ -212,7 +212,7 @@ function drawMapCanvas(ctx, box, engine, view, { fog, liveTrail }) {
     }
   }
 
-  const scan = engine.scannerSystem;
+  const scan = engine.radarSystem;
   for (const c of scan.contacts) {
     if (!scan.passesContactFilter(c)) continue;
     if (c.scanX == null || c.scanY == null) continue;
@@ -385,7 +385,7 @@ export function pickSectorMapMarkerAtScreen(engine, sx, sy, mapBox, view) {
     }
   }
 
-  const scan = engine.scannerSystem;
+  const scan = engine.radarSystem;
   for (const c of scan.contacts) {
     if (!scan.passesContactFilter(c)) continue;
     if (c.scanX == null || c.scanY == null) continue;

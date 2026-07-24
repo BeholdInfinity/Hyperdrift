@@ -107,7 +107,7 @@ function drawMiningBeam(ctx, ship, def, itemOffset = null) {
 
 /**
  * Flat IFF/own-ship silhouette: section footprints only (fill + stroke), no
- * hardware, plumes, windows, or theme skin. Used by scanner blips / SCAN own-ship.
+ * hardware, plumes, windows, or theme skin. Used by radar blips / SCAN own-ship.
  * @param {CanvasRenderingContext2D} ctx
  * @param {object} shipOrDef ship with shipDef, or a ShipDefinition
  * @param {{ fillStyle?: string, strokeStyle?: string }} [opts]

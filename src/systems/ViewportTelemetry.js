@@ -1,15 +1,15 @@
 /**
  * Viewport telemetry labels — speed + target distances laid out together inside
- * the scanner ring / full SCAN scope without overlapping.
+ * the radar ring / full SCAN scope without overlapping.
  */
 
-import { SCANNER } from '../core/Constants.js';
+import { RADAR } from '../core/Constants.js';
 import { contactScreenAabb } from './ContactSelectionDraw.js';
 
 const FONT = "'Barlow Condensed', 'Segoe UI', sans-serif";
 
 /** @param {number} worldDist */
-export function formatDistKm(worldDist, kmScale = SCANNER.KM_SCALE || 100) {
+export function formatDistKm(worldDist, kmScale = RADAR.KM_SCALE || 100) {
   const km = worldDist / kmScale;
   if (km >= 100) return `${Math.round(km)} km`;
   return `${km.toFixed(1)} km`;
@@ -48,7 +48,7 @@ function speedChevronMetrics(band) {
   return { cs, gap: cs * 2.1, fs: Math.max(11, Math.min(14, cs * 1.05)) };
 }
 
-/** Preferred anchor for the numeric speed readout (matches legacy scanner placement). */
+/** Preferred anchor for the numeric speed readout (matches legacy radar placement). */
 function speedAnchor(cx, cy, innerR, outerR, band, ship, rot, fullScope) {
   const vx = ship.velocity?.x ?? 0;
   const vy = ship.velocity?.y ?? 0;
@@ -137,7 +137,7 @@ function nearSameWorld(a, b, eps = 80) {
  *   innerR: number, outerR: number, band: number,
  *   plotPad?: number, fullScope?: boolean,
  *   ship: object, cameraRotation?: number, maxSpeed?: number,
- *   scannerSystem?: import('./ScannerSystem.js').ScannerSystem,
+ *   radarSystem?: import('./RadarSystem.js').RadarSystem,
  *   poiSystem?: import('../world/PoiSystem.js').PoiSystem,
  *   navRoute?: import('../world/NavRoute.js').NavRoute,
  *   engine?: object, camera?: object,
@@ -154,7 +154,7 @@ export function renderViewportTelemetry(ctx, opts) {
     fullScope = false,
     ship,
     cameraRotation: rot = 0,
-    scannerSystem,
+    radarSystem,
     poiSystem,
     navRoute,
     engine,
@@ -165,7 +165,7 @@ export function renderViewportTelemetry(ctx, opts) {
   const placed = [];
   const fs = speedChevronMetrics(band).fs;
   const distFs = Math.max(11, fs - 1);
-  const plotRange = scannerSystem?.plotRange || scannerSystem?.range || 1;
+  const plotRange = radarSystem?.plotRange || radarSystem?.range || 1;
 
   const speed = speedAnchor(cx, cy, innerR, outerR, band, ship, rot, fullScope);
   if (speed) {
@@ -204,7 +204,7 @@ export function renderViewportTelemetry(ctx, opts) {
     });
   }
 
-  const contact = scannerSystem?.on && scannerSystem.getSelected?.();
+  const contact = radarSystem?.on && radarSystem.getSelected?.();
   if (contact) {
     const dupNav = stop && nearSameWorld({ x: contact.x, y: contact.y }, stop);
     const dupPoi = poi && nearSameWorld({ x: contact.x, y: contact.y }, poi);

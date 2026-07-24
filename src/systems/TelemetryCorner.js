@@ -2,7 +2,7 @@
  * TELEMETRY (nav) + ZOOM (viewport / radar scale) corner readouts.
  */
 
-import { SCANNER } from '../core/Constants.js';
+import { RADAR } from '../core/Constants.js';
 import { formatDistKm } from './ViewportTelemetry.js';
 
 const CARDINAL16 = [
@@ -446,24 +446,24 @@ export function buildZoomRadarTelemetry(engine) {
   const r = engine.renderer;
   if (!cam || !r) return null;
 
-  const kmScale = SCANNER.KM_SCALE || 100;
+  const kmScale = RADAR.KM_SCALE || 100;
   const zoomPct = Math.round(cam.displayZoom() * 100);
   const viewWorld = r.viewportRadius / Math.max(0.001, cam.effectiveZoom);
   const viewKm = viewWorld / kmScale;
 
-  const scan = engine.scannerSystem;
-  const scannerOn = !!scan?.on;
-  const effectiveTier = scannerOn ? (scan.tier | 0) : 0;
-  const plotTier = scannerOn && effectiveTier > 0 ? Math.max(1, scan.plotZoom | 0) : 0;
+  const scan = engine.radarSystem;
+  const radarOn = !!scan?.on;
+  const effectiveTier = radarOn ? (scan.tier | 0) : 0;
+  const plotTier = radarOn && effectiveTier > 0 ? Math.max(1, scan.plotZoom | 0) : 0;
   const rangeScale = scan?.rangeScale || 1;
-  const tierCount = SCANNER.TIERS.length - 1;
+  const tierCount = RADAR.TIERS.length - 1;
   /** @type {Array<{ km: number, tier: number, state: 'locked'|'unlocked'|'active' }>} */
   const rings = [];
 
   for (let i = 1; i <= tierCount; i++) {
     const worldR = scan?.tierWorldRange
       ? scan.tierWorldRange(i)
-      : (SCANNER.TIERS[i]?.range || 0) * rangeScale;
+      : (RADAR.TIERS[i]?.range || 0) * rangeScale;
     const km = Math.round(worldR / kmScale);
     let state = 'locked';
     if (effectiveTier >= i) {
@@ -478,7 +478,7 @@ export function buildZoomRadarTelemetry(engine) {
     zoomPct,
     viewKm,
     viewKmLabel: formatDistKm(viewWorld, kmScale),
-    scannerOn,
+    radarOn,
     rings,
     activeKm: activeRing?.km ?? null,
     effectiveTier,

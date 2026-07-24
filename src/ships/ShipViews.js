@@ -106,7 +106,7 @@ let _lastDeckLift = { x: 0, y: 0 };
  */
 let _extrudePhase = 'all';
 
-/** Scanner blip / own-ship paint: flat fill+stroke, no skin/windows/detail. */
+/** Radar blip / own-ship paint: flat fill+stroke, no skin/windows/detail. */
 let _silhouette = null;
 
 export function beginShipDraw(view) {

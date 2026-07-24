@@ -4,10 +4,10 @@
  * Fog levels per cell:
  *   0 unseen  — never scanned this outing (only registered POIs show through)
  *   1 stale   — scanned earlier but now out of range (last-known, not updated)
- *   2 in-range— inside the live scanner range right now (full reveal)
+ *   2 in-range— inside the live radar range right now (full reveal)
  *
  * Also records a downsampled scan trail (where the ship has flown). Contact
- * blips are drawn by CockpitPanels from `ScannerSystem` last-ping positions
+ * blips are drawn by CockpitPanels from `RadarSystem` last-ping positions
  * (same sweep-gated paints as the radar), not live world coords.
  */
 

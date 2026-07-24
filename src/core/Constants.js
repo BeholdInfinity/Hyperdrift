@@ -176,7 +176,7 @@ export const HANGAR = {
   /** Beat after settle before deck work starts (visitors; player uses board reveal) */
   VISITOR_ARRIVE_SETTLE_DWELL_MIN: 2,
   VISITOR_ARRIVE_SETTLE_DWELL_MAX: 5,
-  /** Green corner scanners warm up before board text fills */
+  /** Hangar Bay Scanners warm up before board text fills */
   BOARD_REVEAL_PRESCAN_SEC: 0.5,
   /** Player/visitor board scan after pad settle: SHIP STATS rows top→bottom */
   BOARD_REVEAL_STATS_SEC: 2,
@@ -192,7 +192,7 @@ export const HANGAR = {
   /** Captain pip pick: delay when repeating the same type as the previous pip */
   BOARD_REVEAL_PIP_GAP_SAME_MIN: 0.1,
   BOARD_REVEAL_PIP_GAP_SAME_MAX: 0.2,
-  /** Quick corner-scanner pass after all service jobs finish (before board goes green) */
+  /** Quick Hangar Bay Scanner pass after all service jobs finish (before board goes green) */
   BOARD_FINAL_SCAN_SEC: 1,
   /** After B2 captain checklist finishes, wait before rolling a new list (player owns exit). */
   PLAYER_SERVICE_REROLL_MIN: 10,
@@ -388,7 +388,7 @@ export const AMBIENT = {
    */
   VISIBLE_MARGIN: 140,
   /**
-   * Extra world units beyond max scanner reach. Ambient spawn/despawn also
+   * Extra world units beyond max radar reach. Ambient spawn/despawn also
    * stay outside this bubble around the player so contacts don't pop onto /
    * off the radar. Cheap: still capped by MAX_SHIPS.
    */
@@ -446,8 +446,8 @@ export const RENDER = {
 };
 
 /**
- * Scanner / sensor tuning. Detection is range-gated and driven by
- * `effectiveTier = min(scannerMk, radarPips)` (360° sweep / Radar channel).
+ * Radar / sensor tuning. Detection is range-gated and driven by
+ * `effectiveTier = min(radarMk, radarPips)` (360° sweep / Radar channel).
  * The tier table is data-driven and open-ended — append rows for higher Mks / bigger pip pools.
  * Each tier's `range` is world units; HUD km = `range / KM_SCALE`.
  *
@@ -455,7 +455,7 @@ export const RENDER = {
  * R1; each extra pip halves the outermost display band and extends reach to Rn.
  * Range-divider rings sit at display fracs 0.5, 0.75, 0.875, … (tier − 1 rings).
  */
-export const SCANNER = {
+export const RADAR = {
   /**
    * @deprecated Legacy base; tier rows now store absolute world ranges.
    * Kept so older multipliers / drawers don't NaN if referenced.
@@ -489,7 +489,7 @@ export const SCANNER = {
   INCLUDE_ASTEROIDS: true,
   /**
    * Temporary test gate: asteroid contacts only within this tier's range (R1),
-   * even when the live scanner tier is higher. Bump to widen later.
+   * even when the live radar tier is higher. Bump to widen later.
    */
   ASTEROID_RANGE_TIER: 1,
   /**
@@ -506,17 +506,17 @@ export const SCANNER = {
   ],
 };
 
-/** Furthest scanner world range (highest TIERS.range). */
-export function scannerMaxRange() {
+/** Furthest radar world range (highest TIERS.range). */
+export function radarMaxRange() {
   let m = 0;
-  for (const row of SCANNER.TIERS) {
+  for (const row of RADAR.TIERS) {
     if ((row.range || 0) > m) m = row.range;
   }
   return m;
 }
 
 /**
- * IFF (Identification Friend or Foe) palette. Applies to scanner contacts and
+ * IFF (Identification Friend or Foe) palette. Applies to radar contacts and
  * POIs. Blue = known neutral POI + its patrols; Yellow = unknown/unidentified
  * (incl. unaffiliated civilians); Red = hostile; Green = faction ally.
  */

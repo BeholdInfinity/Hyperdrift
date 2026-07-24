@@ -8,10 +8,10 @@ export const HANGAR_MODULES = {
     scope: 'bay',
     label: 'Service board',
   },
-  scanner: {
-    id: 'scanner',
+  hangarBayScanner: {
+    id: 'hangarBayScanner',
     scope: 'bay',
-    label: 'Corner scanners',
+    label: 'Hangar Bay Scanner',
   },
   elevator: {
     id: 'elevator',
@@ -40,13 +40,13 @@ export const HANGAR_MODULES = {
   },
 };
 
-export const BAY_MODULE_IDS = ['serviceBoard', 'scanner', 'elevator', 'door'];
+export const BAY_MODULE_IDS = ['serviceBoard', 'hangarBayScanner', 'elevator', 'door'];
 export const SHARED_MODULE_IDS = ['crane', 'forkliftHub', 'securityPost'];
 
 /** Full Jennings commercial bay kit */
 export const JENNINGS_BAY_MODULES = [
   'elevator',
-  'scanner',
+  'hangarBayScanner',
   'serviceBoard',
   'door',
 ];
@@ -60,7 +60,8 @@ export function hasModule(list, id) {
 export function normalizeModuleList(list, allowed) {
   const set = new Set();
   for (const id of list || []) {
-    if (allowed.includes(id)) set.add(id);
+    const normalized = id === 'scanner' ? 'hangarBayScanner' : id;
+    if (allowed.includes(normalized)) set.add(normalized);
   }
   return [...set];
 }

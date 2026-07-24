@@ -517,7 +517,7 @@ export class CockpitPanels {
 
   // ---- 0 CONTACT DETAILS ------------------------------------------------
   _contact(ctx, box, engine) {
-    const c = engine.scannerSystem.getSelected();
+    const c = engine.radarSystem.getSelected();
     if (!c) {
       this._text(ctx, 'NO CONTACT SELECTED', box.x, box.y + 16, { color: DIM, size: 13 });
       this._text(ctx, 'LMB/MMB blip or list; MMB hull', box.x, box.y + 34, {
@@ -571,11 +571,11 @@ export class CockpitPanels {
 
   // ---- 1 CONTACTS --------------------------------------------------------
   _contactsList(ctx, box, engine) {
-    const scan = engine.scannerSystem;
+    const scan = engine.radarSystem;
     const f = scan.contactFilters;
     const allOn = f.ship && f.station && f.other;
 
-    // Filter chip row — also gates scanner blips / pick / selection.
+    // Filter chip row — also gates radar blips / pick / selection.
     const chips = [
       { key: 'all', label: 'ALL', on: allOn },
       { key: 'ship', label: 'SHIP', on: f.ship },
@@ -663,7 +663,7 @@ export class CockpitPanels {
 
   // ---- 2 COMMS -----------------------------------------------------------
   _comms(ctx, box, engine) {
-    const c = engine.scannerSystem.getSelected();
+    const c = engine.radarSystem.getSelected();
     const inRange = c && (c.state === 'visual' || c.state === 'in');
     if (!inRange) {
       this._text(ctx, 'NO COMMS TARGET', box.x, box.y + 16, { color: DIM, size: 13 });

@@ -61,8 +61,8 @@ src/
     WeaponSystem.js       Dorsal turret + mining laser, collisions, impacts
     AsteroidSystem.js     Chunk load/unload
     ProceduralGeneration.js  Seeded asteroids + nebulae
-    ScannerSystem.js      Scanner model: contacts, sweep-gated paints, piecewise pip range + SCAN plot-zoom, age fade, selection
-    Scanner.js            Scanner ring/scope renderer (silhouettes, IFF, sweep, nose/tail, chevrons)
+    RadarSystem.js          Radar model: contacts, sweep-gated paints, piecewise pip range + SCAN plot-zoom, age fade, selection
+    RadarDisplay.js         Radar ring/scope renderer (silhouettes, IFF, sweep, nose/tail, chevrons)
     ViewportTelemetry.js  Viewport speed + contact/POI/nav distance labels (collision-aware layout)
     CockpitFrame.js       Cached 16:9 steel/copper HUD chrome + POI rim dots + corners (TL ZOOM · TR TELEMETRY · BL MODES · BR STATUS)
     CockpitPanels.js      Live content for the 6 cockpit screens + CONTACTS filters + PIPS/LOADOUTS + status alert overlay
@@ -209,21 +209,20 @@ src/
 - **Hangar visitor size polish** — peer-Mk spawn exists; verify same-group visitors ≈ player size
 - Ambient miner asteroid damage (visual cue only today)
 
-### Scanner → Cockpit HUD follow-ups (post v0.1.284)
-v0.1.283–284 shipped the scanner/cockpit core (sector map, Travel Log, nav route queue, pip loadouts, MODES/ORIENT/VIEW, full SCAN scope, sweep paints, selection lock FX, visual-range viewport brackets). Remaining polish:
-- **Thicken sensor-ring inner border** so visual contacts ride a thicker border matching the outer POI rim (today dots sit on the thin `viewportRadius` edge) — `src/systems/Scanner.js` `_drawBand`, maybe `src/systems/Renderer.js`
-- **Tier-based icon shrink** — blips shrink with distance only; also shrink per tier so more range bands fit — `src/systems/ScannerSystem.js` (fold tier factor into `c.size`)
+### Radar / Cockpit HUD follow-ups (post v0.1.284)
+v0.1.283–284 shipped the radar/cockpit core (sector map, Travel Log, nav route queue, pip loadouts, MODES/ORIENT/VIEW, full SCAN scope, sweep paints, selection lock FX, visual-range viewport brackets). Remaining polish:
+- **Thicken sensor-ring inner border** so visual contacts ride a thicker border matching the outer POI rim (today dots sit on the thin `viewportRadius` edge) — `src/systems/RadarDisplay.js` `_drawBand`, maybe `src/systems/Renderer.js`
+- **Tier-based icon shrink** — blips shrink with distance only; also shrink per tier so more range bands fit — `src/systems/RadarSystem.js` (fold tier factor into `c.size`)
 - ~~**Selected-POI distance in the viewport**~~ — shipped: `ViewportTelemetry.js` (POI + nav stop + contact ranges; visual contacts beside hull brackets)
 
 Scaffolds that are API-only / stubs:
-- **Highlight-sync API** (pilot/science/weapons) — not built; selection is local (`ScannerSystem.selectedId`), no broadcast/subscribe hook for future officer/multiplayer screens
+- **Highlight-sync API** (pilot/science/weapons) — not built; selection is local (`RadarSystem.selectedId`), no broadcast/subscribe hook for future officer/multiplayer screens
 - **Comms panel** — HAIL/DOCK/TRADE/END buttons are no-ops (no call/receive/deny/hang-up); plan tags comms future, low priority — `src/systems/CockpitPanels.js` `_comms`
 - **POI discovery channels** — proximity + **Shift+click** manual waypoints on Sector Map; `mission` / `purchase` still API-only
-- **Dev RADAR drawer** — renamed from SCANNER; Mk / range / asteroid toggles + **Generator** slider (1–12 live test) + **Save generator default** bakes `PIPS.DEFAULT_GENERATOR_PIPS` to `Constants.js` via `/dev/save`. Fake-contacts spawner still not built — `index.html`, `src/main.js`
-- **RadarSystem file rename** — pip channel is `radar` and player strings say Radar; implementation still lives in `ScannerSystem.js` / `SCANNER` constants — rename follow-up
+- **Dev RADAR drawer** — Mk / range / asteroid toggles + **Generator** slider (1–12 live test) + **Save generator default** bakes `PIPS.DEFAULT_GENERATOR_PIPS` to `Constants.js` via `/dev/save`. Fake-contacts spawner still not built — `index.html`, `src/main.js`
 
 Cosmetic / lower priority:
-- **Compass rose** — deferred; numeric HDG/CRS + 16-point cardinals in **TELEMETRY** corner; visual compass TBD on viewport scanner rings or Sector Map
+- **Compass rose** — deferred; numeric HDG/CRS + 16-point cardinals in **TELEMETRY** corner; visual compass TBD on viewport radar rings or Sector Map
 - **Ship Status is a list, not a schematic** — plan preferred a small ship-schematic damage map; `ship.status` is a stub (systems list, fuel, fires[], weapons) with placeholder values; nothing writes real damage/fuel/ammo yet — corner screen `_shipStatusCorner`, `GameEngine._ensureShipStatus`
 - **Sector map doesn't emphasize the selected contact** — partial: map halos added; in-world highlight still open
 - **No "objects"/debris contact type** — only asteroids fill the non-AI object slot (off by default; dev toggle on)

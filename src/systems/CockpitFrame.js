@@ -1,21 +1,21 @@
 /**
  * Cockpit HUD frame — the pilot's-view 16:9 console housing drawn around the
- * scanner ring. Renders a worn steel + copper industrial frame: an outer 16:9
+ * radar ring. Renders a worn steel + copper industrial frame: an outer 16:9
  * border, a POI waypoint rim thickened out to the frame's top/bottom edge,
  * vertical dividers + horizontal thirds carving the left/right columns into six
  * recessed screen panels, and four corner sections around the ring reserved for
  * ship metadata.
  *
  * The whole frame is static per window size, so it's painted once into an
- * offscreen canvas and blitted each frame. A transparent hole over the scanner
- * band lets the live scanner + viewport show through underneath.
+ * offscreen canvas and blitted each frame. A transparent hole over the radar
+ * band lets the live radar display + viewport show through underneath.
  *
  * Geometry (all derived from the renderer):
  *   - hudRect ...... largest 16:9 rect fitting the window (letterbox otherwise)
  *   - circleR ...... POI rim outer radius = hudRect.h / 2 (touches top/bottom)
- *   - scannerOuterR  inner edge of the POI rim (outer edge of the scanner band);
+ *   - radarOuterR .... inner edge of the POI rim (outer edge of the radar band);
  *                    copper bezel is stroked fully outside this radius so it
- *                    does not cover the outermost scanner range divider
+ *                    does not cover the outermost radar range divider
  *   - dividers ..... vertical lines at centerX ± circleR (tangent to the rim)
  */
 
@@ -71,8 +71,8 @@ export class CockpitFrame {
    * @param {import('./Renderer.js').Renderer} r
    */
   render(ctx, r) {
-    if (!r.hudRect || !r.scannerBand) return;
-    const key = `${r.width}x${r.height}|${Math.round(r.scannerOuterRadius)}|cd16`;
+    if (!r.hudRect || !r.radarBand) return;
+    const key = `${r.width}x${r.height}|${Math.round(r.radarOuterRadius)}|cd16`;
     if (key !== this._key || !this.cache) {
       this._build(r);
       this._key = key;
@@ -91,8 +91,8 @@ export class CockpitFrame {
    */
   drawPoiDots(ctx, r, poiSystem, ship, camRot = 0) {
     if (!this.layout || !ship) return;
-    const { cx, cy, scannerOuterR, circleR } = this.layout;
-    const rimR = (scannerOuterR + circleR) / 2;
+    const { cx, cy, radarOuterR, circleR } = this.layout;
+    const rimR = (radarOuterR + circleR) / 2;
     ctx.save();
     for (const poi of poiSystem.ringPois()) {
       const bearing = Math.atan2(poi.y - ship.position.y, poi.x - ship.position.x) + camRot;
@@ -132,8 +132,8 @@ export class CockpitFrame {
     const stop = navRoute.activeStop();
     if (!stop) return;
     navRoute.resolvePosition(engine);
-    const { cx, cy, scannerOuterR, circleR } = this.layout;
-    const rimR = (scannerOuterR + circleR) / 2;
+    const { cx, cy, radarOuterR, circleR } = this.layout;
+    const rimR = (radarOuterR + circleR) / 2;
     const bearing = Math.atan2(stop.y - ship.position.y, stop.x - ship.position.x) + camRot;
     const dx = cx + Math.cos(bearing) * rimR;
     const dy = cy + Math.sin(bearing) * rimR;
@@ -160,8 +160,8 @@ export class CockpitFrame {
   /** POI rim geometry for hit-testing waypoint-dot clicks. */
   poiRimGeometry() {
     if (!this.layout) return null;
-    const { cx, cy, scannerOuterR, circleR } = this.layout;
-    return { cx, cy, rimR: (scannerOuterR + circleR) / 2, inner: scannerOuterR, outer: circleR };
+    const { cx, cy, radarOuterR, circleR } = this.layout;
+    return { cx, cy, rimR: (radarOuterR + circleR) / 2, inner: radarOuterR, outer: circleR };
   }
 
   /** @param {string} title */
@@ -213,7 +213,7 @@ export class CockpitFrame {
     const cy = r.centerY;
     const hud = r.hudRect;
     const circleR = r.poiOuterRadius;
-    const scannerOuterR = r.scannerOuterRadius;
+    const radarOuterR = r.radarOuterRadius;
 
     // Vertical dividers tangent to the rim → edges of the square center column.
     const colLX = cx - circleR;
@@ -266,7 +266,7 @@ export class CockpitFrame {
       cy,
       hud,
       circleR,
-      scannerOuterR,
+      radarOuterR,
       colLX,
       colRX,
       panels,
@@ -335,7 +335,7 @@ export class CockpitFrame {
     const c = cv.getContext('2d');
     c.clearRect(0, 0, r.width, r.height);
 
-    const { cx, cy, hud, circleR, scannerOuterR } = L;
+    const { cx, cy, hud, circleR, radarOuterR } = L;
 
     // 1. Housing plate over the whole canvas (fills any letterbox bars).
     this._plate(c, 0, 0, r.width, r.height, STEEL.housing0, STEEL.housing1, STEEL.housing1);
@@ -358,8 +358,8 @@ export class CockpitFrame {
     this._seam(c, L.colLX, hud.y, 0, hud.h);
     this._seam(c, L.colRX, hud.y, 0, hud.h);
 
-    // 5. POI waypoint rim (annulus scannerOuterR → circleR) with a dot track.
-    this._poiRim(c, cx, cy, scannerOuterR, circleR);
+    // 5. POI waypoint rim (annulus radarOuterR → circleR) with a dot track.
+    this._poiRim(c, cx, cy, radarOuterR, circleR);
 
     // 6. Outer 16:9 copper stroke (disabled — may revert).
     // this._border(c, hud);
@@ -367,19 +367,19 @@ export class CockpitFrame {
     // 7. Thumb screws on the four corners of each side panel region (on top of seams).
     for (const p of L.panels) this._panelThumbScrews(c, p);
 
-    // 8. Punch the scanner/viewport hole so the live radar shows through.
+    // 8. Punch the radar/viewport hole so the live scope shows through.
     c.save();
     c.globalCompositeOperation = 'destination-out';
     c.beginPath();
-    c.arc(cx, cy, scannerOuterR, 0, TWO_PI);
+    c.arc(cx, cy, radarOuterR, 0, TWO_PI);
     c.fill();
     c.restore();
 
     // 9. Copper bezel around the punched hole — stroke fully outside so it
-    // does not eat the outer scanner band (outermost pip range / divider).
+    // does not eat the outer radar band (outermost pip range / divider).
     const bezelW = Math.max(2, circleR * 0.012);
     c.beginPath();
-    c.arc(cx, cy, scannerOuterR + bezelW / 2, 0, TWO_PI);
+    c.arc(cx, cy, radarOuterR + bezelW / 2, 0, TWO_PI);
     c.lineWidth = bezelW;
     c.strokeStyle = COPPER.line;
     c.stroke();

@@ -1,6 +1,6 @@
 import { GameEngine } from './core/GameEngine.js';
 import { Settings } from './core/Settings.js';
-import { SCANNER, PIPS } from './core/Constants.js';
+import { RADAR, PIPS } from './core/Constants.js';
 import { DevTools } from './dev/DevTools.js';
 import {
   sectorEditorDraft,
@@ -226,12 +226,12 @@ function syncDevTraffic() {
   el.textContent = rows.join('\n');
 }
 
-function syncDevScanner() {
+function syncDevRadar() {
   const el = document.getElementById('dev-scan-readout');
   if (!el) return;
-  const s = engine.scannerSystem;
+  const s = engine.radarSystem;
   if (!s) return;
-  const km = (s.range / (SCANNER.KM_SCALE || 100)).toFixed(0);
+  const km = (s.range / (RADAR.KM_SCALE || 100)).toFixed(0);
   const pool = engine.pipSystem?.pool?.() ?? '—';
   el.textContent = `tier ${s.tier}${s.on ? '' : ' (off)'} · ${km} km · ${s.contacts.length} contacts · gen ${pool}/${PIPS.BASE_POOL}`;
   const ast = document.getElementById('dev-scan-asteroids');
@@ -968,13 +968,13 @@ document.getElementById('dev-ov-axes')?.addEventListener('change', (e) => {
 });
 
 document.getElementById('dev-scan-asteroids')?.addEventListener('change', (e) => {
-  if (engine.scannerSystem) engine.scannerSystem.includeAsteroids = !!e.target.checked;
+  if (engine.radarSystem) engine.radarSystem.includeAsteroids = !!e.target.checked;
 });
 document.getElementById('dev-scan-mk')?.addEventListener('input', (e) => {
-  if (engine.scannerSystem) engine.scannerSystem.scannerMk = Number(e.target.value) || 0;
+  if (engine.radarSystem) engine.radarSystem.radarMk = Number(e.target.value) || 0;
 });
 document.getElementById('dev-scan-range')?.addEventListener('input', (e) => {
-  if (engine.scannerSystem) engine.scannerSystem.rangeScale = Number(e.target.value) || 1;
+  if (engine.radarSystem) engine.radarSystem.rangeScale = Number(e.target.value) || 1;
 });
 document.getElementById('dev-gen-pips')?.addEventListener('input', (e) => {
   if (engine.pipSystem) {
@@ -1521,7 +1521,7 @@ setInterval(() => {
   if (!Settings.isDevMode()) return;
   syncDevInspect();
   syncDevTraffic();
-  syncDevScanner();
+  syncDevRadar();
   if (DevTools.bayPanelOpen) syncBayOptionsUi();
   if (DevTools.placePanelOpen) syncPlacePanelUi();
   if (DevTools.titlePanelOpen) syncTitleLayoutUi();

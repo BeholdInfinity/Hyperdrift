@@ -6,12 +6,12 @@
  * almost never deep out — but not zero.
  *
  * Spawn / despawn rule: never pop in or out of the player's visible circle
- * or their max scanner horizon. Ships only instantiate outside
+ * or their max radar horizon. Ships only instantiate outside
  * max(camera viewport, furthest scan range) + margin, and only cull past
  * that same bubble. Age expiry while inside extends life / steers out.
  */
 
-import { STATION, AMBIENT, SHIP, scannerMaxRange } from '../core/Constants.js';
+import { STATION, AMBIENT, SHIP, radarMaxRange } from '../core/Constants.js';
 import { generateShip, generateVisitor } from '../ships/ShipGenerator.js';
 import { SHIP_CLASSES } from '../ships/ShipClasses.js';
 import { drawVisitorShip, makeVisitorThrusters } from './HangarVisitorShips.js';
@@ -277,7 +277,7 @@ export class AmbientTrafficSystem {
 
   /**
    * Circular play viewport in world units (center + radius), plus margin, and
-   * the player-centered scanner horizon used for spawn/despawn gating.
+   * the player-centered radar horizon used for spawn/despawn gating.
    * @param {{ x?: number, y?: number, viewRadius?: number }|null|undefined} camera
    * @param {number} px
    * @param {number} py
@@ -288,7 +288,7 @@ export class AmbientTrafficSystem {
     const baseR = camera?.viewRadius ?? 520;
     const viewRadius = baseR + AMBIENT.VISIBLE_MARGIN;
     const scanHorizon =
-      scannerMaxRange() + (AMBIENT.SCAN_HORIZON_MARGIN ?? 1200);
+      radarMaxRange() + (AMBIENT.SCAN_HORIZON_MARGIN ?? 1200);
     this._view = {
       x: cx,
       y: cy,
@@ -307,7 +307,7 @@ export class AmbientTrafficSystem {
   }
 
   /**
-   * Camera view or max scanner reach from the player — spawn/despawn bubble.
+   * Camera view or max radar reach from the player — spawn/despawn bubble.
    * Keeping traffic outside this prevents radar pop-in/out.
    */
   _isInPresenceBubble(x, y, view = this._view) {
@@ -751,7 +751,7 @@ export class AmbientTrafficSystem {
       return { x, y, r, orbitAng };
     }
     // Fallback for police / station pack when the player is inside the near bubble:
-    // off-camera only (may still be inside scanner range).
+    // off-camera only (may still be inside radar range).
     for (let i = 0; i < 12; i++) {
       const r = r0 + Math.random() * Math.max(1, r1 - r0);
       const orbitAng = Math.random() * Math.PI * 2;
