@@ -644,8 +644,9 @@ export class Station {
    * Overlap uses station-closest hull edge — heading does not matter while
    * under the structure (rotating under the tape must not pop on top).
    * Exit burn: any speed until clear. Otherwise: safe-speed hysteresis only.
+   * @param {{ egressGrace?: boolean }} [opts] — player egress grace: stay under roof even above DOCK_MAX_SPEED
    */
-  shouldOccludeShip(ship) {
+  shouldOccludeShip(ship, opts = {}) {
     const id = this._shipLatchId(ship);
     if (!ship?.position) {
       this._occludeLatchByShip.delete(id);
@@ -654,6 +655,12 @@ export class Station {
     if (!this.shipOverlapsEntranceOccluders(ship)) {
       this._occludeLatchByShip.delete(id);
       return false;
+    }
+
+    // Post-launch grace: keep hull under roof/tape until geometry clears (200 REL V > dock cap)
+    if (opts.egressGrace) {
+      this._occludeLatchByShip.set(id, true);
+      return true;
     }
 
     // Hangar→space: stay under roof/tape until the station-closest tip clears

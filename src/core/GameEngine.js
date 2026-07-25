@@ -3434,7 +3434,7 @@ export class GameEngine {
     this.speedStreaks.update(
       { x: this.ship.velocity.x, y: this.ship.velocity.y },
       speedAfter,
-      PHYSICS.REFERENCE_CRUISE_SPEED,
+      PHYSICS.STREAK_REFERENCE_SPEED,
       deltaTime,
       this.renderer.viewportRadius
     );
@@ -3857,7 +3857,10 @@ export class GameEngine {
 
     const baySignals = this.station.baySignals;
     const playerOccluded =
-      !!this.ship && this.station.shouldOccludeShip(this.ship);
+      !!this.ship &&
+      this.station.shouldOccludeShip(this.ship, {
+        egressGrace: this._inExitGrace(),
+      });
     const ambientOccluded = [];
     const ambientClear = [];
     for (const a of this.ambientTraffic.ships || []) {

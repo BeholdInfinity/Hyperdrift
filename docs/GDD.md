@@ -33,7 +33,7 @@ The prototype play space is a **bounded single system** — not infinite void:
 | **Station shell** | 12 orbital ports (Jennings + outlaw-country clones); social tier ↓ as orbit radius ↑ |
 | **Fringe** | Iron Crown capital wreck + instance gate stubs; soft empty edge ~7500 km |
 
-**Flight model:** player ship feels planetary gravity; belt rocks and stations use kinematic orbits. No global hard speed cap — TELEMETRY **PRO** shows circular prograde at your radius; **SYNC** (`X` hold at ≥95%) trims to a selected contact's live velocity. Posted **LIM** is regulatory (fines when caught), not a physics clamp — **local station shells** measure excess speed **relative to that station's orbit** (same frame as docking: match orbit, then bleed down for the mouth). Each station's runway points **upstream** (opposite prograde); hangar / quick-launch egress inherits station co-orbit plus **100 u/s REL V out through the mouth** on the runway axis (full manual control; **3 s egress grace** blocks dock; zero-hold cleared on handoff). Six **ring warp gates** teleport paired hops through the planet hub.
+**Flight model:** player ship feels planetary gravity; belt rocks and stations use kinematic orbits. No global hard speed cap — TELEMETRY **PRO** shows circular prograde at your radius; **SYNC** (`X` hold at ≥95%) trims to a selected contact's live velocity. Posted **LIM** is regulatory (fines when caught), not a physics clamp — **local station shells** measure excess speed **relative to that station's orbit** (same frame as docking: match orbit, then bleed down for the mouth). Each station's runway points **upstream** (opposite prograde); hangar / quick-launch egress inherits station co-orbit plus **200 u/s REL V out through the mouth** on the runway axis (full manual control; **3 s egress grace** blocks dock; zero-hold cleared on handoff). Six **ring warp gates** teleport paired hops through the planet hub.
 
 ---
 
@@ -56,7 +56,7 @@ This prototype de-risks systems that *Stranger in the Galaxy* will need (flight,
 5. Fight with mounted weapons
 6. *(Future)* extract / return to Home Base between missions; mine, trade, upgrade ship
 
-**Current loop:** title → ENTER HANGAR (or QUICK LAUNCH) → fly near Jennings Station → approach the **upstream** bay mouth (runway points opposite the station's orbital motion) through the light corridor (slow; nose-in or reverse/nose-out) → **choose a green pad lane** (three status lights on the caution paint; apron thirds mark B1/B2/B3) → auto-dock when the hull is under **tape + roof** in a green lane (or Enter/Click when ready). All pads red → Enter/Click **Engage holding pattern** (AI flies a thruster-based **racetrack** on the upstream side of the approach lights, then lands when a bay opens; any movement input cancels AI). Ships never stay in hold while a pad is green for them — they retarget and approach. Runway lights blink red when full and run a reverse red chase on exits. Hangar **LAUNCH** runs danger/evac/doors → 8-thruster lift → egress handoff (runway heading, station co-orbit + **100 u/s REL V**, no computer yaw/thrust) (same hull). Dock landing keeps entry heading, yaws nose into the bay, retro-brakes, settles, then the pad turns 180° to face the ingress corridor. **Pilot seat** = whichever ship you’re in (Dev can select a visitor pad ship and launch it); hangar↔space carries that hull.
+**Current loop:** title → ENTER HANGAR (or QUICK LAUNCH) → fly near Jennings Station → approach the **upstream** bay mouth (runway points opposite the station's orbital motion) through the light corridor (slow; nose-in or reverse/nose-out) → **choose a green pad lane** (three status lights on the caution paint; apron thirds mark B1/B2/B3) → auto-dock when the hull is under **tape + roof** in a green lane (or Enter/Click when ready). All pads red → Enter/Click **Engage holding pattern** (AI flies a thruster-based **racetrack** on the upstream side of the approach lights, then lands when a bay opens; any movement input cancels AI). Ships never stay in hold while a pad is green for them — they retarget and approach. Runway lights blink red when full and run a reverse red chase on exits. Hangar **LAUNCH** runs danger/evac/doors → 8-thruster lift → egress handoff (runway heading, station co-orbit + **200 u/s REL V**, no computer yaw/thrust) (same hull). Dock landing keeps entry heading, yaws nose into the bay, retro-brakes, settles, then the pad turns 180° to face the ingress corridor. **Pilot seat** = whichever ship you’re in (Dev can select a visitor pad ship and launch it); hangar↔space carries that hull.
 
 ---
 
@@ -341,7 +341,7 @@ Three depth layers (far / mid / near) plus chunk-placed and ambient procedural c
 
 ### Speed streaks
 
-Foreground particles moving **opposite** ship velocity — length, brightness, and speed scale with player speed. Visible even in sparse space.
+Foreground particles moving **opposite** ship velocity — length, brightness, and speed scale with player speed vs **4000 u/s** reference (same fill the old 900 u/s cap produced). Visible even in sparse space.
 
 ### Ambient traffic
 

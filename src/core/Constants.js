@@ -2,10 +2,12 @@ import { VISUAL_TUNING } from '../ships/data/visualTuning.js';
 
 export const PHYSICS = {
   /**
-   * Map-authoring / HUD reference cruise (u/s) — chevrons, speed-zoom, streaks.
+   * Map-authoring / HUD reference cruise (u/s) — chevrons, speed-zoom.
    * Not a physics ceiling; open-space ships are uncapped.
    */
   REFERENCE_CRUISE_SPEED: 900,
+  /** Speed streak saturation (u/s) — 4000 u/s fills the viewport like 900 u/s did before uncapped flight. */
+  STREAK_REFERENCE_SPEED: 4000,
   /** Cruise yaw rate (rad/s) — kept deliberately slower than old mouse-aim tracking */
   MAX_ROTATION_SPEED: 2.6,
   MANEUVER_THRUST: 200,
@@ -305,7 +307,7 @@ export const STATION = {
   /** Safe approach speed — ship handling, not station scale */
   DOCK_MAX_SPEED: 120,
   /** Hangar / quick-launch egress: station co-orbit + this much downstream REL V. */
-  EXIT_REL_SPEED: 100,
+  EXIT_REL_SPEED: 200,
   /** Seconds after egress before auto/manual dock is allowed (under-roof spawn). */
   EXIT_INGRESS_GRACE_SEC: 3,
   /** Bay mouth half-width (caution stripe span); approach corridor matches */
