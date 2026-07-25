@@ -23,6 +23,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.289] — 2026-07-25
+
+### Added
+- **Space combat (Phases 1–5)** — projectile momentum/gravity; ship vs ship + asteroid hits; spatial broadphase; ammo depletion + NPC return fire; `CombatSystem` extract; death flow with HUD burst, wreck camera, and quick-launch respawn from last dock.
+
+### Fixed
+- **Combat spatial broadphase** — query radius tracks the largest ship hit envelope each frame (heavy fighters ~73 u were skipped at the old 60 u cap); ambient traffic sim runs before hit tests; target positions refreshed pre-collision.
+- **Ship removal of global linear speed cap** — `PHYSICS.REFERENCE_CRUISE_SPEED` is HUD/map reference only.
+
+---
+
 ## [0.1.288] — 2026-07-24
 
 ### Fixed

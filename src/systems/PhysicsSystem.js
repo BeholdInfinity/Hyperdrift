@@ -1,6 +1,5 @@
 import { Vec2, clamp, normalizeAngle, angleDifference } from '../utils/MathUtils.js';
 import { PHYSICS } from '../core/Constants.js';
-import { WORLD } from '../core/Constants.js';
 
 export class PhysicsSystem {
   applyForce(entity, force, deltaTime) {
@@ -8,11 +7,6 @@ export class PhysicsSystem {
     const ay = force.y / entity.mass;
     entity.velocity.x += ax * deltaTime;
     entity.velocity.y += ay * deltaTime;
-
-    const speed = entity.velocity.length();
-    if (WORLD.USE_MAX_SPEED_CAP && speed > PHYSICS.MAX_SPEED) {
-      entity.velocity.normalize().scale(PHYSICS.MAX_SPEED);
-    }
   }
 
   integrate(entity, deltaTime) {

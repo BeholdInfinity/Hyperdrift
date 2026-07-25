@@ -253,7 +253,7 @@ function facePrograde(ship, dt, yawMult = 1) {
 
 /**
  * Pure coast: zero translation thrust. Faces travel when moving.
- * Newtonian — velocity unchanged aside from MAX_SPEED clamp in applyForce.
+ * Newtonian — velocity unchanged except integration.
  */
 export function coast(ship, dt, opts = {}) {
   ensureBody(ship);
@@ -269,7 +269,6 @@ export function coast(ship, dt, opts = {}) {
  * - Burn only when nose is roughly toward the burn direction (turn-then-burn).
  * - Coasting faces prograde so ships don't drift nose-backward.
  * - Brake only for arrival slowdown (not for “over cruise”).
- * - Soft speed ceiling is PHYSICS.MAX_SPEED only.
  * @returns {{ arrived: boolean, dist: number, headingErr: number, coasting: boolean }}
  */
 export function cruiseTo(ship, tx, ty, cruiseSpeed, dt, opts = {}) {

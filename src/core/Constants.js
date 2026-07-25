@@ -1,7 +1,11 @@
 import { VISUAL_TUNING } from '../ships/data/visualTuning.js';
 
 export const PHYSICS = {
-  MAX_SPEED: 900,
+  /**
+   * Map-authoring / HUD reference cruise (u/s) — chevrons, speed-zoom, streaks.
+   * Not a physics ceiling; open-space ships are uncapped.
+   */
+  REFERENCE_CRUISE_SPEED: 900,
   /** Cruise yaw rate (rad/s) — kept deliberately slower than old mouse-aim tracking */
   MAX_ROTATION_SPEED: 2.6,
   MANEUVER_THRUST: 200,
@@ -60,6 +64,37 @@ export const SHIP = {
   MINING_LASER_MUZZLE_OFFSET: 4.8,
   PROJECTILE_SPEED: 1200,
   PROJECTILE_DAMAGE: 25,
+  /**
+   * Seconds before despawn. Sized so a forward shot at reference cruise +
+   * muzzle speed clears the play circle at min zoom (0.1×) + max speed-zoom
+   * (0.55×) on 4K before expiring — see Renderer.resize + CAMERA.
+   */
+  PROJECTILE_LIFETIME: 11,
+  PROJECTILE_RADIUS: 3,
+};
+
+/** Space combat tuning — regulatory LIM is separate (SpeedLimitSystem). */
+export const COMBAT = {
+  /** Skip self-hit within this distance of muzzle (world u). */
+  SELF_HIT_GRACE_DIST: 30,
+  /** Hull HP scale: projectile damage / this = hull fraction lost. */
+  HULL_HIT_POINTS: 100,
+  /** Mining laser hull DPS as fraction per second (same scale as hull 0–1). */
+  MINING_LASER_HULL_DPS: 0.4,
+  /** Breakup fragment lifetime (seconds). */
+  BREAKUP_FRAGMENT_LIFE: 5,
+  /** Reserved for a future manual respawn flow (no auto-respawn). */
+  PLAYER_RESPAWN_DELAY: 3,
+  /** Uniform grid cell size (u) — ~5 cells cover mining laser range. */
+  SPATIAL_CELL_SIZE: 400,
+  /** Conservative broadphase ceiling — actual per-frame max tracked in CombatSpatialIndex. */
+  MAX_TARGET_RADIUS: 80,
+  /** Hull fraction consumed per turret shot (`ammo.bullets` 0–1). */
+  TURRET_AMMO_PER_SHOT: 0.02,
+  TURRET_AMMO_EPS: 0.001,
+  /** NPC turret engagement band (world u). */
+  NPC_FIRE_RANGE: 1400,
+  NPC_FIRE_MIN_RANGE: 60,
 };
 
 export const WORLD = {
@@ -67,7 +102,6 @@ export const WORLD = {
   LOAD_RADIUS: 3,
   UNLOAD_RADIUS: 5,
   SEED: 42,
-  USE_MAX_SPEED_CAP: false,
   SOFT_EDGE_RADIUS: 750000,
 };
 
@@ -436,7 +470,7 @@ export const AMBIENT = {
   LANE_ARRIVAL_R: 90,
   /**
    * Reboost hysteresis: burn only when speed < cruise*(1-band).
-   * At/above that → coast (no thrust). No upper-band braking; only PHYSICS.MAX_SPEED clamps.
+   * At/above that → coast (no thrust). No upper-band braking in open space.
    */
   COAST_SPEED_BAND: 0.08,
   COAST_HEADING_TOL: 0.22,

@@ -30,6 +30,8 @@ import {
   initHoldLeg,
   ensureBody,
 } from './NpcPilot.js';
+import { ensureVesselSimState } from './place/VesselInterior.js';
+import { getCombatTarget } from '../combat/CombatTarget.js';
 
 let _nextId = 1;
 let _nextGroup = 1;
@@ -978,6 +980,10 @@ export class AmbientTrafficSystem {
       miningLaserRelAngle: 0,
       miningLaserBeamLength: SHIP.MINING_LASER_RANGE * 0.55,
       muzzleFlash: 0,
+      turretAngle: heading,
+      fireCooldown: 0,
+      turretRecoil: 0,
+      combatHostile: false,
       getTurretLocalAngle: () => 0,
       velocity: { x: vx, y: vy },
       patrolLeg: 0,
@@ -988,8 +994,28 @@ export class AmbientTrafficSystem {
       cruiseSpd: speed,
     };
     ensureBody(ship);
+    ensureVesselSimState(ship);
+    ship.combatTeam = 'neutral';
     clearThrusters(ship);
     return ship;
+  }
+
+  /** @returns {import('../combat/CombatTarget.js').CombatTarget[]} */
+  getCombatTargets() {
+    const out = [];
+    for (const s of this.ships) {
+      if (s.pendingCull) continue;
+      const t = getCombatTarget(s);
+      if (t) out.push(t);
+    }
+    return out;
+  }
+
+  /** Remove a destroyed or despawned ship from traffic. */
+  removeShip(shipOrId) {
+    const id = typeof shipOrId === 'object' ? shipOrId.id : shipOrId;
+    const idx = this.ships.findIndex((s) => s.id === id);
+    if (idx >= 0) this.ships.splice(idx, 1);
   }
 
   _cruiseSpeed(behavior) {

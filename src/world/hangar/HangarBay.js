@@ -11,6 +11,7 @@
 
 import { HANGAR, SHIP } from '../../core/Constants.js';
 import { clamp, normalizeAngle } from '../../utils/MathUtils.js';
+import { circleCircle, rayCircle } from '../../utils/CollisionUtils.js';
 import { SHIP_EXTENT, HARDPOINTS } from '../../entities/ShipHardpoints.js';
 import {
   drawVisitorShip,
@@ -4160,10 +4161,8 @@ export class HangarBay {
     for (const proj of projectiles) {
       if (!proj.active) continue;
       for (const t of targets) {
-        const dx = proj.position.x - t.x;
-        const dy = proj.position.y - t.y;
-        const r = this._cargoRadius(t.cargo) + proj.radius;
-        if (dx * dx + dy * dy < r * r) {
+        const cargoR = this._cargoRadius(t.cargo);
+        if (circleCircle(proj.position.x, proj.position.y, proj.radius, t.x, t.y, cargoR)) {
           if (this._damageCargo(t, proj.damage)) hits++;
           proj.destroy();
           break;
@@ -4182,7 +4181,7 @@ export class HangarBay {
       let closestDist = range;
 
       for (const t of this._cargoHitTargets()) {
-        const hit = this._rayCircle(
+        const hit = rayCircle(
           origin.x, origin.y, dx, dy, range,
           t.x, t.y, this._cargoRadius(t.cargo)
         );
@@ -4308,24 +4307,6 @@ export class HangarBay {
         color,
       });
     }
-  }
-
-  _rayCircle(ox, oy, dx, dy, maxDist, cx, cy, radius) {
-    const fx = ox - cx;
-    const fy = oy - cy;
-    const a = dx * dx + dy * dy;
-    const b = 2 * (fx * dx + fy * dy);
-    const c = fx * fx + fy * fy - radius * radius;
-    const disc = b * b - 4 * a * c;
-    if (disc < 0) return null;
-    const sqrt = Math.sqrt(disc);
-    const t1 = (-b - sqrt) / (2 * a);
-    const t2 = (-b + sqrt) / (2 * a);
-    let t = Infinity;
-    if (t1 >= 0) t = Math.min(t, t1);
-    if (t2 >= 0) t = Math.min(t, t2);
-    if (t === Infinity || t > maxDist) return null;
-    return t;
   }
 
   _clampBridgeY(y) {

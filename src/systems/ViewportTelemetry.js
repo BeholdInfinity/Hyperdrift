@@ -136,7 +136,7 @@ function nearSameWorld(a, b, eps = 80) {
  *   centerX: number, centerY: number,
  *   innerR: number, outerR: number, band: number,
  *   plotPad?: number, fullScope?: boolean,
- *   ship: object, cameraRotation?: number, maxSpeed?: number,
+ *   ship: object, cameraRotation?: number, referenceCruiseSpeed?: number,
  *   radarSystem?: import('./RadarSystem.js').RadarSystem,
  *   poiSystem?: import('../world/PoiSystem.js').PoiSystem,
  *   navRoute?: import('../world/NavRoute.js').NavRoute,

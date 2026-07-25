@@ -54,6 +54,25 @@ export function applyHullScar(ship) {
 }
 
 /**
+ * Apply fractional hull damage in space combat (0–1 scale).
+ * @param {object} ship
+ * @param {number} amount hull fraction to remove
+ * @returns {{ destroyed: boolean, hull: number }}
+ */
+export function applyHullDamage(ship, amount) {
+  ensureVesselSimState(ship);
+  if (!ship || !(amount > 0)) {
+    return { destroyed: false, hull: ship?.hull ?? 1 };
+  }
+  const prev = ship.hull ?? 1;
+  ship.hull = Math.max(0, prev - amount);
+  if (prev - ship.hull >= HULL_CEILING_STEP * 2) {
+    applyHullScar(ship);
+  }
+  return { destroyed: ship.hull <= 0, hull: ship.hull };
+}
+
+/**
  * @param {object} ship
  * @param {number} amount fraction of max hull to add
  * @param {'interior'|'exterior'} source

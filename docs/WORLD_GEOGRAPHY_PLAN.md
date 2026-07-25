@@ -39,7 +39,7 @@ These were agreed in discussion **after** the initial plan draft and must stay i
 | **Kinematic POIs** | Belts, **all 12 stations**, `warp_ring` gates orbit; **deep fringe** (`landmark`, `warp_instance`) static. |
 | **HUD positions** | Orbiting POIs use **`worldPosition(poi, gameTime)`** — never stale bootstrap `x/y`. |
 | **Co-orbit assist** | TELEMETRY **prograde speed** hint; **SYNC hold** (not one-shot toggle) at **≥95%** manual match — while held, Precision-authority thrusters track contact **live** velocity/heading. |
-| **Regulatory speed** | Posted **LIM** zones + fines when witnessed — **not** a physics speed clamp (`USE_MAX_SPEED_CAP: false`). |
+| **Regulatory speed** | Posted **LIM** zones + fines when witnessed — **not** a physics clamp (global hard cap removed). |
 | **Hangar vs moving station** | Interior/hangar is **local sim**; overworld station anchor follows orbit **only outside** the interior (see Deferred below). |
 
 ## Design intent (locked from discussion)
@@ -419,7 +419,7 @@ When those match, ship and rocks at the **same R** share the same angular rate �
 - **Wrong speed or angle** — radial component or speed mismatch → visible shear
 - **Thruster trim** — small corrections cause micro-drift (acceptable)
 - **Different rings** — inner vs outer belts have different `ω`; player can only "lock" to one band at a time
-- **Speed cap** — see [Speed limits](#speed-limits); hard `MAX_SPEED` clamp fights co-orbit at inner rings
+- **Speed** — see [Physics speed limits](#physics-speed-limits-open-space-flight--shipped); global hard clamp removed; dock uses `DOCK_MAX_SPEED` only
 
 **Below circular speed → inward drift:** If the player **slows below** prograde circular velocity at the current radius (retrograde component or insufficient main engine), gravity exceeds the centripetal requirement — the ship **falls toward the planet** on an elliptical path (periapsis drops). Kinematic belt rocks stay on their rails, so local asteroids appear to drift **outward / ahead** relative to the ship. **Above circular speed → outward drift** (apocenter rises). This is intentional — co-orbit is a skill state, not a locked mode; braking or slowing has physical consequence.
 
@@ -500,22 +500,18 @@ New module: [`src/world/GravitySystem.js`](src/world/GravitySystem.js)
 - **Integration:** called from [`GameEngine`](src/core/GameEngine.js) before/after thruster forces on entities flagged `affectedByGravity` (player ship yes; kinematic asteroids no)
 - **Tuning:** μ strong enough for readable orbital curve and belt `ω = √(μ/R³)` at inner rings **without** an artificial 900 u/s ceiling blocking circular speed. Main engine thrust still limits how fast you **reach** orbit; gravity mainly affects **long coasts**. Precision / SYNC use same precision scale (or 0.5×) for docking trim.
 
-### Physics speed limits (open-space flight)
+### Physics speed limits (open-space flight) — **shipped**
 
-**Problem:** Today [`PHYSICS.MAX_SPEED = 900`](src/core/Constants.js) is applied in [`PhysicsSystem.applyForce`](src/systems/PhysicsSystem.js) after every force integration. Circular prograde speed at a ring is `v_circ = √(μ/R)`. For inner rings (~110k u radius) and believable orbit periods (e.g. 10–20 min per lap), `v_circ` often **exceeds 900** — the player **cannot** co-orbit or match kinematic belts while the clamp is active. SYNC assist also cannot track targets above the cap.
-
-**Decision (plan):** **Remove the global hard speed clamp** for fun orbital play. Map spacing (5 min between closest POIs) stays authored against **~900 u/s as a reference transit cruise**, not as a physics ceiling. **Regulatory posted limits** (below) are separate — they do **not** hard-cap velocity in Stage 4; only fines/consequences apply when witnessed.
+**Status:** Global hard clamp **removed**. [`PhysicsSystem.applyForce`](src/systems/PhysicsSystem.js) no longer caps velocity. [`PHYSICS.REFERENCE_CRUISE_SPEED`](src/core/Constants.js) (900 u/s) is **HUD / map-authoring only** — chevrons, speed-zoom, streaks, POI spacing — not a physics ceiling.
 
 | Zone / case | Limit |
 |-------------|--------|
-| **Player in gravity influence** | **No hard MAX_SPEED clamp** — natural `v_circ`, gravity, and thrust define speed |
-| **Deep space (outside influence)** | No hard clamp (same); optional very high **soft** safety cap later if playtests show runaway afterburner |
-| **Station dock approach** | Keep existing [`STATION.DOCK_MAX_SPEED`](src/core/Constants.js) (120) — separate from open-space physics |
-| **NPC ambient traffic** | Keep their own cruise caps / `NpcPilot` behavior unchanged at first |
+| **Player in gravity influence** | Uncapped — natural `v_circ`, gravity, and thrust define speed |
+| **Deep space (outside influence)** | Uncapped |
+| **Station dock approach** | [`STATION.DOCK_MAX_SPEED`](src/core/Constants.js) (120) — separate dock rule |
+| **NPC ambient traffic** | Own cruise caps / `NpcPilot` behavior |
 
-**Implementation:** Split [`PhysicsSystem`](src/systems/PhysicsSystem.js) speed limiting — remove unconditional post-integration clamp (or gate it off via `WORLD.USE_MAX_SPEED_CAP: false` default). Thrust, afterburner, and gravity remain the practical speed governors. **TELEMETRY `PRO`** and SYNC live target velocities can exceed old 900 without cheating.
-
-**Acceptance:** Inner-ring co-orbit test — player can reach and hold `v ≈ √(μ/R)` with coast + SYNC; belt rocks stay matched. Cross-system transit still ~5+ min between nearest stations when burning at familiar cruise thrust (not instant).
+**Regulatory posted limits** (below) are separate — fines when witnessed, not a physics clamp.
 
 ### Regulatory speed limits (traffic law)
 
@@ -833,7 +829,7 @@ flowchart LR
 **Playtest:** Stations and belts **orbit**. POI rim / sector map / nav **track live positions**. Player coasts in gravity; **PRO** + **SYNC** work. Shipping lanes feel busier.
 
 - [`GravitySystem.js`](src/world/GravitySystem.js) + [`OrbitKinematics.js`](src/world/OrbitKinematics.js)
-- Remove global **MAX_SPEED** clamp; retune `gravityMu`
+- ~~Remove global **MAX_SPEED** clamp~~ — **done**; retune `gravityMu` if orbit feel needs pass
 - Kinematic **asteroid belts**, **12 stations**, **`warp_ring`** POIs (positions only)
 - **`PoiSystem.worldPosition(poi, t)`** — refactor all HUD consumers (rim, sector map, DEST, NavRoute, telemetry)
 - **TELEMETRY `PRO`** + **Orbit SYNC** (live contact velocity)

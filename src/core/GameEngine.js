@@ -22,7 +22,7 @@ import { PoiSystem } from '../world/PoiSystem.js';
 import { SectorMap, trailDistance } from '../world/SectorMap.js';
 import { TravelLog } from '../world/TravelLog.js';
 import { loadNavProfile, saveNavProfile } from '../world/NavPersistence.js';
-import { bootstrapSectorWorld, syncStationAnchor } from '../world/SectorBootstrap.js';
+import { bootstrapSectorWorld, syncStationAnchor, syncStationToPlace } from '../world/SectorBootstrap.js';
 import { WarpGateSystem } from '../world/WarpGateSystem.js';
 import { TrafficRecord } from '../world/TrafficRecord.js';
 import { TrafficEnforcement } from '../world/TrafficEnforcement.js';
@@ -31,6 +31,11 @@ import { getSiteById, siteWorldPosition } from '../world/SectorLayout.js';
 import { NavRoute } from '../world/NavRoute.js';
 import { SectorMapView } from '../systems/SectorMapView.js';
 import { WeaponSystem } from '../systems/WeaponSystem.js';
+import { CombatSystem } from '../combat/CombatSystem.js';
+import {
+  formatTurretAmmoLabel,
+  formatTurretAmmoStatus,
+} from '../combat/AmmoSystem.js';
 import { AsteroidSystem } from '../systems/AsteroidSystem.js';
 import { PhysicsSystem } from '../systems/PhysicsSystem.js';
 import { Starfield } from '../world/Starfield.js';
@@ -86,6 +91,9 @@ import {
   unseatCaptainRoute,
   tickVesselInteriorCrew,
   applyHullScar,
+  applyHullHeal,
+  applyFuelFill,
+  applyAmmoFill,
   interactFeature,
 } from '../world/place/index.js';
 import { TitleScreen } from '../ui/TitleScreen.js';
@@ -173,6 +181,7 @@ export class GameEngine {
     this.trafficEnforcement = new TrafficEnforcement(this.trafficRecord);
     this.warpGateSystem = new WarpGateSystem();
     this.ambientTraffic = new AmbientTrafficSystem();
+    this.combat = new CombatSystem();
     /** Stub: player entered vessel interior graph (walker TBD) */
     this.interiorActive = false;
     this.interiorPlaceId = null;
@@ -224,6 +233,9 @@ export class GameEngine {
     this._dockPos = { x: 0, y: 0 };
     /** Bay index 0/1/2 where the controlled ship is seated */
     this.playerBayIndex = 1;
+    /** Last docked place for combat respawn quick launch (defaults Jennings). */
+    this._lastDockPlaceId = 'place.jennings';
+    this._lastDockBayIndex = 1;
 
     /**
      * Dev hangar control target — who receives thruster/weapon input.
@@ -287,6 +299,8 @@ export class GameEngine {
     this._fpsAccumMs = 0;
     this._fpsLastTs = 0;
     this._pauseMenu = document.getElementById('pause-menu');
+    this._deathMenu = document.getElementById('death-menu');
+    this._deathDockLabel = document.getElementById('death-dock-label');
     this._fullscreenBtn = document.getElementById('fullscreen-btn');
     this._pauseFullscreenBtn = document.getElementById('pause-fullscreen-btn');
 
@@ -1212,6 +1226,8 @@ export class GameEngine {
       this.input.paused = false;
       if (this._pauseMenu) this._pauseMenu.classList.add('hidden');
     }
+    this._setDeathOverlay(false);
+    this.combat.clear();
     this.input.disable();
     this.input.consumeZoomDelta();
     this._destroyInterior();
@@ -1391,7 +1407,7 @@ export class GameEngine {
   }
 
   togglePause() {
-    if (this.mode !== 'playing') return;
+    if (this.mode !== 'playing' || this.combat.playerDead(this.ship)) return;
     this.paused = !this.paused;
     this.input.paused = this.paused;
     if (this._pauseMenu) {
@@ -1417,6 +1433,87 @@ export class GameEngine {
 
   requestLaunch() {
     return this._guardTransition('Hangar launch request', () => this._requestLaunchBody());
+  }
+
+  /** Relaunch from last dock after combat destruction (keeps loadout). */
+  requestCombatRespawn() {
+    return this._guardTransition('Combat respawn quick launch', () => this._combatRespawnBody());
+  }
+
+  _recordLastDock(placeId, bayIndex) {
+    if (placeId) this._lastDockPlaceId = placeId;
+    if (Number.isFinite(bayIndex)) this._lastDockBayIndex = bayIndex | 0;
+  }
+
+  _setDeathOverlay(show) {
+    if (!this._deathMenu) return;
+    this._deathMenu.classList.toggle('hidden', !show);
+    if (show && this._deathDockLabel) {
+      const place = placeRegistry.get(this._lastDockPlaceId || 'place.jennings');
+      const label = place?.label || 'Jennings Station';
+      this._deathDockLabel.textContent = `Relaunch from ${label}`;
+    }
+  }
+
+  _combatRespawnBody() {
+    if (this.mode !== 'playing' || !this.combat.playerDead(this.ship)) return;
+
+    const placeId = this._lastDockPlaceId || 'place.jennings';
+    placeRegistry.setActive(placeId);
+    syncStationToPlace(this.station, placeId, this.gameTime || 0);
+    this.poiSystem.syncPositions(this.gameTime || 0);
+
+    const bay = Number.isFinite(this._lastDockBayIndex)
+      ? this._lastDockBayIndex
+      : this.playerBayIndex ?? 1;
+    const spawn = this.station.getExitSpawn(bay);
+    const ship = this.ship;
+    const carriedDef = ship.shipDef ? cloneShipDef(ship.shipDef) : null;
+
+    this.combat.clear();
+    this.entityManager.clear();
+    this.particleSystem.clear();
+
+    ship.combatDestroyed = false;
+    if (carriedDef) ship.shipDef = carriedDef;
+    ensureVesselSimState(ship);
+    applyHullHeal(ship, 1, 'exterior');
+    applyFuelFill(ship, 1);
+    applyAmmoFill(ship, 1);
+
+    ship.position.set(spawn.x, spawn.y);
+    const nose = Number.isFinite(spawn.angle) ? spawn.angle : SHIP.SPAWN_ANGLE;
+    ship.angle = nose;
+    ship.turretAngle = nose;
+    ship.angularVelocity = 0;
+    ship.visualScale = 1;
+    ship.affectedByGravity = true;
+    this._clearShipThrusters(ship);
+
+    const exitPush = Vec2.fromAngle(nose, 220);
+    ship.velocity.set(
+      (this.station.vx || 0) + exitPush.x,
+      (this.station.vy || 0) + exitPush.y
+    );
+    ship.thrusters.mainEngine = 1;
+    ship.exitBurn = true;
+    this._beginExitBurn();
+
+    this.entityManager.add(ship, 'ship');
+    this.playerBayIndex = bay;
+    this.ship = ship;
+
+    this.camera.position.set(spawn.x, spawn.y);
+    this.camera.offset.set(0, 0);
+    this.camera.targetOffset.set(0, 0);
+    this.camera.rotation = 0;
+    this.precisionActive = false;
+    this._approachHoldAI = null;
+    this._setDeathOverlay(false);
+    this._setDockHud(false);
+    this.asteroidSystem.update(spawn.x, spawn.y);
+
+    if (!this._expeditionActive) this.beginExpedition();
   }
 
   _requestLaunchBody() {
@@ -1586,6 +1683,7 @@ export class GameEngine {
     }
     this._hangarSeqZoomPlayer = false;
     this._setLaunchBtnVisible(true);
+    this._recordLastDock(placeRegistry.activePlaceId, this.playerBayIndex);
   }
 
   _finishLaunchToSpace() {
@@ -1694,6 +1792,7 @@ export class GameEngine {
     }
     this._hangarSeqZoomPlayer = false;
     this._setLaunchBtnVisible(true);
+    this._recordLastDock(placeRegistry.activePlaceId, this.playerBayIndex);
     if (this._archiveExpeditionOnSettle) {
       this.endExpedition();
       this._archiveExpeditionOnSettle = false;
@@ -2094,7 +2193,10 @@ export class GameEngine {
       this.ship.angle = this.hangarBay.playerPadAngle ?? SHIP.SPAWN_ANGLE;
       const savedDown = this.input.mouseDown;
       if (blockFire) this.input.mouseDown = false;
-      this.interior?.weaponSystem.update(this.ship, this.input, aimWorld, true, [], deltaTime);
+      this.interior?.weaponSystem.update(this.ship, this.input, aimWorld, true, [], deltaTime, {
+        gravityEnabled: false,
+        consumeAmmo: false,
+      });
       this.input.mouseDown = savedDown;
       this._applyHangarHoverVisual(0);
     } else if (ctrl?.kind === 'visitor') {
@@ -2214,7 +2316,10 @@ export class GameEngine {
 
     const savedDown = this.input.mouseDown;
     if (blockFire) this.input.mouseDown = false;
-    this.interior?.weaponSystem.update(puppet, this.input, aimWorld, true, [], deltaTime);
+    this.interior?.weaponSystem.update(puppet, this.input, aimWorld, true, [], deltaTime, {
+      gravityEnabled: false,
+      consumeAmmo: false,
+    });
     this.input.mouseDown = savedDown;
     puppet.update(deltaTime);
 
@@ -2767,7 +2872,10 @@ export class GameEngine {
     ship.position.x += (0 - ship.position.x) * Math.min(1, deltaTime * 0.15);
     ship.position.y += (0 - ship.position.y) * Math.min(1, deltaTime * 0.15);
 
-    this.weaponSystem.update(ship, this.input, aimWorld, pointerInViewport, [], deltaTime);
+    this.weaponSystem.update(ship, this.input, aimWorld, pointerInViewport, [], deltaTime, {
+      gravityEnabled: false,
+      consumeAmmo: false,
+    });
     this.entityManager.update(deltaTime);
     this.particleSystem.update(deltaTime);
 
@@ -2806,7 +2914,10 @@ export class GameEngine {
         this.renderer.centerX,
         this.renderer.centerY
       );
-      this.weaponSystem.update(ship, this.input, aimWorld, true, [], deltaTime);
+      this.weaponSystem.update(ship, this.input, aimWorld, true, [], deltaTime, {
+        gravityEnabled: false,
+        consumeAmmo: false,
+      });
       this.entityManager.update(deltaTime);
       this.particleSystem.update(deltaTime);
       this.renderer.emitThrusterParticles(ship, this.particleSystem);
@@ -2930,6 +3041,7 @@ export class GameEngine {
     );
 
     this._ensureShipStatus();
+    this._syncShipStatusWeapons();
     this._processCockpitClicks();
     this._processCockpitMiddleClicks();
     this._processCockpitRightClicks();
@@ -2983,6 +3095,10 @@ export class GameEngine {
           syncAssist.enabled && this.input.getFlightInput().syncHold ? syncAssist.target : null
         );
       }
+    } else if (this.combat.playerDead(this.ship)) {
+      this._clearShipThrusters(this.ship);
+      this.ship.velocity.set(0, 0);
+      this.ship.angularVelocity = 0;
     } else {
       this.shipController.update(
         this.ship,
@@ -3032,15 +3148,42 @@ export class GameEngine {
 
     const asteroids = this.asteroidSystem.getActiveAsteroids();
     this._frameAsteroids = asteroids;
-    this.weaponSystem.update(
-      this.ship,
-      this.input,
+
+    const zoomPreCombat = Math.max(0.001, this.camera.effectiveZoom);
+    this.ambientTraffic.update(deltaTime, {
+      player: this.ship,
+      station: this.station,
+      hangarBay: null,
+      asteroids,
+      particles: this.particleSystem,
+      gameTime: this.gameTime || 0,
+      camera: {
+        x: this.camera.position.x,
+        y: this.camera.position.y,
+        viewRadius: this.renderer.viewportRadius / zoomPreCombat,
+      },
+    });
+
+    this.combat.updateSpaceflight({
+      ship: this.ship,
+      weaponSystem: this.weaponSystem,
+      input: this.input,
       aimWorld,
       pointerInViewport,
       asteroids,
-      deltaTime
-    );
-    this.weaponSystem.checkCollisions(asteroids);
+      ambientTraffic: this.ambientTraffic,
+      entityManager: this.entityManager,
+      particles: this.particleSystem,
+      renderer: this.renderer,
+      cockpitFrame: this.cockpitFrame,
+      deltaTime,
+      onDeathOverlayReady: () => this._setDeathOverlay(true),
+      onPlayerDeathUi: () => {
+        if (this._pauseMenu) this._pauseMenu.classList.add('hidden');
+        this.paused = false;
+        this.input.paused = false;
+      },
+    });
 
     // Interior crew sim only while the player is inside the vessel graph (not during spaceflight).
     if (this.interiorActive && this.ship?.interiorPlaceId) {
@@ -3048,13 +3191,15 @@ export class GameEngine {
       if (vPlace) tickVesselInteriorCrew(this.ship, vPlace, deltaTime);
     }
 
-    this.entityManager.update(deltaTime);
     this.particleSystem.update(deltaTime);
 
     this._applyViewRotation();
+    const wreckPose = this.combat.playerDead(this.ship)
+      ? this.combat.getWreckCameraPose(this.ship)
+      : null;
     this.camera.update(
-      this.ship.position,
-      this.ship.velocity,
+      wreckPose ? wreckPose.pos : this.ship.position,
+      wreckPose ? wreckPose.vel : this.ship.velocity,
       deltaTime,
       this.renderer.viewportRadius,
       camZoomWheel
@@ -3076,7 +3221,7 @@ export class GameEngine {
     this.speedStreaks.update(
       { x: this.ship.velocity.x, y: this.ship.velocity.y },
       speedAfter,
-      PHYSICS.MAX_SPEED,
+      PHYSICS.REFERENCE_CRUISE_SPEED,
       deltaTime,
       this.renderer.viewportRadius
     );
@@ -3091,22 +3236,6 @@ export class GameEngine {
       baySignals[lane] = 'departing';
     }
     this.station.setBaySignals(baySignals);
-
-    const zoom = Math.max(0.001, this.camera.effectiveZoom);
-    this.ambientTraffic.update(deltaTime, {
-      player: this.ship,
-      station: this.station,
-      hangarBay: null,
-      asteroids: asteroids,
-      particles: this.particleSystem,
-      gameTime: this.gameTime || 0,
-      camera: {
-        x: this.camera.position.x,
-        y: this.camera.position.y,
-        // World-space radius of the circular play viewport
-        viewRadius: this.renderer.viewportRadius / zoom,
-      },
-    });
 
     // Runway at safe speed + in a pad lane → reserve (pulse-green) + hangar arrive
     const reserveEntries = [];
@@ -3177,7 +3306,9 @@ export class GameEngine {
     const near = this.station.inApproach(this.ship.position.x, this.ship.position.y);
     const canEngageHold = stationFull && near && !this._approachHoldAI;
     this.station.updateApproachLights(this.ship);
-    this._setDockHud(near || !!this._approachHoldAI);
+    if (!this.combat.playerDead(this.ship)) {
+      this._setDockHud(near || !!this._approachHoldAI);
+    }
     if (this._dockHud) {
       this._dockHud.classList.toggle('ready', canDock || canEngageHold);
       if (this._approachHoldAI) {
@@ -3441,37 +3572,56 @@ export class GameEngine {
       return;
     }
 
-    this.renderer.setupCircularClip();
-    if (this.scanView === 'scan') this._renderScanBackdrop();
-    else this._renderPlayWorld();
-    this.renderer.endCircularClip();
+    const playerDead = this.combat.playerDead(this.ship);
+    const hudBursting = this.combat.hudBursting(this.ship);
 
-    this._renderRadar();
-    this._renderViewportTelemetry();
-    this.cockpitFrame.render(this.renderer.ctx, this.renderer);
-    this.cockpitFrame.drawPoiDots(
-      this.renderer.ctx,
-      this.renderer,
-      this.poiSystem,
-      this.ship,
-      this.camera.rotation || 0,
-      this.gameTime || 0
-    );
-    this.cockpitFrame.drawNavRouteDot(
-      this.renderer.ctx,
-      this.renderer,
-      this.navRoute,
-      this.ship,
-      this,
-      this.camera.rotation || 0
-    );
-    this.cockpitPanels.render(this.renderer.ctx, this);
-    this._renderCornerReadouts();
+    if (playerDead && !hudBursting) {
+      this._renderDeathView();
+    } else {
+      this.renderer.setupCircularClip();
+      if (this.scanView === 'scan') this._renderScanBackdrop();
+      else this._renderPlayWorld();
+      this.renderer.endCircularClip();
+
+      this._renderRadar();
+      this._renderViewportTelemetry();
+      this.cockpitFrame.render(this.renderer.ctx, this.renderer);
+      this.cockpitFrame.drawPoiDots(
+        this.renderer.ctx,
+        this.renderer,
+        this.poiSystem,
+        this.ship,
+        this.camera.rotation || 0,
+        this.gameTime || 0
+      );
+      this.cockpitFrame.drawNavRouteDot(
+        this.renderer.ctx,
+        this.renderer,
+        this.navRoute,
+        this.ship,
+        this,
+        this.camera.rotation || 0
+      );
+      this.cockpitPanels.render(this.renderer.ctx, this);
+      this._renderCornerReadouts();
+      if (hudBursting) this.combat.renderHudBurst(this.renderer.ctx);
+    }
+  }
+
+  /** Full-window space view after the HUD breakup — wreck + traffic, no cockpit chrome. */
+  _renderDeathView() {
+    this._renderBackground({ fullscreen: true, includeWorldNebulae: true });
+    this._renderPlayWorldLayers();
   }
 
   /** The normal flight world drawn inside the viewport circle (PORT view). */
   _renderPlayWorld() {
     this._renderBackground({ fullscreen: false, includeWorldNebulae: true });
+    this._renderPlayWorldLayers();
+  }
+
+  /** World entities shared by the circular viewport and fullscreen death view. */
+  _renderPlayWorldLayers() {
 
     this.renderer.renderWorldLayer((ctx) => {
       drawRingBackdrop(ctx, this.camera);
@@ -3522,7 +3672,7 @@ export class GameEngine {
       this.ambientTraffic.render(ctx, { only: ambientOccluded });
     }, this.camera);
 
-    if (playerOccluded && this.ship) {
+    if (playerOccluded && this.ship && !this.combat.playerDead(this.ship)) {
       this.renderer.renderShip(this.ship, this.camera);
     }
 
@@ -3549,9 +3699,13 @@ export class GameEngine {
       this.ambientTraffic.render(ctx, { only: ambientClear });
     }, this.camera);
 
-    if (this.ship && !playerOccluded) {
+    if (this.ship && !playerOccluded && !this.combat.playerDead(this.ship)) {
       this.renderer.renderShip(this.ship, this.camera);
     }
+
+    this.renderer.renderWorldLayer((ctx) => {
+      this.combat.renderBreakup(ctx);
+    }, this.camera);
 
     // Floating bay beacons above all ships (lane-centered runway overhead lights)
     this.renderer.renderWorldLayer((ctx) => {
@@ -3676,7 +3830,10 @@ export class GameEngine {
    */
   _applyViewRotation() {
     if (this.viewMode === 'ship' && this.ship) {
-      this.camera.rotation = -Math.PI / 2 - this.ship.angle;
+      const angle = this.combat.playerDead(this.ship)
+        ? (this.combat.getWreckCameraPose(this.ship)?.angle ?? this.ship.angle)
+        : this.ship.angle;
+      this.camera.rotation = -Math.PI / 2 - angle;
     } else {
       this.camera.rotation = 0;
     }
@@ -3697,10 +3854,21 @@ export class GameEngine {
       hull: 1,
       fires: [],
       weapons: [
-        { name: 'Turret', ammo: '\u221E', state: 'ready' },
+        { name: 'Turret', ammo: '100%', state: 'ready' },
         { name: 'Mining Laser', ammo: '\u221E', state: 'ready' },
       ],
     };
+  }
+
+  /** Refresh STATUS tab weapon readouts from live vessel sim. */
+  _syncShipStatusWeapons() {
+    if (!this.ship?.status?.weapons?.length) return;
+    const turret = this.ship.status.weapons.find((w) => w.name === 'Turret');
+    if (turret) {
+      turret.ammo = formatTurretAmmoLabel(this.ship);
+      turret.state = formatTurretAmmoStatus(this.ship);
+    }
+    if (this.ship.hull != null) this.ship.status.hull = this.ship.hull;
   }
 
   /** Route space-cockpit LMB clicks: panels → radar band → POI rim. */
@@ -3829,7 +3997,7 @@ export class GameEngine {
       model: this.radarSystem,
       cameraRotation: this.camera.rotation || 0,
       time: this.gameTime,
-      maxSpeed: PHYSICS.MAX_SPEED,
+      referenceCruiseSpeed: PHYSICS.REFERENCE_CRUISE_SPEED,
     });
   }
 
@@ -3848,7 +4016,7 @@ export class GameEngine {
       fullScope: geo.fullScope,
       ship: this.ship,
       cameraRotation: this.camera.rotation || 0,
-      maxSpeed: PHYSICS.MAX_SPEED,
+      referenceCruiseSpeed: PHYSICS.REFERENCE_CRUISE_SPEED,
       radarSystem: this.radarSystem,
       poiSystem: this.poiSystem,
       navRoute: this.navRoute,

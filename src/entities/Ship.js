@@ -38,6 +38,7 @@ export class Ship extends Entity {
     /** Hangar hover altitude cue (1 = lifted; scales draw size) */
     this.visualScale = 1;
     this.affectedByGravity = true;
+    this.combatTeam = 'player';
   }
 
   /** Resolved mounts from modular definition (falls back to legacy HARDPOINTS). */

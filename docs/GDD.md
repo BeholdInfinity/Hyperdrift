@@ -149,7 +149,8 @@ Each hardpoint holds up to **4** items in a 2×2 slot grid. Freight is drawn as 
 ### Physics — semi-Newtonian
 
 - Velocity persists; no automatic drag
-- Maximum linear and rotational speed caps
+- No global linear speed cap (open-space flight is uncapped; thrust, gravity, and orbit define speed)
+- Rotational speed cap (`PHYSICS.MAX_ROTATION_SPEED`) for controllable yaw
 - Counter-thrust required to stop
 - Acceleration tuned for realism **and** fun
 
@@ -295,6 +296,14 @@ Parametric silhouettes cover all classes; Generalist `a` keeps bell HQ draw with
 
 ### Dorsal combat turret (LMB)
 
+- Independent gyro turret (slew-limited), not locked to hull heading
+- ~3 shots/sec; projectiles inherit ship velocity and planetary gravity in open space
+- **Ammo:** each shot consumes 2% of the vessel `bullets` meter (~50 shots from full); no fire when empty; hangar/blueprint preview unlimited
+- Damages asteroids and **ambient traffic hulls** (circle hit envelope from `hullExtents`)
+- Self-hit grace near muzzle; no same-team friendly fire
+- Hull 0 → ship **breaks into catalog sections** (explode layout) + burst FX; traffic ships despawn; **player stays dead** — camera follows the main **body** fragment; **QUICK LAUNCH** on the death overlay relaunches from the last docked station (Jennings by default) with loadout kept and hull/fuel/ammo restored
+- **NPC return fire:** damaging ambient traffic marks it hostile; hostile ships slew turret toward player and fire when in range (shared weapon spawn path)
+
 - 360° mount at hull center; mouse aims in **world space** with limited **slew rate** (gyro — holds space aim when pointer leaves the circle; slews back on re-entry)
 - Hold LMB to fire energy bolts (max **3 shots/sec**); barrel recoils; muzzle bloom
 - Concentric-ring base + grey sleeve + black barrel/muzzle (sketch-inspired)
@@ -303,7 +312,7 @@ Parametric silhouettes cover all classes; Generalist `a` keeps bell HQ draw with
 
 - Nose mount; aim clamped to a **limited forward arc** with slew; ship-relative (yaws with hull when pointer leaves circle)
 - Hold RMB while pointer in viewport: continuous beam along **clamped** aim even if mouse is past the arc
-- Damages asteroids over time (beam DPS)
+- Damages asteroids and ship hulls (closest target along beam wins vs asteroids)
 
 ### Future weapon roles (not built)
 

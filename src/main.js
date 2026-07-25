@@ -49,11 +49,14 @@ const hud = document.getElementById('hud');
 const overlay = document.getElementById('overlay');
 const cornerUi = document.getElementById('corner-ui');
 const pauseMenu = document.getElementById('pause-menu');
+const deathMenu = document.getElementById('death-menu');
 const resumeBtn = document.getElementById('resume-btn');
 const fullscreenBtn = document.getElementById('fullscreen-btn');
 const pauseFullscreenBtn = document.getElementById('pause-fullscreen-btn');
 const settingsBtn = document.getElementById('settings-btn');
 const mainMenuBtn = document.getElementById('main-menu-btn');
+const deathRespawnBtn = document.getElementById('death-respawn-btn');
+const deathMenuBtn = document.getElementById('death-menu-btn');
 const dockHud = document.getElementById('dock-hud');
 const devDrawer = document.getElementById('dev-drawer');
 const hangarEditPanel = document.getElementById('hangar-edit-panel');
@@ -544,6 +547,7 @@ function showTitleUi() {
   if (blueprintHud) blueprintHud.classList.add('hidden');
   hud.classList.add('hidden');
   pauseMenu.classList.add('hidden');
+  if (deathMenu) deathMenu.classList.add('hidden');
   if (cornerUi) cornerUi.classList.add('hidden');
   if (dockHud) dockHud.classList.add('hidden');
   if (hangarEditPanel) hangarEditPanel.classList.add('hidden');
@@ -564,6 +568,7 @@ function showPlayingUi() {
   // frame (CockpitFrame corner screens); keep the legacy DOM HUD hidden.
   hud.classList.add('hidden');
   pauseMenu.classList.add('hidden');
+  if (deathMenu) deathMenu.classList.add('hidden');
   if (cornerUi) cornerUi.classList.add('hidden');
   syncDevModeUi();
 }
@@ -574,6 +579,7 @@ function showHangarUi() {
   overlay.classList.add('hidden');
   hud.classList.add('hidden');
   pauseMenu.classList.add('hidden');
+  if (deathMenu) deathMenu.classList.add('hidden');
   if (cornerUi) cornerUi.classList.add('hidden');
   if (controlsHud) controlsHud.classList.add('hidden');
   if (blueprintHud) blueprintHud.classList.add('hidden');
@@ -588,6 +594,7 @@ function showControlsUi() {
   overlay.classList.add('hidden');
   hud.classList.add('hidden');
   pauseMenu.classList.add('hidden');
+  if (deathMenu) deathMenu.classList.add('hidden');
   if (cornerUi) cornerUi.classList.add('hidden');
   if (hangarHud) hangarHud.classList.add('hidden');
   if (blueprintHud) blueprintHud.classList.add('hidden');
@@ -602,6 +609,7 @@ function showBlueprintUi() {
   overlay.classList.add('hidden');
   hud.classList.add('hidden');
   pauseMenu.classList.add('hidden');
+  if (deathMenu) deathMenu.classList.add('hidden');
   if (cornerUi) cornerUi.classList.add('hidden');
   if (hangarHud) hangarHud.classList.add('hidden');
   if (controlsHud) controlsHud.classList.add('hidden');
@@ -1568,6 +1576,19 @@ if (mainMenuBtn) {
   mainMenuBtn.disabled = false;
   mainMenuBtn.classList.remove('disabled');
   mainMenuBtn.addEventListener('click', () => {
+    engine.returnToMainMenu();
+    showTitleUi();
+  });
+}
+
+if (deathRespawnBtn) {
+  deathRespawnBtn.addEventListener('click', () => {
+    engine.requestCombatRespawn();
+  });
+}
+
+if (deathMenuBtn) {
+  deathMenuBtn.addEventListener('click', () => {
     engine.returnToMainMenu();
     showTitleUi();
   });

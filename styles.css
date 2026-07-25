@@ -1942,6 +1942,48 @@ html, body {
   width: min(280px, 86vw);
 }
 
+#death-menu {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(ellipse at center, rgba(0, 0, 0, 0.08) 0%, rgba(0, 0, 0, 0.38) 72%);
+  gap: 10px;
+  z-index: 21;
+  pointer-events: auto;
+}
+
+#death-menu h2 {
+  font-family: 'Barlow Condensed', 'Segoe UI', sans-serif;
+  font-size: 2.2rem;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-indent: 0.28em;
+  color: #f0d0b0;
+  text-shadow:
+    0 1px 0 rgba(0, 0, 0, 0.85),
+    0 0 22px rgba(220, 80, 40, 0.55),
+    0 2px 12px rgba(0, 0, 0, 0.75);
+  margin-bottom: 4px;
+}
+
+#death-menu .menu-btn {
+  width: min(280px, 86vw);
+}
+
+.death-hint {
+  font-size: 0.82rem;
+  letter-spacing: 0.12em;
+  color: rgba(240, 220, 200, 0.88);
+  text-shadow: 0 1px 8px rgba(0, 0, 0, 0.85);
+  margin: 0 0 10px;
+  text-align: center;
+  max-width: min(320px, 88vw);
+}
+
 .menu-btn.disabled,
 .panel-btn.disabled {
   opacity: 0.35;

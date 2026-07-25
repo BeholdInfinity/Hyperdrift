@@ -76,6 +76,10 @@ src/
   entities/
     Ship.js, ShipController.js, ShipHardpoints.js (legacy mount fallback; starter matches)
     Projectile.js, Asteroid.js, Particle.js, Entity.js, EntityManager.js
+  combat/
+    CombatSystem.js       Spaceflight combat orchestration (targets, hits, breakup, death FX)
+    CombatTarget.js, CombatResolver.js, CombatSpatialIndex.js, ShipBreakupSystem.js
+    AmmoSystem.js, WeaponHelpers.js, NpcWeaponAI.js
   ships/
     ShipClasses.js, Themes.js, ThemeSkin.js, SectionCatalog.js, ItemCatalog.js
     ShipAttach.js,     ShipDefinition.js, ShipGenerator.js, ShipViews.js, ShipRenderer.js, PlumeDraw.js
@@ -174,7 +178,7 @@ src/
 
 ## Key tuning (`src/core/Constants.js`)
 
-- `PHYSICS.MAX_SPEED` — 900
+- `PHYSICS.REFERENCE_CRUISE_SPEED` — 900 (HUD / map-authoring reference only — not a physics ceiling)
 - `PHYSICS.MAX_ROTATION_SPEED` — 2.6 (cruise yaw); `YAW_FAST_MULT` — 1.65
 - `PHYSICS.PRECISION_THRUST_MULT` / `PRECISION_BURST_MULT` — 0.33 / 0.66 (Precision single / double-tap)
 - `SHIP.TURRET_SLEW_RATE` / `MINING_LASER_SLEW_RATE` — 5.5 / 4.5

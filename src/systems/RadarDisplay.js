@@ -34,7 +34,7 @@ const COLORS = {
 
 export class RadarDisplay {
   constructor() {
-    this.maxSpeed = 900;
+    this.referenceCruiseSpeed = 900;
   }
 
   /**
@@ -43,7 +43,7 @@ export class RadarDisplay {
    *   centerX: number, centerY: number,
    *   innerR: number, outerR: number, band: number,
    *   ship: object, model: import('./RadarSystem.js').RadarSystem,
-   *   cameraRotation?: number, time?: number, maxSpeed?: number,
+   *   cameraRotation?: number, time?: number, referenceCruiseSpeed?: number,
    *   fullScope?: boolean, plotPad?: number, chevronBand?: number,
    * }} opts
    */
@@ -58,13 +58,13 @@ export class RadarDisplay {
       model,
       cameraRotation = 0,
       time = 0,
-      maxSpeed,
+      referenceCruiseSpeed,
       fullScope = false,
       plotPad = 0.28,
       chevronBand,
     } = opts;
     if (!ship || (band <= 0 && !fullScope)) return;
-    if (maxSpeed) this.maxSpeed = maxSpeed;
+    if (referenceCruiseSpeed) this.referenceCruiseSpeed = referenceCruiseSpeed;
 
     const telemetryBand = chevronBand ?? (fullScope ? 40 : band);
 
@@ -492,7 +492,7 @@ export class RadarDisplay {
     const speed = Math.hypot(vx, vy);
     if (speed < 1) return;
 
-    const f = Math.min(1, speed / (this.maxSpeed || 900));
+    const f = Math.min(1, speed / (this.referenceCruiseSpeed || 900));
     const litCount = f <= 1 / 3 ? 1 : f <= 2 / 3 ? 2 : 3;
     let intensity = 0.82;
     if (f > 2 / 3) intensity = 0.82 + 0.18 * ((f - 2 / 3) / (1 / 3));

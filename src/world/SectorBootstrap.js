@@ -6,6 +6,7 @@ import { STATION } from '../core/Constants.js';
 import {
   getSectorLayout,
   getJenningsSite,
+  getSiteById,
   hydrateOrbitParams,
   siteWorldPosition,
   siteWorldVelocity,
@@ -52,10 +53,23 @@ export function isSectorBootstrapped() {
 }
 
 export function syncStationAnchor(station, gameTime = 0) {
-  const jennings = getJenningsSite();
-  if (!jennings || !station) return;
-  const pos = siteWorldPosition(jennings, gameTime);
-  const vel = siteWorldVelocity(jennings, gameTime);
+  syncStationToPlace(station, 'place.jennings', gameTime);
+}
+
+/** Map place id → sector site id (`place.jennings` → `site.jennings`). */
+export function placeIdToSiteId(placeId) {
+  if (!placeId) return 'site.jennings';
+  if (placeId.startsWith('place.')) return `site.${placeId.slice(6)}`;
+  return placeId;
+}
+
+/** Move the overworld station anchor to a dock place (falls back to Jennings). */
+export function syncStationToPlace(station, placeId, gameTime = 0) {
+  const siteId = placeIdToSiteId(placeId);
+  const site = getSiteById(siteId) ?? getJenningsSite();
+  if (!site || !station) return;
+  const pos = siteWorldPosition(site, gameTime);
+  const vel = siteWorldVelocity(site, gameTime);
   if (station.setWorldAnchor) {
     station.setWorldAnchor(pos.x, pos.y, vel.vx, vel.vy);
   } else {

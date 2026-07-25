@@ -1,7 +1,13 @@
 import { Projectile } from '../entities/Projectile.js';
 import { SHIP } from '../core/Constants.js';
 import { Vec2, clamp, angleDifference, normalizeAngle } from '../utils/MathUtils.js';
-
+import {
+  checkProjectileHits,
+  applyMiningLaserShipHit,
+  closestAsteroidLaserHit,
+} from '../combat/CombatResolver.js';
+import { consumeTurretAmmo, hasTurretAmmo } from '../combat/AmmoSystem.js';
+import { turretMuzzleWorld } from '../combat/WeaponHelpers.js';
 function slewAngle(current, target, maxRate, deltaTime) {
   const diff = angleDifference(current, target);
   const step = maxRate * deltaTime;
@@ -13,6 +19,8 @@ export class WeaponSystem {
   constructor(entityManager, particleSystem) {
     this.entityManager = entityManager;
     this.particles = particleSystem;
+    /** @type {object|null} */
+    this._combatCallbacks = null;
   }
 
   /**
@@ -20,19 +28,23 @@ export class WeaponSystem {
    * @param {object} input
    * @param {{ x: number, y: number }} aimWorld
    * @param {boolean} pointerInViewport
-   * @param {object[]} asteroids
+   * @param {{ asteroids?: object[], ships?: import('../combat/CombatTarget.js').CombatTarget[] }} targets
    * @param {number} deltaTime
+   * @param {{ gravityEnabled?: boolean, consumeAmmo?: boolean }} [opts]
    */
-  update(ship, input, aimWorld, pointerInViewport, asteroids, deltaTime) {
+  update(ship, input, aimWorld, pointerInViewport, targets, deltaTime, opts = {}) {
+    const gravityEnabled = opts.gravityEnabled !== false;
+    const consumeAmmo = opts.consumeAmmo !== false;
+    const asteroids = targets?.asteroids ?? targets ?? [];
+    const shipTargets = targets?.ships ?? [];
     const flight = input.getFlightInput();
     ship.miningLaserFiring = false;
     ship.miningLaserBeamLength = SHIP.MINING_LASER_RANGE;
 
     if (pointerInViewport) {
-      const desiredWorld = Math.atan2(
-        aimWorld.y - ship.position.y,
-        aimWorld.x - ship.position.x
-      );
+      const px = ship.position?.x ?? ship.x ?? 0;
+      const py = ship.position?.y ?? ship.y ?? 0;
+      const desiredWorld = Math.atan2(aimWorld.y - py, aimWorld.x - px);
       ship.turretAngle = slewAngle(
         ship.turretAngle,
         desiredWorld,
@@ -51,7 +63,6 @@ export class WeaponSystem {
         SHIP.MINING_LASER_SLEW_RATE,
         deltaTime
       );
-      // Keep relative angle in arc after slew (slewAngle normalizes to ±π)
       ship.miningLaserRelAngle = clamp(
         ship.miningLaserRelAngle,
         -SHIP.MINING_LASER_ARC,
@@ -62,20 +73,31 @@ export class WeaponSystem {
     if (!pointerInViewport) return;
 
     if (flight.firePrimary && ship.fireCooldown <= 0) {
-      this._fireTurret(ship);
+      if (!consumeAmmo || hasTurretAmmo(ship)) {
+        this.fireTurretFromShip(ship, { gravityEnabled, consumeAmmo });
+      }
     }
 
     if (flight.fireLaser) {
       ship.miningLaserFiring = true;
-      this._applyMiningLaser(ship, asteroids, deltaTime);
+      this._applyMiningLaser(ship, asteroids, shipTargets, deltaTime, targets?.spatialIndex ?? null);
     }
   }
 
-  _fireTurret(ship) {
-    const tip = ship.getTurretMuzzle();
-    const angle = ship.turretAngle;
+  /**
+   * Shared turret fire path for player ship and NPC traffic bags.
+   * @param {object} ship
+   * @param {{ gravityEnabled?: boolean, consumeAmmo?: boolean }} [opts]
+   */
+  fireTurretFromShip(ship, opts = {}) {
+    const gravityEnabled = opts.gravityEnabled !== false;
+    const consumeAmmo = opts.consumeAmmo !== false;
+    if (consumeAmmo && !consumeTurretAmmo(ship)) return;
 
-    const projectile = new Projectile(tip.x, tip.y, angle, ship);
+    const tip = turretMuzzleWorld(ship);
+    const angle = ship.turretAngle ?? ship.angle ?? 0;
+
+    const projectile = new Projectile(tip.x, tip.y, angle, ship, { gravityEnabled });
     this.entityManager.add(projectile, 'projectile');
 
     ship.fireCooldown = SHIP.TURRET_COOLDOWN;
@@ -94,38 +116,46 @@ export class WeaponSystem {
     );
   }
 
-  _applyMiningLaser(ship, asteroids, deltaTime) {
+  _applyMiningLaser(ship, asteroids, shipTargets, deltaTime, spatialIndex = null) {
     const origin = ship.getMiningLaserOrigin();
     const angle = ship.getMiningLaserWorldAngle();
     const dir = Vec2.fromAngle(angle);
     const range = SHIP.MINING_LASER_RANGE;
     const damage = SHIP.MINING_LASER_DPS * deltaTime;
 
-    let closest = null;
-    let closestDist = range;
+    const ast = closestAsteroidLaserHit(
+      origin.x, origin.y, dir.x, dir.y, range, asteroids, spatialIndex
+    );
+    const shipHit = applyMiningLaserShipHit(
+      origin.x, origin.y, dir.x, dir.y, range,
+      shipTargets, ship, deltaTime, this._combatCallbacks ?? {},
+      spatialIndex
+    );
 
-    for (const asteroid of asteroids) {
-      if (!asteroid.active) continue;
-      const hit = this._rayCircle(
-        origin.x, origin.y,
-        dir.x, dir.y,
-        range,
-        asteroid.position.x, asteroid.position.y,
-        asteroid.radius
-      );
-      if (hit !== null && hit < closestDist) {
-        closestDist = hit;
-        closest = asteroid;
+    const astDist = ast.hitDist;
+    const shipDist = shipHit.hitDist;
+    const useShip =
+      shipDist !== null && (astDist === null || shipDist < astDist);
+
+    if (useShip && shipHit.target) {
+      ship.miningLaserBeamLength = shipDist;
+      if (shipHit.target.ref?.hull <= 0) {
+        this._createImpactEffect(
+          origin.x + dir.x * shipDist,
+          origin.y + dir.y * shipDist,
+          true
+        );
       }
+      return;
     }
 
-    if (closest) {
-      const destroyed = closest.takeDamage(damage);
-      ship.miningLaserBeamLength = closestDist;
+    if (ast.asteroid) {
+      const destroyed = ast.asteroid.takeDamage(damage);
+      ship.miningLaserBeamLength = astDist;
       if (destroyed) {
         this._createImpactEffect(
-          origin.x + dir.x * closestDist,
-          origin.y + dir.y * closestDist,
+          origin.x + dir.x * astDist,
+          origin.y + dir.y * astDist,
           true
         );
       }
@@ -134,53 +164,33 @@ export class WeaponSystem {
     }
   }
 
-  /** Distance along ray to circle, or null */
-  _rayCircle(ox, oy, dx, dy, maxDist, cx, cy, radius) {
-    const fx = ox - cx;
-    const fy = oy - cy;
-    const a = dx * dx + dy * dy;
-    const b = 2 * (fx * dx + fy * dy);
-    const c = fx * fx + fy * fy - radius * radius;
-    const disc = b * b - 4 * a * c;
-    if (disc < 0) return null;
-    const sqrt = Math.sqrt(disc);
-    const t1 = (-b - sqrt) / (2 * a);
-    const t2 = (-b + sqrt) / (2 * a);
-    let t = Infinity;
-    if (t1 >= 0) t = Math.min(t, t1);
-    if (t2 >= 0) t = Math.min(t, t2);
-    if (t === Infinity || t > maxDist) return null;
-    return t;
-  }
-
-  checkCollisions(asteroids) {
+  /**
+   * @param {{ asteroids: object[], ships?: import('../combat/CombatTarget.js').CombatTarget[], spatialIndex?: import('../combat/CombatSpatialIndex.js').CombatSpatialIndex }} targets
+   * @param {{ onShipHit?: Function, onShipDestroyed?: Function, onAsteroidImpact?: Function }} [callbacks]
+   */
+  checkCollisions(targets, callbacks = {}) {
+    this._combatCallbacks = callbacks;
     const projectiles = this.entityManager.getByType('projectile');
-    const impacts = [];
+    const asteroids = targets?.asteroids ?? [];
+    const shipTargets = targets?.ships ?? [];
 
-    for (const proj of projectiles) {
-      if (!proj.active) continue;
-
-      for (const asteroid of asteroids) {
-        if (!asteroid.active) continue;
-
-        const dist = Vec2.distance(proj.position, asteroid.position);
-        if (dist < asteroid.radius + proj.radius) {
-          const destroyed = asteroid.takeDamage(proj.damage);
-          proj.destroy();
-          impacts.push({
-            x: proj.position.x,
-            y: proj.position.y,
-            destroyed,
-            asteroid,
-          });
-          break;
-        }
-      }
-    }
-
-    for (const impact of impacts) {
-      this._createImpactEffect(impact.x, impact.y, impact.destroyed);
-    }
+    const impacts = checkProjectileHits(
+      projectiles,
+      asteroids,
+      shipTargets,
+      {
+        onAsteroidImpact: (impact) => {
+          this._createImpactEffect(impact.x, impact.y, impact.destroyed);
+          callbacks.onAsteroidImpact?.(impact);
+        },
+        onShipHit: (impact) => {
+          this._createImpactEffect(impact.x, impact.y, impact.destroyed);
+          callbacks.onShipHit?.(impact);
+        },
+        onShipDestroyed: callbacks.onShipDestroyed,
+      },
+      targets.spatialIndex ?? null
+    );
 
     return impacts;
   }

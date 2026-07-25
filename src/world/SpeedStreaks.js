@@ -8,8 +8,8 @@ export class SpeedStreaks {
    * Screen-space streaks (not scaled by camera zoom) so they fill the
    * circular viewport and stay visible at any zoom level.
    */
-  update(shipVelocity, shipSpeed, maxSpeed, deltaTime, viewportRadius) {
-    const speedRatio = shipSpeed / maxSpeed;
+  update(shipVelocity, shipSpeed, referenceCruiseSpeed, deltaTime, viewportRadius) {
+    const speedRatio = shipSpeed / referenceCruiseSpeed;
 
     if (speedRatio < 0.05 || shipSpeed < 10) {
       this.streaks = [];
