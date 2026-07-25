@@ -120,7 +120,7 @@ export function drawSectorMapPanel(ctx, box, engine, panels) {
     const recX = box.x + box.w - recW;
     if (recX >= minLeft) {
       panels._drawFooterRecenter(ctx, recX, footerY, recW, btnH, (e) =>
-        e.sectorMapView.recenter(e.ship),
+        e.sectorMapView.recenter(e.ship, e),
       );
     }
   }
@@ -155,7 +155,7 @@ function drawMapCanvas(ctx, box, engine, view, { fog, liveTrail }) {
   const map = engine.sectorMap;
   const ship = engine.ship;
   if (!ship) return;
-  view.syncFollow(ship);
+  view.syncFollow(ship, engine);
   const scale = view.scaleForBox(box.w, box.h);
   const span = view.worldSpan(box.w, box.h);
   const useStaticCache = !view.followShip;
@@ -194,7 +194,11 @@ function drawMapCanvas(ctx, box, engine, view, { fog, liveTrail }) {
 function drawMapStaticLayers(ctx, box, engine, view, { fog, scale, span, bright = false, skipPoi = false, gameTime = null, editorFilterFade = null }) {
   const map = engine.sectorMap;
   const cell = map.cellSize;
-  const t = gameTime ?? engine.gameTime ?? 0;
+  const t = Number.isFinite(gameTime)
+    ? gameTime
+    : Number.isFinite(engine.gameTime)
+      ? engine.gameTime
+      : 0;
 
   ctx.fillStyle = 'rgba(8, 16, 24, 0.6)';
   ctx.fillRect(box.x, box.y, box.w, box.h);
@@ -523,7 +527,7 @@ function drawMapOverlays(ctx, mapBox, engine, panels, { travelLogOpen = false } 
     drawSectorEditorOverlay(ctx, mapBox, engine, view);
   }
   if (travelLogOpen && !view.followShip) {
-    drawMapRecenterButton(ctx, mapBox, panels, (e) => e.sectorMapView.recenter(e.ship));
+    drawMapRecenterButton(ctx, mapBox, panels, (e) => e.sectorMapView.recenter(e.ship, e));
   }
   drawMapMarkerTooltip(ctx, mapBox, view, panels);
   if (view.sectorMapMenu) {

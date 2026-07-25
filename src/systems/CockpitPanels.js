@@ -539,12 +539,24 @@ export class CockpitPanels {
     const color = IFF[c.iff] || IFF.yellow;
     this._text(ctx, c.name.toUpperCase(), box.x, box.y + 14, { color, size: 16, weight: 700 });
     const km = (c.dist / 100).toFixed(1);
-    const closing = c.closing < 0 ? `${Math.abs(c.closing).toFixed(0)} closing` : `${c.closing.toFixed(0)} opening`;
+    const relSpd =
+      c.type === 'station' && engine.station
+        ? engine.station.relativeSpeed(
+            engine.ship?.velocity?.x ?? 0,
+            engine.ship?.velocity?.y ?? 0
+          )
+        : c.relSpeed ??
+          Math.hypot(
+            (c.vx ?? 0) - (engine.ship?.velocity?.x ?? 0),
+            (c.vy ?? 0) - (engine.ship?.velocity?.y ?? 0)
+          );
     const rows = [
       `TYPE  ${c.type.toUpperCase()}`,
       `IFF   ${c.iff.toUpperCase()}`,
       `RANGE ${km} km`,
-      `REL V ${closing}`,
+      c.type === 'station'
+        ? `REL V ${relSpd.toFixed(0)} stn`
+        : `REL V ${relSpd.toFixed(0)}`,
     ];
     rows.forEach((s, i) => this._text(ctx, s, box.x, box.y + 34 + i * 15, { size: 12, weight: 500 }));
 

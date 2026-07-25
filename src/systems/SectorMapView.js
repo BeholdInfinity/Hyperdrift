@@ -37,17 +37,34 @@ export class SectorMapView {
     this.suppressClick = false;
   }
 
-  syncFollow(ship) {
-    if (this.followShip && ship?.position) {
-      this.panCenter.x = ship.position.x;
-      this.panCenter.y = ship.position.y;
+  syncFollow(ship, engine = null) {
+    if (!this.followShip) return;
+    const px = ship?.position?.x;
+    const py = ship?.position?.y;
+    if (Number.isFinite(px) && Number.isFinite(py)) {
+      this.panCenter.x = px;
+      this.panCenter.y = py;
+      return;
+    }
+    const st = engine?.station;
+    if (st && Number.isFinite(st.x) && Number.isFinite(st.y)) {
+      this.panCenter.x = st.x;
+      this.panCenter.y = st.y;
     }
   }
 
-  recenter(ship) {
-    if (ship?.position) {
-      this.panCenter.x = ship.position.x;
-      this.panCenter.y = ship.position.y;
+  recenter(ship, engine = null) {
+    const px = ship?.position?.x;
+    const py = ship?.position?.y;
+    if (Number.isFinite(px) && Number.isFinite(py)) {
+      this.panCenter.x = px;
+      this.panCenter.y = py;
+    } else {
+      const st = engine?.station;
+      if (st && Number.isFinite(st.x) && Number.isFinite(st.y)) {
+        this.panCenter.x = st.x;
+        this.panCenter.y = st.y;
+      }
     }
     this.followShip = true;
   }

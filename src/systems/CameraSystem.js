@@ -31,7 +31,8 @@ export class CameraSystem {
     }
 
     const speed = shipVelocity.length();
-    const speedRatio = Math.min(1, speed / PHYSICS.REFERENCE_CRUISE_SPEED);
+    const safeSpeed = Number.isFinite(speed) ? speed : 0;
+    const speedRatio = Math.min(1, safeSpeed / PHYSICS.REFERENCE_CRUISE_SPEED);
     const targetSpeedZoom = lerp(CAMERA.SPEED_ZOOM_MAX, CAMERA.SPEED_ZOOM_MIN, speedRatio);
 
     const zoomT = 1 - Math.exp(-CAMERA.ZOOM_SMOOTHING * deltaTime);

@@ -40,9 +40,16 @@ export class ShipController {
     this.physics = new PhysicsSystem();
   }
 
-  update(ship, input, precisionActive, deltaTime, syncTarget = null) {
+  update(ship, input, precisionActive, deltaTime, syncTarget = null, motionFrame = null) {
     const flight = input.getFlightInput();
     const thrusters = ship.thrusters;
+    const frameVx = motionFrame?.vx ?? 0;
+    const frameVy = motionFrame?.vy ?? 0;
+    const useMotionFrame = !!motionFrame;
+    const relVelocity = () =>
+      useMotionFrame
+        ? new Vec2(ship.velocity.x - frameVx, ship.velocity.y - frameVy)
+        : new Vec2(ship.velocity.x, ship.velocity.y);
 
     for (const key of Object.keys(thrusters)) {
       if (typeof thrusters[key] === 'number') thrusters[key] = 0;
@@ -96,10 +103,8 @@ export class ShipController {
 
     if (flight.zeroHold) {
       const holdScale = PHYSICS.PRECISION_THRUST_MULT;
-      const brake = this.physics.computeBrakingThrust(
-        new Vec2(ship.velocity.x, ship.velocity.y),
-        ship.angle
-      );
+      const rel = relVelocity();
+      const brake = this.physics.computeBrakingThrust(rel, ship.angle);
       totalForce.add(brake.force.clone().scale(holdScale));
       if (brake.retroBurn) {
         thrusters.retroBurn = true;
@@ -127,10 +132,8 @@ export class ShipController {
         }
       }
     } else if (flight.brake) {
-      const brake = this.physics.computeBrakingThrust(
-        new Vec2(ship.velocity.x, ship.velocity.y),
-        ship.angle
-      );
+      const rel = relVelocity();
+      const brake = this.physics.computeBrakingThrust(rel, ship.angle);
 
       totalForce.add(brake.force.clone().scale(precisionScale));
 
@@ -167,15 +170,15 @@ export class ShipController {
         this._lightFace(thrusters, 'port', TRANSLATION_INTENSITY * rightPow);
       }
 
-      if (flight.mainEngine || ship.exitBurn) {
+      if (flight.mainEngine) {
         let enginePower = PHYSICS.MAIN_ENGINE_THRUST * precisionScale;
-        if (flight.afterburner && !ship.exitBurn) {
+        if (flight.afterburner) {
           enginePower *= PHYSICS.AFTERBURNER_MULT;
           thrusters.afterburner = precisionScale;
         }
         totalForce.add(forward.clone().scale(enginePower));
         thrusters.mainEngine =
-          (flight.afterburner && !ship.exitBurn ? 1.5 : 1) * precisionScale;
+          (flight.afterburner ? 1.5 : 1) * precisionScale;
       }
 
       if (flight.syncHold && syncTarget) {
@@ -207,8 +210,13 @@ export class ShipController {
 
     this.physics.applyForce(ship, totalForce, deltaTime);
 
-    if ((flight.brake || flight.zeroHold) && ship.velocity.length() < PHYSICS.VELOCITY_THRESHOLD) {
-      ship.velocity.set(0, 0);
+    const holdSpeed = relVelocity().length();
+    if ((flight.brake || flight.zeroHold) && holdSpeed < PHYSICS.VELOCITY_THRESHOLD) {
+      if (useMotionFrame) {
+        ship.velocity.set(frameVx, frameVy);
+      } else {
+        ship.velocity.set(0, 0);
+      }
     }
 
     this.physics.integrate(ship, deltaTime);

@@ -143,6 +143,14 @@ function fillAnnulusSlice(ctx, cx, cy, r0, r1) {
  */
 export function drawRingBeltFill(ctx, cx, cy, innerPx, outerPx, ring, alpha = 1) {
   if (outerPx < innerPx + 0.5 || outerPx < 2 || alpha <= 0.01 || !ring) return;
+  if (
+    !Number.isFinite(cx) ||
+    !Number.isFinite(cy) ||
+    !Number.isFinite(innerPx) ||
+    !Number.isFinite(outerPx)
+  ) {
+    return;
+  }
 
   const widthPx = outerPx - innerPx;
   const model = getBandModel(ring);

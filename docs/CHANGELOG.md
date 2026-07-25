@@ -6,6 +6,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Changed
+- **Station runway orientation** — orbital stations rotate so the docking runway points **upstream** (opposite prograde); departures **co-orbit** the station (handoff matches live `vx`/`vy` so the station reads nearly still); approach-light corridor + ingress heading/speed checks use the station-local runway frame; **CONTACT REL V** uses live station-frame relative speed (not radial closing); **brake / zero-hold** in the approach shell target station co-motion (manual orbit-match + Alt brake); corridor lights extend through the mouth; dock HUD shows stn-relative slip + block reason; TELEMETRY **STN** row near Jennings shows dock-frame relative speed; **fix** `velocityAt()` now uses `orbitOmega × R` so station `vx`/`vy` matches actual track motion (was ~370 u/s slow vs position integration, blocking dock while visually co-orbit matched).
+- **Hangar / quick launch egress** — exit spawn heading is **runway egress** (out through the mouth on the runway axis, same for all bays); handoff velocity is station co-orbit **+ 100 u/s REL V along that axis** (`EXIT_REL_SPEED`, negative `alongIngress`); **player exit-burn computer control removed** (full manual control immediately); **3s egress grace** blocks dock; zero-hold cleared on handoff; **`_activateSpaceEgress`** shared by quick launch, hangar launch, and combat respawn so playable-space state (camera, input, traffic, expedition) matches once you leave the bay.
+- **Auto-dock trigger** — auto-ingress requires hull under the **hangar roof slab** (not open north apron); station anchor re-syncs after ship physics so ingress volumes track live orbital motion (fixes one-frame-late roof trigger on approach).
+- **Space→hangar landing handoff** — entry heading/turret converted from world space through live `frameRotation()` so hangar landing does not re-yaw a ship that already approached aligned on the rotating runway.
+- **Launch NaN / black viewport** — finite `gameTime` guards on orbit sync, launch spawn validation, ship-pose recovery, and sector-map pan fallback; **fix** egress handoff read `exitVel.vx`/`vy` (was `.x`/`.y` → ship spawned at 0 map speed).
+
 ### Added
 - **Tier-radial multi-station ambient traffic** — spawns anchor on live station sites weighted by `patrolDensity`; ship class picked from social-tier pools with planet-radial affinity (`SocialTierTraffic.js`, `socialOrbitInner`); police pack at military tier; bay mouth traffic still Jennings-only.
 - **Sector map belt infill** — Saturn-style concentric sub-bands with gaps, directional lighting, and composition tints (`RingBeltVisual.js`).

@@ -437,9 +437,13 @@ export function buildNavTelemetry(engine) {
   const influence = layout.planet?.influenceRadius ?? 700000;
   let prograde = null;
   let postedLimit = null;
+  let stnRel = null;
   if (shipR > (layout.planet?.radius ?? 35000) && shipR < influence * 1.05) {
     prograde = Math.round(circularSpeed(shipR, gravityMu(layout)));
     postedLimit = Math.round(postedSpeedLimitAt(ship.position.x, ship.position.y, engine.gameTime || 0).limit);
+  }
+  if (engine.station?.inApproach?.(ship.position.x, ship.position.y)) {
+    stnRel = Math.round(engine.station.relativeSpeed(vx, vy));
   }
 
   return {
@@ -454,6 +458,7 @@ export function buildNavTelemetry(engine) {
     posY: Math.round(ship.position.y),
     prograde,
     postedLimit,
+    stnRel,
     overLimit: postedLimit != null && speed > postedLimit,
   };
 }
@@ -595,7 +600,9 @@ export function drawNavCorner(ctx, screen, data) {
     const hasLim = data.postedLimit != null;
     const hasPro = data.prograde != null;
     const hasCrs = !!data.courseStr;
+    const hasStn = data.stnRel != null;
     let rowCount = 3 + (hasCrs ? 1 : 0); // SPD, HDG, POS + optional CRS
+    if (hasStn) rowCount += 1;
     if (hasLim && hasPro) rowCount += 1;
     else {
       if (hasLim) rowCount += 1;
@@ -613,6 +620,16 @@ export function drawNavCorner(ctx, screen, data) {
     const spdColor = data.overLimit ? 'rgba(255, 120, 90, 0.95)' : undefined;
     drawLabelValueRow(ctx, box, y, rowH, 'SPD', String(data.speed).padStart(4, ' '), { fs, valueColor: spdColor });
     y += rowH + rowGap;
+
+    if (hasStn) {
+      const stnColor =
+        data.stnRel >= 120 ? 'rgba(255, 120, 90, 0.95)' : 'rgba(120, 220, 160, 0.95)';
+      drawLabelValueRow(ctx, box, y, rowH, 'STN', String(data.stnRel).padStart(4, ' '), {
+        fs,
+        valueColor: stnColor,
+      });
+      y += rowH + rowGap;
+    }
 
     if (hasLim && hasPro) {
       drawLabelValueRow(

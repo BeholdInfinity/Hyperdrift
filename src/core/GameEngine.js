@@ -23,6 +23,7 @@ import { SectorMap, trailDistance } from '../world/SectorMap.js';
 import { TravelLog } from '../world/TravelLog.js';
 import { loadNavProfile, saveNavProfile } from '../world/NavPersistence.js';
 import { bootstrapSectorWorld, syncStationAnchor, syncStationToPlace } from '../world/SectorBootstrap.js';
+import { finiteGameTime } from '../world/OrbitKinematics.js';
 import { WarpGateSystem } from '../world/WarpGateSystem.js';
 import { TrafficRecord } from '../world/TrafficRecord.js';
 import { TrafficEnforcement } from '../world/TrafficEnforcement.js';
@@ -274,6 +275,8 @@ export class GameEngine {
      */
     this._exitBurn = false;
     this._exitBurnFailsafe = 0;
+    /** gameTime until egress grace ends (blocks dock after hangar/quick launch). */
+    this._exitIngressBlockedUntil = 0;
     this._dockLocked = true;
     this._controlsReturn = 'title';
     this._dockPrompt = false;
@@ -364,8 +367,24 @@ export class GameEngine {
   _computeSyncAssist() {
     const contact = this.radarSystem?.getSelected?.();
     if (!contact || !this.ship) return { score: 0, target: null };
-    const tvx = contact.vx ?? 0;
-    const tvy = contact.vy ?? 0;
+
+    let tvx = contact.vx ?? 0;
+    let tvy = contact.vy ?? 0;
+    if (contact.type === 'station' && this.station) {
+      tvx = this.station.vx ?? 0;
+      tvy = this.station.vy ?? 0;
+      const slip = this.station.relativeSpeed(
+        this.ship.velocity.x,
+        this.ship.velocity.y
+      );
+      const score = Math.max(0, 100 * (1 - slip / 120));
+      return {
+        score,
+        target: { vx: tvx, vy: tvy },
+        enabled: score >= 95,
+      };
+    }
+
     const targetSpeed = Math.hypot(tvx, tvy);
     if (targetSpeed < 8) return { score: 0, target: null };
     const playerSpeed = this.ship.velocity.length();
@@ -383,6 +402,28 @@ export class GameEngine {
       target: { vx: tvx, vy: tvy },
       enabled: score >= 95,
     };
+  }
+
+  /** Advance Jennings anchor + POI to current gameTime (orbital motion). */
+  _syncStationWorldFrame() {
+    const t = finiteGameTime(this.gameTime);
+    syncStationAnchor(this.station, t);
+    this.poiSystem.syncPositions(t);
+  }
+
+  /** Station co-moving frame for brake / zero-hold while in the approach shell. */
+  _stationMotionFrame() {
+    if (!this.ship?.position || !this.station) return null;
+    if (!this.station.inApproach(this.ship.position.x, this.ship.position.y)) return null;
+    return { vx: this.station.vx ?? 0, vy: this.station.vy ?? 0 };
+  }
+
+  /** SYNC target: station always assists on X hold; other contacts need ≥95%. */
+  _resolveSyncTarget(syncAssist) {
+    if (!this.input.getFlightInput().syncHold || !syncAssist?.target) return null;
+    const contact = this.radarSystem?.getSelected?.();
+    if (contact?.type === 'station') return syncAssist.target;
+    return syncAssist.enabled ? syncAssist.target : null;
   }
 
   _tickIronCrownStub() {
@@ -434,7 +475,7 @@ export class GameEngine {
     this._expeditionActive = true;
     this._expeditionDiscoveredPoiCount = this.poiSystem.discovered().length;
     this.sectorMap.reset();
-    this.sectorMapView.recenter(this.ship);
+    this.sectorMapView.recenter(this.ship, this);
   }
 
   endExpedition() {
@@ -650,6 +691,165 @@ export class GameEngine {
     );
   }
 
+  /** Recover ship/camera/map when pose becomes non-finite (hangar launch handoff). */
+  _sanitizeShipPose() {
+    const ship = this.ship;
+    if (!ship?.position || !ship?.velocity) return;
+    const px = ship.position.x;
+    const py = ship.position.y;
+    const vx = ship.velocity.x;
+    const vy = ship.velocity.y;
+    if (
+      Number.isFinite(px) &&
+      Number.isFinite(py) &&
+      Number.isFinite(vx) &&
+      Number.isFinite(vy)
+    ) {
+      return;
+    }
+    const bay = this.playerBayIndex ?? 1;
+    this._commitSpaceEgressHandoff(ship, bay);
+    this.camera.position.set(ship.position.x, ship.position.y);
+    this.camera.offset.set(0, 0);
+    this.camera.targetOffset.set(0, 0);
+    if (!Number.isFinite(this.camera.userZoom)) this.camera.userZoom = 1;
+    if (!Number.isFinite(this.camera.targetUserZoom)) this.camera.targetUserZoom = 1;
+    if (!Number.isFinite(this.camera.speedZoom)) this.camera.speedZoom = 1;
+    this.camera.effectiveZoom = this.camera.userZoom * this.camera.speedZoom;
+    this.sectorMapView.recenter(ship, this);
+  }
+
+  _armExitGrace(seconds = STATION.EXIT_INGRESS_GRACE_SEC) {
+    this._exitIngressBlockedUntil =
+      finiteGameTime(this.gameTime) + Math.max(0, seconds);
+  }
+
+  _inExitGrace() {
+    return finiteGameTime(this.gameTime) < this._exitIngressBlockedUntil;
+  }
+
+  /**
+   * Apply bay egress pose: station co-orbit + EXIT_REL_SPEED out through the mouth.
+   * @returns {{ spawn: { x: number, y: number, angle: number }, exitVel: { vx: number, vy: number } }}
+   */
+  _commitSpaceEgressHandoff(ship, bayIndex = this.playerBayIndex ?? 1) {
+    syncStationAnchor(this.station, finiteGameTime(this.gameTime));
+    let spawn = this.station.getExitSpawn(bayIndex);
+    if (!Number.isFinite(spawn.x) || !Number.isFinite(spawn.y)) {
+      syncStationAnchor(this.station, 0);
+      spawn = this.station.getExitSpawn(bayIndex);
+    }
+    if (!Number.isFinite(spawn.x) || !Number.isFinite(spawn.y)) {
+      const fb = this.station.laneCenterWorld(bayIndex);
+      spawn = {
+        x: fb.x,
+        y: fb.y,
+        angle: this.station.runwayEgressAngle(),
+      };
+    }
+    const exitVel = this.station.exitVelocityWorld();
+    const evx = exitVel.vx ?? 0;
+    const evy = exitVel.vy ?? 0;
+    ship.position.set(spawn.x, spawn.y);
+    ship.velocity.set(
+      Number.isFinite(evx) ? evx : 0,
+      Number.isFinite(evy) ? evy : 0
+    );
+    ship.angle = Number.isFinite(spawn.angle)
+      ? spawn.angle
+      : this.station.runwayEgressAngle();
+    ship.turretAngle = ship.angle;
+    ship.angularVelocity = 0;
+    ship.exitBurn = false;
+    this.input.cancelZeroHold();
+    this._armExitGrace();
+    return { spawn, exitVel };
+  }
+
+  /**
+   * Unified entry into playable space after bay egress (quick launch, hangar launch, combat respawn).
+   * @param {Ship} ship
+   * @param {number} bayIndex
+   * @param {{
+   *   source?: 'quick'|'hangar'|'respawn',
+   *   fromHangar?: boolean,
+   *   beginExpedition?: boolean,
+   *   resetAmbientTraffic?: boolean,
+   * }} [opts]
+   */
+  _activateSpaceEgress(ship, bayIndex, opts = {}) {
+    const {
+      source = opts.fromHangar ? 'hangar' : 'quick',
+      fromHangar = source === 'hangar',
+      beginExpedition = true,
+      resetAmbientTraffic = source === 'quick',
+    } = opts;
+
+    const { spawn, exitVel } = this._commitSpaceEgressHandoff(ship, bayIndex);
+
+    ship.visualScale = 1;
+    ship.affectedByGravity = true;
+    ship.exitBurn = false;
+    this._clearShipThrusters(ship);
+    this.playerBayIndex = bayIndex | 0;
+    this.ship = ship;
+
+    this.entityManager.clear();
+    this.particleSystem.clear();
+    this.entityManager.add(ship, 'ship');
+
+    this.camera.rotation = 0;
+    this.camera.position.set(spawn.x, spawn.y);
+    this.camera.offset.set(0, 0);
+    this.camera.targetOffset.set(0, 0);
+    this.camera.userZoom = 1;
+    this.camera.targetUserZoom = 1;
+    this.camera.speedZoom = 1;
+    this.camera.effectiveZoom = 1;
+
+    this.precisionActive = false;
+    this._approachHoldAI = null;
+    this._hangarSeq = null;
+    this._hangarSeqZoomPlayer = false;
+    this._hangarHover = 0;
+    this._dockLocked = true;
+    this._exitBurn = false;
+    this._exitBurnFailsafe = 0;
+
+    this.input.hangarPanEnabled = false;
+    this.input.enable();
+    this.input.paused = false;
+    this.paused = false;
+
+    this.mode = 'playing';
+    this.interiorActive = false;
+    this._resetSimSpeedUnlessDev();
+
+    syncHangarSidePadFromLayout(null);
+    this._bindPlayerVessel(ship);
+
+    if (resetAmbientTraffic) {
+      this.ambientTraffic.reset();
+    } else if (!this.ambientTraffic.ships?.length) {
+      this.ambientTraffic.reset();
+    }
+
+    this.asteroidSystem.update(spawn.x, spawn.y);
+    this._setDockHud(false);
+
+    if (fromHangar) {
+      if (this._hangarHud) this._hangarHud.classList.add('hidden');
+      this._setLaunchBtnVisible(false);
+      if (typeof this.onLaunchComplete === 'function') this.onLaunchComplete();
+    }
+
+    if (beginExpedition) {
+      this.beginExpedition();
+    }
+
+    return spawn;
+  }
+
   _guardTransition(label, fn) {
     try {
       return fn();
@@ -771,48 +971,14 @@ export class GameEngine {
   }
 
   _beginPlayBody() {
-    this.camera.rotation = 0;
     this._clearPlaySession();
     // Pick exit bay first — spawn lane + departing pad light must match
     this.playerBayIndex = (Math.random() * 3) | 0;
-    const spawn = this.station.getExitSpawn(this.playerBayIndex);
-    this.ship = new Ship(spawn.x, spawn.y);
+    this.ship = new Ship(0, 0);
     this._applyPendingBlueprint(this.ship);
-    this.ship.angle = spawn.angle;
-    this.ship.turretAngle = spawn.angle;
-    syncStationAnchor(this.station, this.gameTime || 0);
-    const exitPush = Vec2.fromAngle(spawn.angle, 220);
-    this.ship.velocity.set(
-      (this.station.vx || 0) + exitPush.x,
-      (this.station.vy || 0) + exitPush.y
-    );
-    this.ship.thrusters.mainEngine = 1;
-    this.ship.exitBurn = true;
-    this.ship.affectedByGravity = true;
-    this._beginExitBurn();
-    this.precisionActive = false;
-    this.entityManager.add(this.ship, 'ship');
-    this.mode = 'playing';
-    this.paused = false;
-    this.interiorActive = false;
-    this._resetSimSpeedUnlessDev();
-    this._hangarSeq = null;
-
-    syncHangarSidePadFromLayout(null);
-    this._bindPlayerVessel(this.ship);
-    this.ambientTraffic.reset();
+    this._activateSpaceEgress(this.ship, this.playerBayIndex, { source: 'quick' });
     this._setTitleFade(1);
     this.canvas.style.opacity = '1';
-    this.input.enable();
-    this.input.paused = false;
-    this.camera.position.set(spawn.x, spawn.y);
-    this.camera.userZoom = 1;
-    this.camera.targetUserZoom = 1;
-    this.camera.speedZoom = 1;
-    this.camera.effectiveZoom = 1;
-    this.asteroidSystem.update(spawn.x, spawn.y);
-    this._setDockHud(false);
-    this.beginExpedition();
   }
 
   /**
@@ -1420,7 +1586,7 @@ export class GameEngine {
         let best = greens[0];
         let bestD = Infinity;
         for (const g of greens) {
-          const d = Math.abs(ship.position.x - station.laneCenterWorldX(g));
+          const d = station.lateralLocalDistance(ship.position.x, ship.position.y, g);
           if (d < bestD) {
             bestD = d;
             best = g;
@@ -1451,7 +1617,7 @@ export class GameEngine {
         lane = greens[0];
         let bestD = Infinity;
         for (const g of greens) {
-          const d = Math.abs(ship.position.x - station.laneCenterWorldX(g));
+          const d = station.lateralLocalDistance(ship.position.x, ship.position.y, g);
           if (d < bestD) {
             bestD = d;
             lane = g;
@@ -1475,33 +1641,25 @@ export class GameEngine {
       }
     }
 
-    const tx = station.laneCenterWorldX(lane);
-    const nearMouth =
-      Math.hypot(ship.position.x - tx, ship.position.y - station.stripeWorldY()) <
-      STATION.DOCK_RADIUS * 0.9;
-    const targetY = nearMouth
-      ? station.stripeWorldY() + STATION.SCALE * 20
-      : station.furthestApproachLightY() + STATION.SCALE * 15;
+    const target = station.approachTargetWorld(
+      lane,
+      station.isNearRunwayMouth(ship.position.x, ship.position.y, lane)
+    );
     const approachSpd = Math.min(STATION.DOCK_MAX_SPEED * 0.8, 95);
-    cruiseTo(ship, tx, targetY, approachSpd, dt, {
+    cruiseTo(ship, target.x, target.y, approachSpd, dt, {
       arrivalR: 40,
       brakeForArrival: true,
-      yawMult: nearMouth ? 1.35 : 1.15,
+      yawMult: station.isNearRunwayMouth(ship.position.x, ship.position.y, lane) ? 1.35 : 1.15,
       speedBand: AMBIENT.COAST_SPEED_BAND,
-      headingTol: nearMouth ? 0.35 : AMBIENT.COAST_HEADING_TOL,
+      headingTol: station.isNearRunwayMouth(ship.position.x, ship.position.y, lane)
+        ? 0.35
+        : AMBIENT.COAST_HEADING_TOL,
       ...frameOpts,
     });
-    if (station.shouldAutoIngress(ship)) {
+    if (station.shouldAutoIngress(ship) && !this._inExitGrace()) {
       this._releaseHoldingPattern();
       this.requestDock({ force: true });
     }
-  }
-
-  /** Hangar→space / quick-launch: plume until outer runway lights (failsafe cap). */
-  _beginExitBurn() {
-    this._exitBurn = true;
-    this._exitBurnFailsafe = STATION.EXIT_BURN_MAX_SEC;
-    if (this.ship) this.ship.exitBurn = true;
   }
 
   _applyPendingBlueprint(ship) {
@@ -1574,7 +1732,6 @@ export class GameEngine {
     const bay = Number.isFinite(this._lastDockBayIndex)
       ? this._lastDockBayIndex
       : this.playerBayIndex ?? 1;
-    const spawn = this.station.getExitSpawn(bay);
     const ship = this.ship;
     const carriedDef = ship.shipDef ? cloneShipDef(ship.shipDef) : null;
 
@@ -1589,39 +1746,11 @@ export class GameEngine {
     applyFuelFill(ship, 1);
     applyAmmoFill(ship, 1);
 
-    ship.position.set(spawn.x, spawn.y);
-    const nose = Number.isFinite(spawn.angle) ? spawn.angle : SHIP.SPAWN_ANGLE;
-    ship.angle = nose;
-    ship.turretAngle = nose;
-    ship.angularVelocity = 0;
-    ship.visualScale = 1;
-    ship.affectedByGravity = true;
-    this._clearShipThrusters(ship);
-
-    const exitPush = Vec2.fromAngle(nose, 220);
-    ship.velocity.set(
-      (this.station.vx || 0) + exitPush.x,
-      (this.station.vy || 0) + exitPush.y
-    );
-    ship.thrusters.mainEngine = 1;
-    ship.exitBurn = true;
-    this._beginExitBurn();
-
-    this.entityManager.add(ship, 'ship');
-    this.playerBayIndex = bay;
-    this.ship = ship;
-
-    this.camera.position.set(spawn.x, spawn.y);
-    this.camera.offset.set(0, 0);
-    this.camera.targetOffset.set(0, 0);
-    this.camera.rotation = 0;
-    this.precisionActive = false;
-    this._approachHoldAI = null;
+    this._activateSpaceEgress(ship, bay, {
+      source: 'respawn',
+      beginExpedition: !this._expeditionActive,
+    });
     this._setDeathOverlay(false);
-    this._setDockHud(false);
-    this.asteroidSystem.update(spawn.x, spawn.y);
-
-    if (!this._expeditionActive) this.beginExpedition();
   }
 
   _requestLaunchBody() {
@@ -1661,7 +1790,9 @@ export class GameEngine {
    */
   requestDock(opts = {}) {
     if (this.mode !== 'playing' || this.paused || !this.ship) return;
+    if (this._inExitGrace()) return;
     if (this._approachHoldAI) return; // AI already working the approach
+    this._syncStationWorldFrame();
     const vx = this.ship.velocity.x;
     const vy = this.ship.velocity.y;
     // Station full → Enter/Click engages AI holding pattern (then land when open)
@@ -1675,14 +1806,24 @@ export class GameEngine {
       if (!this.station.canRequestDock(this.ship.position.x, this.ship.position.y, vx, vy)) {
         return;
       }
-    } else if (!this.station.isSafeDockSpeed(vx, vy)) {
+    } else if (
+      !this.station.isSafeDockSpeed(
+        vx,
+        vy,
+        this.ship.position.x,
+        this.ship.position.y
+      )
+    ) {
       return;
     }
     const edge = this.station.ingressEdgeWorld(this.ship);
-    const lane = this.station.laneIndexFromWorldX(edge.x);
+    const lane = this.station.laneIndexFromWorld(edge.x, edge.y);
     if (!this.station.padAvailable(lane, this.ship)) return;
-    const entryAngle = this.ship.angle;
-    const entryTurret = this.ship.turretAngle;
+    const entryAngle =
+      this.station.worldHeadingToHangar(this.ship.angle) ?? this.ship.angle;
+    const entryTurret =
+      this.station.worldHeadingToHangar(this.ship.turretAngle) ??
+      this.ship.turretAngle;
     this.beginHangar({
       landing: true,
       entryAngle,
@@ -1810,7 +1951,7 @@ export class GameEngine {
       this.interior.hangarBay.clearControlledPadAfterLaunch();
     }
 
-    const t = this.gameTime || 0;
+    const t = finiteGameTime(this.gameTime);
     if (this.interior?.spaceFrozen) {
       this.interior.catchUpExterior(this);
     } else {
@@ -1818,57 +1959,8 @@ export class GameEngine {
       this.poiSystem.syncPositions(t);
     }
 
-    const spawn = this.station.getExitSpawn(launchBay);
-    // Hangar thrust is north (−Y). Emerge from the open bay mouth with a
-    // clear outbound push so the handoff reads as leaving the station.
-    const hangarSpeed = Math.abs(ship.velocity?.y || 0);
-    const speed = clamp(Math.max(hangarSpeed, 180), 180, 280);
-    const nose = Number.isFinite(spawn.angle) ? spawn.angle : SHIP.SPAWN_ANGLE;
-    const exitVel = Vec2.fromAngle(nose, speed);
-    exitVel.x += this.station.vx ?? 0;
-    exitVel.y += this.station.vy ?? 0;
-
-    this._hangarSeq = null;
-    this._hangarSeqZoomPlayer = false;
-    this._hangarHover = 0;
-    this._dockLocked = true;
     this._destroyInterior();
-    this.entityManager.clear();
-    this.particleSystem.clear();
-    // Relocate the live ship (keep loadout) — don't respawn a fresh hull
-    ship.position.set(spawn.x, spawn.y);
-    ship.velocity.set(exitVel.x, exitVel.y);
-    ship.angle = nose;
-    ship.turretAngle = nose;
-    ship.angularVelocity = 0;
-    ship.visualScale = 1;
-    this._clearShipThrusters(ship);
-    ship.thrusters.mainEngine = 1;
-    ship.exitBurn = true;
-    ship.affectedByGravity = true;
-    this._beginExitBurn();
-    this.ship = ship;
-    this.entityManager.add(ship, 'ship');
-
-    this.input.hangarPanEnabled = false;
-    this.mode = 'playing';
-    this.interiorActive = false;
-    this._resetSimSpeedUnlessDev();
-    // Keep ambient; hangar stays live so pad lights / AI traffic persist
-    if (!this.ambientTraffic.ships?.length) this.ambientTraffic.reset();
-    this.camera.position.set(spawn.x, spawn.y);
-    this.camera.offset.set(0, 0);
-    this.camera.targetOffset.set(0, 0);
-    this.camera.userZoom = 1;
-    this.camera.targetUserZoom = 1;
-    this.camera.speedZoom = 1;
-    this.camera.effectiveZoom = 1;
-    this.asteroidSystem.update(spawn.x, spawn.y);
-
-    if (this._hangarHud) this._hangarHud.classList.add('hidden');
-    this._setLaunchBtnVisible(false);
-    if (typeof this.onLaunchComplete === 'function') this.onLaunchComplete();
-    this.beginExpedition();
+    this._activateSpaceEgress(ship, launchBay, { source: 'hangar' });
   }
 
   _finishLanding() {
@@ -1987,7 +2079,11 @@ export class GameEngine {
         this._updateTitle(deltaTime);
       } else if (!this.paused && speed > 0) {
         const deltaTime = Math.min(rawDt * speed, 0.05 * Math.max(1, speed));
+        if (!Number.isFinite(this.gameTime)) {
+          this.gameTime = 0;
+        }
         this.gameTime += deltaTime;
+        if (!Number.isFinite(this.gameTime)) this.gameTime = 0;
         if (this.mode === 'hangar') {
           this._updateHangar(deltaTime);
         } else if (this.mode === 'controls') {
@@ -3084,6 +3180,9 @@ export class GameEngine {
 
   update(deltaTime) {
     if (!this.ship || this.mode !== 'playing') return;
+    if (!Number.isFinite(deltaTime) || deltaTime <= 0) return;
+    if (!Number.isFinite(this.gameTime)) this.gameTime = 0;
+    this._sanitizeShipPose();
     this._lastFrameDt = deltaTime;
 
     const zoomWheel = this.input.consumeZoomDelta();
@@ -3161,11 +3260,14 @@ export class GameEngine {
     this._processCockpitMiddleClicks();
     this._processCockpitRightClicks();
 
-    syncStationAnchor(this.station, this.gameTime || 0);
-    this.poiSystem.syncPositions(this.gameTime || 0);
+    this._syncStationWorldFrame();
 
     if (this.ship) {
-      this.input.tryToggleZeroHold(this.ship.velocity.length());
+      const motionFrame = this._stationMotionFrame();
+      const relSpeedForHold = motionFrame
+        ? this.station.relativeSpeed(this.ship.velocity.x, this.ship.velocity.y)
+        : this.ship.velocity.length();
+      this.input.tryToggleZeroHold(relSpeedForHold);
       const fi = this.input.getFlightInput();
       if (
         this.input.zeroHoldActive &&
@@ -3179,18 +3281,24 @@ export class GameEngine {
         this.input.cancelZeroHold();
       } else if (
         this.input.zeroHoldActive &&
-        this.ship.velocity.length() > PHYSICS.ZERO_HOLD_CANCEL_SPEED
+        relSpeedForHold > PHYSICS.ZERO_HOLD_CANCEL_SPEED
       ) {
         this.input.cancelZeroHold();
       } else if (this.input.zeroHoldBlurRecover && this.input.zeroHoldActive && this.ship) {
         this.input.zeroHoldBlurRecover = false;
-        this.ship.velocity.set(0, 0);
+        if (motionFrame) {
+          this.ship.velocity.set(motionFrame.vx, motionFrame.vy);
+        } else {
+          this.ship.velocity.set(0, 0);
+        }
       }
     }
 
     const syncAssist = this._computeSyncAssist();
     this._syncAssistScore = syncAssist.score;
     this._syncAssistEnabled = syncAssist.enabled;
+    const syncTarget = this._resolveSyncTarget(syncAssist);
+    const motionFrame = this._stationMotionFrame();
 
     // Cockpit MODES keybinds: R flips ORIENT (ship/north), V flips VIEW (ship/scan).
     if (this.input.consumeTap('r')) this.toggleViewMode();
@@ -3207,7 +3315,8 @@ export class GameEngine {
           this.input,
           this.precisionActive,
           deltaTime,
-          syncAssist.enabled && this.input.getFlightInput().syncHold ? syncAssist.target : null
+          syncTarget,
+          motionFrame
         );
       }
     } else if (this.combat.playerDead(this.ship)) {
@@ -3220,21 +3329,9 @@ export class GameEngine {
         this.input,
         this.precisionActive,
         deltaTime,
-        syncAssist.enabled && this.input.getFlightInput().syncHold ? syncAssist.target : null
+        syncTarget,
+        motionFrame
       );
-    }
-    // Hangar→space: hold main-engine plume until near the outer approach lights
-    if (this._exitBurn) {
-      this._exitBurnFailsafe = Math.max(0, this._exitBurnFailsafe - deltaTime);
-      this.ship.thrusters.mainEngine = Math.max(this.ship.thrusters.mainEngine || 0, 1);
-      this.ship.exitBurn = true;
-      if (
-        this.station.isExitBurnFinished(this.ship) ||
-        this._exitBurnFailsafe <= 0
-      ) {
-        this._exitBurn = false;
-        this.ship.exitBurn = false;
-      }
     }
     this.ship.update(deltaTime);
 
@@ -3345,12 +3442,6 @@ export class GameEngine {
     this.renderer.emitThrusterParticles(this.ship, this.particleSystem);
 
     const baySignals = ['green', 'green', 'green'];
-    // Exit burn: departing light follows the lane the ship is actually in
-    if (this._exitBurn && this.ship?.position) {
-      const lane = this.station.laneIndexFromWorldX(this.ship.position.x);
-      this.playerBayIndex = lane;
-      baySignals[lane] = 'departing';
-    }
     this.station.setBaySignals(baySignals);
 
     // Runway at safe speed + in a pad lane → reserve (pulse-green) + hangar arrive
@@ -3384,6 +3475,10 @@ export class GameEngine {
 
     this._updateHUD();
 
+    // Ingress/dock queries run after ship physics — re-sync station so roof
+    // volumes track the live anchor (avoids one-frame lag on orbital motion).
+    this._syncStationWorldFrame();
+
     if (this.mode === 'playing' && this.radarSystem && this.renderer.radarBand) {
       const geo = this._radarGeometry();
       this.radarSystem.update(deltaTime, {
@@ -3405,29 +3500,20 @@ export class GameEngine {
     }
 
     const stationFull = this.station.allBaysBlocked(this.ship);
-    const canDock =
-      !stationFull &&
-      this.station.canRequestDock(
-        this.ship.position.x,
-        this.ship.position.y,
-        shipVx,
-        shipVy
-      ) &&
-      this.station.padAvailable(
-        this.station.laneIndexFromWorldX(
-          this.station.ingressEdgeWorld(this.ship).x
-        ),
-        this.ship
-      );
-    const near = this.station.inApproach(this.ship.position.x, this.ship.position.y);
+    const dockState = this.station.dockApproachState(this.ship);
+    const canDock = !stationFull && dockState.canDock;
+    const near = dockState.inDockZone;
     const canEngageHold = stationFull && near && !this._approachHoldAI;
     this.station.updateApproachLights(this.ship);
     if (!this.combat.playerDead(this.ship)) {
-      this._setDockHud(near || !!this._approachHoldAI);
+      this._setDockHud(near || !!this._approachHoldAI || this._inExitGrace());
     }
     if (this._dockHud) {
-      this._dockHud.classList.toggle('ready', canDock || canEngageHold);
-      if (this._approachHoldAI) {
+      this._dockHud.classList.toggle('ready', (canDock || canEngageHold) && !this._inExitGrace());
+      if (this._inExitGrace()) {
+        const left = Math.max(0, this._exitIngressBlockedUntil - finiteGameTime(this.gameTime));
+        this._dockHud.textContent = `EXIT IN PROGRESS · ${left.toFixed(1)}s`;
+      } else if (this._approachHoldAI) {
         this._dockHud.textContent =
           'HOLDING PATTERN · MOVE TO RESUME CONTROL';
       } else if (canEngageHold) {
@@ -3437,14 +3523,26 @@ export class GameEngine {
         this._dockHud.textContent = 'ENTER / CLICK — DOCK IN GREEN BAY';
       } else if (stationFull) {
         this._dockHud.textContent = 'STATION FULL — APPROACH TO HOLD';
+      } else if (dockState.reason === 'speed') {
+        this._dockHud.textContent =
+          `SLOW TO < ${STATION.DOCK_MAX_SPEED} STN REL · NOW ${Math.round(dockState.relSpeed)}`;
+      } else if (dockState.reason === 'position') {
+        this._dockHud.textContent =
+          `ALIGN GREEN PAD · ${Math.round(dockState.relSpeed)} stn rel`;
+      } else if (dockState.reason === 'pad') {
+        this._dockHud.textContent =
+          `WAIT FOR GREEN PAD · ${Math.round(dockState.relSpeed)} stn rel`;
       } else {
         this._dockHud.textContent =
           'FOLLOW APPROACH LIGHTS · LAND ON A GREEN PAD';
       }
     }
-    // Hull-edge past caution sill into a green lane (not while AI is holding)
-    if (!this._approachHoldAI && this.station.shouldAutoIngress(this.ship)) {
-      this.requestDock({ force: true });
+    // Hull-edge under roof into a green lane (not while AI is holding or egress grace)
+    if (!this._approachHoldAI && this.ship && !this._inExitGrace()) {
+      const autoDiag = this.station.autoIngressDiag(this.ship);
+      if (autoDiag.pass) {
+        this.requestDock({ force: true });
+      }
     }
   }
 

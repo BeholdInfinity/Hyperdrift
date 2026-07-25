@@ -11,6 +11,7 @@ import {
   siteWorldPosition,
   siteWorldVelocity,
 } from './SectorLayout.js';
+import { finiteGameTime } from './OrbitKinematics.js';
 import { registerLayoutPlaces } from './place/PlaceRegistry.js';
 
 let _bootstrapped = false;
@@ -68,8 +69,9 @@ export function syncStationToPlace(station, placeId, gameTime = 0) {
   const siteId = placeIdToSiteId(placeId);
   const site = getSiteById(siteId) ?? getJenningsSite();
   if (!site || !station) return;
-  const pos = siteWorldPosition(site, gameTime);
-  const vel = siteWorldVelocity(site, gameTime);
+  const t = finiteGameTime(gameTime);
+  const pos = siteWorldPosition(site, t);
+  const vel = siteWorldVelocity(site, t);
   if (station.setWorldAnchor) {
     station.setWorldAnchor(pos.x, pos.y, vel.vx, vel.vy);
   } else {

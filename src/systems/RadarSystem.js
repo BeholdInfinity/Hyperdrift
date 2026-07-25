@@ -26,8 +26,6 @@
 
 import { RADAR } from '../core/Constants.js';
 import { pickContactAtScreen } from './ContactSelectionDraw.js';
-import { getJenningsSite, siteWorldPosition } from '../world/SectorLayout.js';
-import { velocityAt } from '../world/OrbitKinematics.js';
 
 const TWO_PI = Math.PI * 2;
 
@@ -277,28 +275,14 @@ export class RadarSystem {
 
     const raw = [];
     if (station) {
-      const jennings = getJenningsSite();
-      const gameTime = ctx.gameTime ?? 0;
-      let sx = station.x;
-      let sy = station.y;
-      let svx = 0;
-      let svy = 0;
-      if (jennings?.orbit) {
-        const pos = siteWorldPosition(jennings, gameTime);
-        sx = pos.x;
-        sy = pos.y;
-        const vel = velocityAt(jennings.orbit, gameTime);
-        svx = vel.vx;
-        svy = vel.vy;
-      }
       raw.push({
         id: 'station',
         ref: station,
-        x: sx,
-        y: sy,
-        vx: svx,
-        vy: svy,
-        angle: Math.atan2(svy, svx) + Math.PI / 2,
+        x: station.x,
+        y: station.y,
+        vx: station.vx ?? 0,
+        vy: station.vy ?? 0,
+        angle: Math.atan2(station.vy ?? 0, station.vx ?? 0) + Math.PI / 2,
         type: 'station',
         iff: 'blue',
         name: 'Jennings Station',
@@ -513,6 +497,8 @@ export class RadarSystem {
       c.scanY = held?.wy ?? c.y;
       const rvx = c.vx - (ship.velocity?.x || 0);
       const rvy = c.vy - (ship.velocity?.y || 0);
+      c.relSpeed = Math.hypot(rvx, rvy);
+      // Radial closing along line-of-sight (legacy; CONTACT panel uses relSpeed).
       c.closing = (rvx * dx + rvy * dy) / (dist || 1);
       candidates.push(c);
     }
@@ -551,6 +537,7 @@ export class RadarSystem {
         alpha: id === this.selectedId ? 1 : ageAlpha,
         age,
         closing: 0,
+        relSpeed: 0,
         ghost: true,
         vx: 0,
         vy: 0,

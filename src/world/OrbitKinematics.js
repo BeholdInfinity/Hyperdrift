@@ -8,6 +8,11 @@ export function gravityMu(layout = getSectorLayout()) {
   return layout.planet?.gravityMu ?? 1.8e12;
 }
 
+/** Guard orbit integrators — NaN/Infinity gameTime poisons station anchor + spawn. */
+export function finiteGameTime(gameTime = 0) {
+  return Number.isFinite(gameTime) ? gameTime : 0;
+}
+
 export function circularSpeed(R, mu) {
   if (R <= 0 || mu <= 0) return 0;
   return Math.sqrt(mu / R);
@@ -28,20 +33,23 @@ export function orbitOmegaFor(R, layout = getSectorLayout()) {
 }
 
 export function positionAt(orbit, gameTime, layout = getSectorLayout()) {
+  const t = finiteGameTime(gameTime);
   const cx = layout.planet?.center?.x ?? 0;
   const cy = layout.planet?.center?.y ?? 0;
   const R = orbit.orbitR ?? 0;
   const omega = orbit.orbitOmega ?? orbitOmegaFor(R, layout);
-  const theta = (orbit.orbitAngle0 ?? 0) + omega * gameTime;
+  const theta = (orbit.orbitAngle0 ?? 0) + omega * t;
   return { x: cx + Math.cos(theta) * R, y: cy + Math.sin(theta) * R };
 }
 
 export function velocityAt(orbit, gameTime, layout = getSectorLayout()) {
+  const t = finiteGameTime(gameTime);
   const R = orbit.orbitR ?? 0;
-  const mu = gravityMu(layout);
   const omega = orbit.orbitOmega ?? orbitOmegaFor(R, layout);
-  const theta = (orbit.orbitAngle0 ?? 0) + omega * gameTime;
-  const v = circularSpeed(R, mu);
+  const theta = (orbit.orbitAngle0 ?? 0) + omega * t;
+  // Speed must match d(positionAt)/dt — same omega as position integration.
+  // Using circularSpeed(μ) alone drifts from authored orbitOmega in sectorLayout.
+  const v = omega * R;
   return {
     vx: -Math.sin(theta) * v,
     vy: Math.cos(theta) * v,

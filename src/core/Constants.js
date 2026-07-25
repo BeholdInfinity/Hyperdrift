@@ -275,6 +275,9 @@ export const PAD_MK4_TEASE_RADIUS = 300;
  * Jennings Station overworld exterior.
  * SCALE multiplies all station-authored world lengths vs the original (radius 160).
  * Ship-relative limits (dock speed, hull extents, angle slack) stay unscaled.
+ *
+ * Orientation (all orbital stations): runway points upstream (opposite prograde);
+ * departures co-orbit the station (appears still) with exit-burn drift capped at DOCK_MAX_SPEED relative.
  */
 const STATION_SCALE = 4;
 
@@ -301,6 +304,10 @@ export const STATION = {
   RUNWAY_LENGTH: 160 * STATION_SCALE,
   /** Safe approach speed — ship handling, not station scale */
   DOCK_MAX_SPEED: 120,
+  /** Hangar / quick-launch egress: station co-orbit + this much downstream REL V. */
+  EXIT_REL_SPEED: 100,
+  /** Seconds after egress before auto/manual dock is allowed (under-roof spawn). */
+  EXIT_INGRESS_GRACE_SEC: 3,
   /** Bay mouth half-width (caution stripe span); approach corridor matches */
   MOUTH_HALF_W: 58 * STATION_SCALE,
   /**

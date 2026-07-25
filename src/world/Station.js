@@ -1,19 +1,24 @@
 /**
  * Jennings Station — overworld exterior for Home Base.
- * Official entrance (caution paint) on the north circumference (−RADIUS).
- * Short black apron north of the paint; hangar roof pad + cheek flares south /
- * beside the mouth so the entrance reads attached to the disc.
+ *
+ * **Station orientation (all orbital ports):** the docking runway points **upstream**
+ * (opposite orbital velocity / direction of travel). Ships exit **downstream**
+ * (prograde) on the same orbital track — velocity matches the station so it
+ * appears nearly still in the co-moving frame, with exit-burn drift capped at
+ * `DOCK_MAX_SPEED` station-relative.
+ *
+ * Local authoring: entrance on the −Y rim; apron + approach lights extend along
+ * −Y; hangar roof sits on the +Y side of the caution paint. `frameRotation()`
+ * maps local −Y to live prograde before draw + world queries.
  *
  * Occlusion (ship under): caution tape + hangar roof only — and only on a
  * safe-speed approach (or during hangar→space `exitBurn`). Apron floor stays
- * under. Northbound open-space flight is not treated as an exit.
+ * under. Open-space flight across the mouth is not treated as an exit unless
+ * `exitBurn` is set.
  */
 
 import { STATION } from '../core/Constants.js';
-import { angleDifference } from '../utils/MathUtils.js';
-
-const FACE_SOUTH = Math.PI / 2;
-const FACE_NORTH = -Math.PI / 2;
+import { angleDifference, normalizeAngle } from '../utils/MathUtils.js';
 
 /** Rounded-rect path helper (local space). */
 function roundRectPath(ctx, x, y, w, h, rad) {
@@ -59,6 +64,168 @@ export class Station {
     this.y = y;
     this.vx = vx;
     this.vy = vy;
+  }
+
+  /** Downstream exit bearing (station orbital velocity / prograde). */
+  runwayExitAngle() {
+    const vx = this.vx || 0;
+    const vy = this.vy || 0;
+    if (Math.hypot(vx, vy) < 1e-6) return -Math.PI / 2;
+    return Math.atan2(vy, vx);
+  }
+
+  /** Upstream — mouth faces opposite prograde (into direction of travel). */
+  runwayUpstreamAngle() {
+    return this.runwayExitAngle() + Math.PI;
+  }
+
+  /**
+   * Egress bearing — out through the mouth from the hangar nest (runway axis),
+   * not orbital prograde (which points the wrong way from under the roof).
+   */
+  runwayEgressAngle() {
+    return this.runwayUpstreamAngle();
+  }
+
+  /** @deprecated alias */
+  runwayIngressAngle() {
+    return this.runwayUpstreamAngle();
+  }
+
+  /** Canvas rotation: local −Y (mouth) → upstream. */
+  frameRotation() {
+    return this.runwayExitAngle() + (3 * Math.PI) / 2;
+  }
+
+  /**
+   * Space→hangar handoff: world ship heading → hangar-interior radians.
+   * Both frames use +Y as inbound toward the pad/mouth.
+   */
+  worldHeadingToHangar(worldRad) {
+    if (!Number.isFinite(worldRad)) return null;
+    return normalizeAngle(worldRad - this.frameRotation());
+  }
+
+  /**
+   * Bay-exit handoff velocity — station co-orbit plus REL V out through the mouth
+   * along the runway axis (negative alongIngress / toward furthest approach lights).
+   * @returns {{ vx: number, vy: number }}
+   */
+  exitVelocityWorld() {
+    const svx = this.vx || 0;
+    const svy = this.vy || 0;
+    const rel = STATION.EXIT_REL_SPEED;
+    const a = this.runwayEgressAngle();
+    return {
+      vx: svx + Math.cos(a) * rel,
+      vy: svy + Math.sin(a) * rel,
+    };
+  }
+
+  /** Max prograde drift during exit burn (station-relative). */
+  exitBurnMaxRelative() {
+    return STATION.DOCK_MAX_SPEED;
+  }
+
+  /** @deprecated use exitBurnMaxRelative */
+  exitRelativeSpeed() {
+    return this.exitBurnMaxRelative();
+  }
+
+  /** @param {number} lx @param {number} ly */
+  localToWorld(lx, ly) {
+    const c = Math.cos(this.frameRotation());
+    const s = Math.sin(this.frameRotation());
+    return {
+      x: this.x + lx * c - ly * s,
+      y: this.y + lx * s + ly * c,
+    };
+  }
+
+  /** @param {number} wx @param {number} wy */
+  worldToLocal(wx, wy) {
+    const dx = wx - this.x;
+    const dy = wy - this.y;
+    const c = Math.cos(this.frameRotation());
+    const s = Math.sin(this.frameRotation());
+    return {
+      x: dx * c + dy * s,
+      y: -dx * s + dy * c,
+    };
+  }
+
+  /** Relative velocity in the station's runway-local frame. */
+  relativeLocalVelocity(vx, vy) {
+    const rx = vx - (this.vx || 0);
+    const ry = vy - (this.vy || 0);
+    const s = Math.sin(this.frameRotation());
+    const c = Math.cos(this.frameRotation());
+    return {
+      x: rx * c + ry * s,
+      y: -rx * s + ry * c,
+    };
+  }
+
+  /** +local Y = downstream toward the mouth from the upstream apron. */
+  relativeLocalVy(vx, vy) {
+    return this.relativeLocalVelocity(vx, vy).y;
+  }
+
+  /** Relative velocity projected onto prograde (orbital downstream). */
+  alongPrograde(vx, vy) {
+    return this.relativeLocalVy(vx, vy);
+  }
+
+  /** @deprecated alias */
+  alongExit(vx, vy) {
+    return this.relativeLocalVy(vx, vy);
+  }
+
+  /** Relative velocity toward the ingress mouth (+ = inbound along runway). */
+  alongIngress(vx, vy) {
+    return this.relativeLocalVy(vx, vy);
+  }
+
+  /**
+   * Nose bearing on bay exit — radially away from the station hub through `wx, wy`.
+   * @param {number} wx
+   * @param {number} wy
+   */
+  exitHeadingAtWorld(wx, wy) {
+    const dx = wx - this.x;
+    const dy = wy - this.y;
+    if (Math.hypot(dx, dy) < 1e-6) return this.runwayUpstreamAngle();
+    return Math.atan2(dy, dx);
+  }
+
+  /** Station-relative speed along the radial exit axis at a world point. */
+  alongExitAt(vx, vy, wx, wy) {
+    const a = this.exitHeadingAtWorld(wx, wy);
+    const rx = vx - (this.vx || 0);
+    const ry = vy - (this.vy || 0);
+    return rx * Math.cos(a) + ry * Math.sin(a);
+  }
+
+  /** Keep outbound drift at or below the exit-burn cap (station-relative). */
+  clampRelativeExitSpeed(ship) {
+    if (!ship?.velocity) return;
+    const cap = this.exitBurnMaxRelative();
+    const wx = ship.position?.x ?? ship.x;
+    const wy = ship.position?.y ?? ship.y;
+    if (wx == null || wy == null) return;
+    const along = this.alongExitAt(ship.velocity.x, ship.velocity.y, wx, wy);
+    if (along <= cap) return;
+    const a = this.exitHeadingAtWorld(wx, wy);
+    const ex = Math.cos(a);
+    const ey = Math.sin(a);
+    const svx = this.vx || 0;
+    const svy = this.vy || 0;
+    const rx = ship.velocity.x - svx;
+    const ry = ship.velocity.y - svy;
+    const lateralX = rx - ex * along;
+    const lateralY = ry - ey * along;
+    ship.velocity.x = svx + ex * cap + lateralX;
+    ship.velocity.y = svy + ey * cap + lateralY;
   }
 
   /** Speed relative to the station's orbital frame. */
@@ -107,14 +274,15 @@ export class Station {
   computeLaneReservation(ship) {
     if (!ship?.position || !Number.isFinite(ship.angle)) return null;
     const { vx, vy } = this._shipVelocity(ship);
-    if (!this.isSafeDockSpeed(vx, vy)) return null;
+    if (!this.isSafeDockSpeed(vx, vy, ship.position.x, ship.position.y)) return null;
     if (!this.inApproachLights(ship.position.x, ship.position.y)) return null;
-    if (!this.isIngressHeading(ship.angle)) return null;
+    if (!this.isIngressHeading(ship.angle, ship.position.x, ship.position.y)) return null;
     // Outbound traffic does not claim a pad
-    if (vy - (this.vy || 0) < -4) return null;
+    if (this.relativeLocalVy(vx, vy) < -4) return null;
     const hw = STATION.MOUTH_HALF_W + STATION.INGRESS_MOUTH_SLACK;
-    if (Math.abs(ship.position.x - this.x) > hw) return null;
-    return this.laneIndexFromWorldX(ship.position.x);
+    const local = this.worldToLocal(ship.position.x, ship.position.y);
+    if (Math.abs(local.x) > hw) return null;
+    return this.laneIndexFromWorld(ship.position.x, ship.position.y);
   }
 
   /**
@@ -150,22 +318,79 @@ export class Station {
     return out;
   }
 
-  /** Mouth lane 0/1/2 from world X (west→east = B1/B2/B3). */
-  laneIndexFromWorldX(worldX) {
+  /** Mouth lane 0/1/2 from world position (west→east = B1/B2/B3 in local frame). */
+  laneIndexFromWorld(worldX, worldY) {
     const hw = STATION.MOUTH_HALF_W;
-    const localX = worldX - this.x;
+    const localX = this.worldToLocal(worldX, worldY).x;
     const u = (localX + hw) / (hw * 2);
     if (u < 1 / 3) return 0;
     if (u < 2 / 3) return 1;
     return 2;
   }
 
-  /** World X center of a bay lane (local thirds of the mouth). */
-  laneCenterWorldX(laneIndex) {
+  /** @deprecated use laneIndexFromWorld */
+  laneIndexFromWorldX(worldX, worldY = this.y) {
+    return this.laneIndexFromWorld(worldX, worldY);
+  }
+
+  laneCenterLocalX(laneIndex) {
     const i = ((laneIndex | 0) + 3) % 3;
     const hw = STATION.MOUTH_HALF_W;
     const third = (hw * 2) / 3;
-    return this.x - hw + third * (i + 0.5);
+    return -hw + third * (i + 0.5);
+  }
+
+  /** World center of a bay lane. */
+  laneCenterWorld(laneIndex) {
+    return this.localToWorld(this.laneCenterLocalX(laneIndex), 0);
+  }
+
+  /** World X center of a bay lane (local thirds of the mouth). */
+  laneCenterWorldX(laneIndex) {
+    return this.laneCenterWorld(laneIndex).x;
+  }
+
+  lateralLocalDistance(worldX, worldY, laneIndex) {
+    const local = this.worldToLocal(worldX, worldY);
+    return Math.abs(local.x - this.laneCenterLocalX(laneIndex));
+  }
+
+  /**
+   * AI / traffic cruise target on the ingress corridor for a lane.
+   * @param {number} laneIndex
+   * @param {boolean} nearMouth
+   */
+  approachTargetWorld(laneIndex, nearMouth) {
+    const lx = this.laneCenterLocalX(laneIndex);
+    const ly = nearMouth
+      ? this.stripeLocalY() + STATION.SCALE * 20
+      : this.stripeLocalY() - STATION.DOCK_RADIUS + STATION.SCALE * 15;
+    return this.localToWorld(lx, ly);
+  }
+
+  isNearRunwayMouth(worldX, worldY, laneIndex) {
+    const local = this.worldToLocal(worldX, worldY);
+    return (
+      Math.hypot(local.x - this.laneCenterLocalX(laneIndex), local.y - this.stripeLocalY()) <
+      STATION.DOCK_RADIUS * 0.9
+    );
+  }
+
+  /** Holding racetrack on the ingress side of the outer approach lights. */
+  holdRacetrackCorners(ambient) {
+    const furthestLy = this.stripeLocalY() - STATION.DOCK_RADIUS;
+    const clear = ambient.HOLD_RUNWAY_CLEARANCE;
+    const hw = ambient.HOLD_HALF_W;
+    const hh = ambient.HOLD_HALF_H;
+    const southLy = furthestLy - clear;
+    const cy = southLy - hh;
+    const cx = 0;
+    return [
+      { x: cx - hw, y: cy - hh },
+      { x: cx + hw, y: cy - hh },
+      { x: cx + hw, y: cy + hh },
+      { x: cx - hw, y: cy + hh },
+    ].map((p) => this.localToWorld(p.x, p.y));
   }
 
   /** Display signal (includes runway reservation as red). */
@@ -232,43 +457,68 @@ export class Station {
     return this.stripeLocalY() + STATION.MOUTH_STRIPE_H + STATION.HANGAR_ROOF_DEPTH;
   }
 
-  /** World Y of the dock-check center (official entrance on the north rim). */
+  /** World Y of the dock-check center (official entrance on the ingress rim). */
+  dockFaceWorld() {
+    return this.localToWorld(0, -STATION.RADIUS);
+  }
+
+  /** World Y of the dock-check center (legacy Y-only helper). */
   dockFaceY() {
-    return this.y - STATION.DOCK_FACE_Y;
+    return this.dockFaceWorld().y;
   }
 
   /** World Y of the yellow-black caution sill (entry lip on the circle). */
   stripeWorldY() {
-    return this.y + this.stripeLocalY();
+    return this.localToWorld(0, this.stripeLocalY()).y;
   }
 
   /** World Y of the furthest (outer) approach-light pair — end of the floating runway. */
   furthestApproachLightY() {
-    return this.dockFaceY() - STATION.DOCK_RADIUS;
+    return this.localToWorld(0, this.stripeLocalY() - STATION.DOCK_RADIUS).y;
+  }
+
+  furthestApproachLocalY() {
+    return this.stripeLocalY() - STATION.DOCK_RADIUS;
   }
 
   /**
-   * Exit burn complete when the north-most hull tip reaches the outer runway lights.
+   * Inner end of the approach-light corridor — through the caution paint into the
+   * mouth so speed-colored lights cover the dock-ready zone (not just the outer apron).
+   */
+  approachCorridorInnerLocalY() {
+    return (
+      this.stripeLocalY() +
+      STATION.INGRESS_EDGE_OVERHANG +
+      STATION.INGRESS_CORRIDOR_PAD_Y
+    );
+  }
+
+  /**
+   * Exit burn complete when the leading tip reaches the outer approach lights.
    */
   isExitBurnFinished(ship) {
     if (!ship?.position) return true;
-    const lightY = this.furthestApproachLightY();
     const pad = STATION.EXIT_BURN_LIGHT_PAD;
     const { nose, aft } = this.hullTipsWorld(ship);
-    const northTipY = Math.min(nose.y, aft.y);
-    return northTipY <= lightY + pad;
+    const noseLocal = this.worldToLocal(nose.x, nose.y);
+    const aftLocal = this.worldToLocal(aft.x, aft.y);
+    const leadingIngressY = Math.min(noseLocal.y, aftLocal.y);
+    return leadingIngressY <= this.furthestApproachLocalY() + pad;
   }
 
   /**
-   * Hangar→space handoff: under the hangar roof just south of the paint so the
+   * Hangar→space handoff: under the hangar roof just past the paint so the
    * ship starts occluded and crosses the official entrance outbound.
    * @param {number} [laneIndex] bay lane 0–2 (defaults to center)
    */
   getExitSpawn(laneIndex = 1) {
+    const lx = this.laneCenterLocalX(laneIndex);
+    const ly = this.stripeLocalY() + STATION.EXIT_NEST;
+    const p = this.localToWorld(lx, ly);
     return {
-      x: this.laneCenterWorldX(laneIndex),
-      y: this.stripeWorldY() + STATION.EXIT_NEST,
-      angle: -Math.PI / 2,
+      x: p.x,
+      y: p.y,
+      angle: this.runwayEgressAngle(),
     };
   }
 
@@ -286,12 +536,12 @@ export class Station {
    * body is still north of a roof-only band.)
    */
   inEntranceOcclusionZone(shipX, shipY) {
+    const local = this.worldToLocal(shipX, shipY);
     const hw = STATION.HANGAR_ROOF_HALF_W + STATION.INGRESS_CORRIDOR_PAD_X;
-    if (Math.abs(shipX - this.x) > hw) return false;
-    const north =
-      this.y + this.apronNorthLocalY() - STATION.LEADING_EDGE_FALLBACK;
-    const south = this.y + this.hangarRoofSouthLocalY() + STATION.SCALE * 4;
-    return shipY >= north && shipY <= south;
+    if (Math.abs(local.x) > hw) return false;
+    const north = this.apronNorthLocalY() - STATION.LEADING_EDGE_FALLBACK;
+    const south = this.hangarRoofSouthLocalY() + STATION.SCALE * 4;
+    return local.y >= north && local.y <= south;
   }
 
   /**
@@ -325,6 +575,35 @@ export class Station {
     const dNose = Math.hypot(nose.x - this.x, nose.y - this.y);
     const dAft = Math.hypot(aft.x - this.x, aft.y - this.y);
     return dNose <= dAft ? nose : aft;
+  }
+
+  /**
+   * World point under the hangar roof slab (south of caution paint), not the
+   * open north apron / approach-light corridor.
+   */
+  pointUnderHangarRoof(wx, wy) {
+    const local = this.worldToLocal(wx, wy);
+    const hw = STATION.HANGAR_ROOF_HALF_W + STATION.INGRESS_CORRIDOR_PAD_X;
+    if (Math.abs(local.x) > hw) return false;
+    const roofNorth = this.stripeLocalY() + STATION.MOUTH_STRIPE_H;
+    const roofSouth = this.hangarRoofSouthLocalY();
+    return local.y >= roofNorth && local.y <= roofSouth;
+  }
+
+  /**
+   * Auto-ingress roof gate — hull must overlap the live roof volume, not merely
+   * the black apron north of the paint (open runway).
+   */
+  shipUnderHangarRoofForIngress(ship) {
+    if (!ship?.position) return false;
+    const edge = this.ingressEdgeWorld(ship);
+    if (this.pointUnderHangarRoof(edge.x, edge.y)) return true;
+    const { nose, aft } = this.hullTipsWorld(ship);
+    return (
+      this.pointUnderHangarRoof(nose.x, nose.y) ||
+      this.pointUnderHangarRoof(aft.x, aft.y) ||
+      this.pointUnderHangarRoof(ship.position.x, ship.position.y)
+    );
   }
 
   /**
@@ -402,51 +681,131 @@ export class Station {
 
   /** Soft approach ring for dock prompt. */
   inApproach(shipX, shipY) {
-    const dx = shipX - this.x;
-    const dy = shipY - this.dockFaceY();
-    return Math.hypot(dx, dy) < STATION.APPROACH_RADIUS;
+    const local = this.worldToLocal(shipX, shipY);
+    return Math.hypot(local.x, local.y - this.stripeLocalY()) < STATION.APPROACH_RADIUS;
   }
 
   /** Tight zone + slow enough to request landing (Enter/Click ready). */
   canRequestDock(shipX, shipY, vx, vy) {
-    const dx = shipX - this.x;
-    const dy = shipY - this.dockFaceY();
-    return Math.hypot(dx, dy) < STATION.DOCK_RADIUS && this.isSafeDockSpeed(vx, vy);
+    const local = this.worldToLocal(shipX, shipY);
+    return (
+      Math.hypot(local.x, local.y - this.stripeLocalY()) < STATION.DOCK_RADIUS &&
+      this.isSafeDockSpeed(vx, vy, shipX, shipY)
+    );
   }
 
   /**
    * Corridor between furthest approach lights and just inside the caution sill.
-   * Furthest lights align with DOCK_RADIUS north of the dock face / paint.
    */
   inApproachLights(shipX, shipY) {
-    const furthestY = this.dockFaceY() - STATION.DOCK_RADIUS;
-    const closestY =
-      this.stripeWorldY() + STATION.INGRESS_EDGE_OVERHANG + STATION.INGRESS_CORRIDOR_PAD_Y;
+    const local = this.worldToLocal(shipX, shipY);
+    const furthestLy = this.furthestApproachLocalY();
+    const closestLy = this.approachCorridorInnerLocalY();
     const hw = STATION.APPROACH_LIGHT_HALF_W + STATION.INGRESS_CORRIDOR_PAD_X;
-    return (
-      Math.abs(shipX - this.x) <= hw &&
-      shipY >= furthestY &&
-      shipY <= closestY
-    );
+    return Math.abs(local.x) <= hw && local.y >= furthestLy && local.y <= closestLy;
   }
 
-  isSafeDockSpeed(vx, vy) {
+  /** Safe speed for docking / approach lights — station-frame relative magnitude. */
+  isSafeDockSpeed(vx, vy, shipX, shipY) {
     return this.relativeSpeed(vx, vy) < STATION.DOCK_MAX_SPEED;
   }
 
-  /** Nose-in: facing into the bay (south) within slack. */
-  isNoseInHeading(angle) {
-    return Math.abs(angleDifference(angle, FACE_SOUTH)) <= STATION.INGRESS_ANGLE_SLACK;
+  /**
+   * Single source of truth for dock HUD, approach lights, and debug.
+   * @param {{ position?: {x:number,y:number}, angle?: number, velocity?: {x?:number,y?:number}, vx?: number, vy?: number }} ship
+   */
+  dockApproachState(ship) {
+    if (!ship?.position) {
+      return {
+        relSpeed: 0,
+        inCorridor: false,
+        inDockZone: false,
+        inRequestZone: false,
+        safeSpeed: false,
+        headingOk: false,
+        padOk: false,
+        canDock: false,
+        reason: 'no_ship',
+      };
+    }
+    const { vx, vy } = this._shipVelocity(ship);
+    const relSpeed = this.relativeSpeed(vx, vy);
+    const local = this.worldToLocal(ship.position.x, ship.position.y);
+    const inCorridor = this.inApproachLights(ship.position.x, ship.position.y);
+    const inDockZone = this.inApproach(ship.position.x, ship.position.y);
+    const inRequestZone =
+      Math.hypot(local.x, local.y - this.stripeLocalY()) < STATION.DOCK_RADIUS;
+    const safeSpeed = this.isSafeDockSpeed(
+      vx,
+      vy,
+      ship.position.x,
+      ship.position.y
+    );
+    const headingOk = this.isIngressHeading(
+      ship.angle,
+      ship.position.x,
+      ship.position.y
+    );
+    const edge = this.ingressEdgeWorld(ship);
+    const lane = this.laneIndexFromWorld(edge.x, edge.y);
+    const padOk = this.padAvailable(lane, ship);
+    const canDock = inRequestZone && safeSpeed && padOk;
+
+    let reason = 'ready';
+    if (!safeSpeed) reason = 'speed';
+    else if (!inRequestZone) reason = inCorridor || inDockZone ? 'position' : 'approach';
+    else if (!padOk) reason = 'pad';
+
+    return {
+      relSpeed,
+      inCorridor,
+      inDockZone,
+      inRequestZone,
+      safeSpeed,
+      headingOk,
+      padOk,
+      canDock,
+      reason,
+      alongIngress: this.alongIngress(vx, vy),
+    };
   }
 
-  /** Reverse: nose-out (north) within slack — aft enters the bay first. */
-  isReverseHeading(angle) {
-    return Math.abs(angleDifference(angle, FACE_NORTH)) <= STATION.INGRESS_ANGLE_SLACK;
+  /**
+   * Travel heading toward the mouth along the upstream corridor at `wx, wy`.
+   */
+  ingressTravelHeadingAt(wx, wy) {
+    const local = this.worldToLocal(wx, wy);
+    const toMouthX = -local.x;
+    const toMouthY = this.stripeLocalY() - local.y;
+    const len = Math.hypot(toMouthX, toMouthY);
+    if (len < 1e-6) return this.runwayExitAngle();
+    const localAngle = Math.atan2(toMouthY, toMouthX);
+    return localAngle + this.frameRotation();
+  }
+
+  /** Nose-in: facing toward the mouth along the ingress corridor. */
+  isNoseInHeading(angle, wx, wy) {
+    const target =
+      wx != null && wy != null
+        ? this.ingressTravelHeadingAt(wx, wy)
+        : this.runwayExitAngle();
+    return Math.abs(angleDifference(angle, target)) <= STATION.INGRESS_ANGLE_SLACK;
+  }
+
+  /** Reverse: nose radially away from the hub — aft enters first. */
+  isReverseHeading(angle, wx, wy) {
+    const target =
+      wx != null && wy != null
+        ? this.exitHeadingAtWorld(wx, wy)
+        : this.runwayUpstreamAngle();
+    return Math.abs(angleDifference(angle, target)) <= STATION.INGRESS_ANGLE_SLACK;
   }
 
   /** Nose-in or reverse docking attitude. */
-  isIngressHeading(angle) {
-    return this.isNoseInHeading(angle) || this.isReverseHeading(angle);
+  isIngressHeading(angle, wx, wy) {
+    return (
+      this.isNoseInHeading(angle, wx, wy) || this.isReverseHeading(angle, wx, wy)
+    );
   }
 
   /**
@@ -455,9 +814,9 @@ export class Station {
    */
   isSafeIngressApproach(ship) {
     if (!ship?.position) return false;
-    if (!this.isIngressHeading(ship.angle)) return false;
     const { vx, vy } = this._shipVelocity(ship);
-    if (!this.isSafeDockSpeed(vx, vy)) return false;
+    if (!this.isSafeDockSpeed(vx, vy, ship.position.x, ship.position.y)) return false;
+    if (!this.isIngressHeading(ship.angle, ship.position.x, ship.position.y)) return false;
     return this.inApproachLights(ship.position.x, ship.position.y);
   }
 
@@ -470,7 +829,7 @@ export class Station {
     const extents = ship.shipDef?.hullExtents?.();
     const c = Math.cos(ship.angle);
     const s = Math.sin(ship.angle);
-    if (this.isReverseHeading(ship.angle)) {
+    if (this.isReverseHeading(ship.angle, ship.position.x, ship.position.y)) {
       const tip = extents?.aft ?? STATION.AFT_EDGE_FALLBACK;
       return {
         x: ship.position.x - tip * c,
@@ -494,27 +853,34 @@ export class Station {
    * pad lane, after the inbound hull edge has crossed past the caution paint.
    */
   shouldAutoIngress(ship) {
-    if (!ship?.position) return false;
+    return this.autoIngressDiag(ship).pass;
+  }
+
+  /**
+   * Diagnostic breakdown for auto-ingress (dock debug).
+   * @returns {{ pass: boolean, reason: string, edgeLy?: number, alongIn?: number, triggerLo?: number, triggerHi?: number }}
+   */
+  autoIngressDiag(ship) {
+    if (!ship?.position) return { pass: false, reason: 'no_ship' };
     const { vx, vy } = this._shipVelocity(ship);
-    if (!this.isSafeDockSpeed(vx, vy)) return false;
-    if (!this.isIngressHeading(ship.angle)) return false;
-    if (this.allBaysBlocked(ship)) return false;
-
+    if (this.allBaysBlocked(ship)) return { pass: false, reason: 'full' };
+    if (!this.isSafeDockSpeed(vx, vy, ship.position.x, ship.position.y)) {
+      return { pass: false, reason: 'speed', rel: this.relativeSpeed(vx, vy) };
+    }
+    if (!this.shipUnderHangarRoofForIngress(ship)) {
+      return { pass: false, reason: 'roof' };
+    }
     const edge = this.ingressEdgeWorld(ship);
+    const edgeLocal = this.worldToLocal(edge.x, edge.y);
     const hw = STATION.MOUTH_HALF_W + STATION.INGRESS_MOUTH_SLACK;
-    if (Math.abs(edge.x - this.x) > hw) return false;
-
-    const lane = this.laneIndexFromWorldX(edge.x);
-    if (!this.padAvailable(lane, ship)) return false;
-
-    const rvy = vy - (this.vy || 0);
-    if (rvy < 6) return false;
-
-    const stripeY = this.stripeWorldY();
-    const triggerY = stripeY + STATION.INGRESS_EDGE_OVERHANG;
-    return (
-      edge.y >= triggerY - 1 && edge.y <= triggerY + STATION.INGRESS_TRIGGER_WINDOW
-    );
+    if (Math.abs(edgeLocal.x) > hw) {
+      return { pass: false, reason: 'lateral', edgeX: edgeLocal.x, hw };
+    }
+    const lane = this.laneIndexFromWorld(edge.x, edge.y);
+    if (!this.padAvailable(lane, ship)) {
+      return { pass: false, reason: 'pad', lane };
+    }
+    return { pass: true, reason: 'ok', lane };
   }
 
   /**
@@ -536,7 +902,14 @@ export class Station {
       return this.approachLightMode;
     }
     const { vx, vy } = this._shipVelocity(ship);
-    this.approachLightMode = this.isSafeDockSpeed(vx, vy) ? 'green' : 'red';
+    this.approachLightMode = this.isSafeDockSpeed(
+      vx,
+      vy,
+      ship.position.x,
+      ship.position.y
+    )
+      ? 'green'
+      : 'red';
     return this.approachLightMode;
   }
 
@@ -556,6 +929,7 @@ export class Station {
 
     ctx.save();
     ctx.translate(x, y);
+    ctx.rotate(this.frameRotation());
 
     if (layer === 'all' || layer === 'under') {
       const glowR = STATION.RADIUS * 1.15;
@@ -870,7 +1244,7 @@ export class Station {
     const stripeY = this.stripeLocalY();
     const stripeH = STATION.MOUTH_STRIPE_H;
     const paintY = stripeY + stripeH * 0.5;
-    const outerY = this.dockFaceY() - this.y - STATION.DOCK_RADIUS;
+    const outerY = this.furthestApproachLocalY();
     const midY = (paintY + outerY) * 0.5;
     this._drawBaySignalRow(ctx, midY, time, { floating: true });
     this._drawBaySignalRow(ctx, outerY, time, { floating: true });
@@ -1007,8 +1381,8 @@ export class Station {
     const step = STATION.APPROACH_LIGHT_STEP;
     const onDur = STATION.APPROACH_LIGHT_ON;
     const seqPeriod = Math.max(0.01, (n - 1) * step);
-    const furthestY = this.dockFaceY() - this.y - STATION.DOCK_RADIUS;
-    const closestY = this.apronNorthLocalY() + STATION.MOUTH_APRON * 0.15;
+    const furthestY = this.furthestApproachLocalY();
+    const closestY = this.approachCorridorInnerLocalY();
     const hw = STATION.APPROACH_LIGHT_HALF_W;
     const baseR = STATION.APPROACH_LIGHT_R;
 

@@ -3,6 +3,7 @@
  */
 
 import { getSectorLayout } from './SectorLayout.js';
+import { finiteGameTime } from './OrbitKinematics.js';
 
 export function planetSpinPeriodSec(layout = getSectorLayout()) {
   const hours = layout.planet?.rotationPeriodHours ?? 30;
@@ -10,10 +11,11 @@ export function planetSpinPeriodSec(layout = getSectorLayout()) {
 }
 
 export function planetSpinAngle(gameTime, layout = getSectorLayout()) {
+  const t = finiteGameTime(gameTime);
   const period = planetSpinPeriodSec(layout);
   if (period <= 0) return layout.planet?.rotationAngle0 ?? 0;
   const omega = (Math.PI * 2) / period;
-  return (layout.planet?.rotationAngle0 ?? 0) + omega * gameTime;
+  return (layout.planet?.rotationAngle0 ?? 0) + omega * t;
 }
 
 /** Surface-fixed site on the rotating disc. */

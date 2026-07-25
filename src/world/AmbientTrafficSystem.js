@@ -430,12 +430,12 @@ export class AmbientTrafficSystem {
     );
   }
 
-  /** Runway staging point north of the approach lights for a lane. */
+  /** Runway staging point beyond the outer approach lights for a lane. */
   _customerStagePoint(station, lane) {
-    return {
-      x: station.laneCenterWorldX(lane),
-      y: station.furthestApproachLightY() - AMBIENT.CUSTOMER_STAGE_NORTH,
-    };
+    const lx = station.laneCenterLocalX(lane);
+    const ly =
+      station.stripeLocalY() - STATION.DOCK_RADIUS - AMBIENT.CUSTOMER_STAGE_NORTH;
+    return station.localToWorld(lx, ly);
   }
 
   /**
@@ -468,10 +468,13 @@ export class AmbientTrafficSystem {
     let spd;
 
     if (opts.runwayLocal) {
-      // Title / vignette: start on the north corridor so the approach is visible
-      y = stage.y - (80 + Math.random() * 160);
-      x = stage.x + (Math.random() - 0.5) * 40;
-      heading = Math.PI / 2;
+      // Title / vignette: start on the ingress corridor so the approach is visible
+      const ingress = station.runwayUpstreamAngle();
+      const offset = 80 + Math.random() * 160;
+      x = stage.x + Math.cos(ingress) * offset;
+      y = stage.y + Math.sin(ingress) * offset;
+      x += (Math.random() - 0.5) * 40;
+      heading = Math.atan2(stage.y - y, stage.x - x);
       state = 'bayApproach';
       spd = Math.min(STATION.DOCK_MAX_SPEED * 0.85, 95);
     } else {
@@ -558,8 +561,7 @@ export class AmbientTrafficSystem {
     if (!station || !egress?.shipDef) return null;
     if (this.ships.length >= AMBIENT.MAX_SHIPS) return null;
     const spawn = station.getExitSpawn(egress.bayIndex ?? 1);
-    const frame = this._stationFrameOpts(station);
-    const exitSpd = 200;
+    const exitVel = station.exitVelocityWorld();
     const thrusters = makeVisitorThrusters(egress.shipDef);
     const ship = {
       id: _nextId++,
@@ -572,8 +574,8 @@ export class AmbientTrafficSystem {
       x: spawn.x,
       y: spawn.y,
       angle: spawn.angle,
-      vx: frame.frameVx + Math.cos(spawn.angle) * exitSpd,
-      vy: frame.frameVy + Math.sin(spawn.angle) * exitSpd,
+      vx: exitVel.vx,
+      vy: exitVel.vy,
       angularVelocity: 0,
       age: 0,
       maxAge: 45 + Math.random() * 40,
@@ -1302,7 +1304,7 @@ export class AmbientTrafficSystem {
     let best = greens[0];
     let bestD = Infinity;
     for (const g of greens) {
-      const d = Math.abs(ship.x - station.laneCenterWorldX(g));
+      const d = station.lateralLocalDistance(ship.x, ship.y, g);
       if (d < bestD) {
         bestD = d;
         best = g;
@@ -1349,11 +1351,24 @@ export class AmbientTrafficSystem {
 
     if (ship.state === 'bayEgress') {
       ship.exitBurn = true;
-      const nose = -Math.PI / 2;
-      const burnSpd = 210;
-      thrustAlongNose(ship, 1, dt, { faceAngle: nose, yawMult: 1.35 });
-      // Keep exit burn readable even while still yawing
-      ship.thrusters.mainEngine = Math.max(ship.thrusters.mainEngine || 0, 1);
+      const nose = station.exitHeadingAtWorld(ship.x, ship.y);
+      const burnCap = STATION.DOCK_MAX_SPEED;
+      const sep = station.alongExitAt(ship.vx, ship.vy, ship.x, ship.y);
+      if (sep < burnCap * 0.92) {
+        thrustAlongNose(ship, 0.32, dt, {
+          faceAngle: nose,
+          yawMult: 1.2,
+          ...this._stationFrameOpts(station),
+        });
+      } else {
+        holdSpeed(ship, burnCap + Math.hypot(station.vx || 0, station.vy || 0), dt, {
+          faceAngle: nose,
+          yawMult: 1.1,
+          ...this._stationFrameOpts(station),
+        });
+      }
+      station.clampRelativeExitSpeed(ship);
+      ship.thrusters.mainEngine = Math.max(ship.thrusters.mainEngine || 0, 0.35);
       if (
         station.isExitBurnFinished(pose) ||
         ship.stateT > STATION.EXIT_BURN_MAX_SEC
@@ -1363,11 +1378,11 @@ export class AmbientTrafficSystem {
         ship.stateT = 0;
         ship.pendingCull = true;
         if (this._mouthBusyId === ship.id) this._mouthBusyId = null;
-        const out = angleTo(ship.x - station.x, ship.y - station.y);
+        const out = station.exitHeadingAtWorld(ship.x, ship.y);
         ship._leaveTarget = {
           x: ship.x + Math.cos(out) * 800,
           y: ship.y + Math.sin(out) * 800,
-          spd: burnSpd,
+          spd: burnCap,
         };
       }
       return;
@@ -1448,19 +1463,20 @@ export class AmbientTrafficSystem {
       }
     }
 
-    const tx = station.laneCenterWorldX(lane);
     const approachSpd = Math.min(STATION.DOCK_MAX_SPEED * 0.85, 95);
     const frameOpts = { frameVx: station.vx ?? 0, frameVy: station.vy ?? 0 };
 
     if (ship.state === 'bayApproach') {
-      // Aim past the caution paint into the mouth — do NOT park at the outer
-      // lights (arrival brake there left ships stuck north of the runway).
-      const targetY = station.stripeWorldY() + STATION.EXIT_NEST + 50;
-      const inCorridor = ship.y >= station.furthestApproachLightY() - 30;
+      const mouthTarget = station.localToWorld(
+        station.laneCenterLocalX(lane),
+        station.stripeLocalY() + STATION.EXIT_NEST + 50
+      );
+      const local = station.worldToLocal(ship.x, ship.y);
+      const inCorridor = local.y >= station.furthestApproachLocalY() - 30;
       const spdTarget = inCorridor
         ? Math.max(50, approachSpd * 0.65)
         : approachSpd;
-      cruiseTo(ship, tx, targetY, spdTarget, dt, {
+      cruiseTo(ship, mouthTarget.x, mouthTarget.y, spdTarget, dt, {
         arrivalR: 55,
         brakeForArrival: false,
         yawMult: inCorridor ? 1.35 : 1.1,
@@ -1479,16 +1495,20 @@ export class AmbientTrafficSystem {
       return;
     }
 
-    // bayIngress — keep flying south under the roof until hangar accepts
-    const ingressY = station.stripeWorldY() + STATION.EXIT_NEST + 80;
-    cruiseTo(ship, tx, ingressY, 70, dt, {
+    // bayIngress — keep flying under the roof until hangar accepts
+    const ingress = station.localToWorld(
+      station.laneCenterLocalX(lane),
+      station.stripeLocalY() + STATION.EXIT_NEST + 80
+    );
+    cruiseTo(ship, ingress.x, ingress.y, 70, dt, {
       arrivalR: 40,
       yawMult: 1.4,
       brakeForArrival: false,
       headingTol: 0.45,
       ...frameOpts,
     });
-    const underRoof = ship.y > station.stripeWorldY() + STATION.EXIT_NEST;
+    const underRoof =
+      station.worldToLocal(ship.x, ship.y).y > station.stripeLocalY() + STATION.EXIT_NEST;
     if (underRoof || ship.stateT > 8) {
       const ok = hangarBay?.acceptSpaceArrival?.(lane, ship.shipDef, 'hauler');
       if (this._mouthBusyId === ship.id) this._mouthBusyId = null;

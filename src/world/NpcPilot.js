@@ -596,7 +596,10 @@ export function nearestWaypointIndex(corners, x, y) {
  * @param {{ HOLD_RUNWAY_CLEARANCE: number, HOLD_HALF_W: number, HOLD_HALF_H: number }} ambient
  */
 export function holdRacetrackCorners(station, ambient) {
-  const lightY = station.furthestApproachLightY();
+  if (typeof station?.holdRacetrackCorners === 'function') {
+    return station.holdRacetrackCorners(ambient);
+  }
+  const lightY = station.furthestApproachLightY?.() ?? station.y - 640;
   const clear = ambient.HOLD_RUNWAY_CLEARANCE;
   const hw = ambient.HOLD_HALF_W;
   const hh = ambient.HOLD_HALF_H;
