@@ -24,8 +24,8 @@ todos:
     content: Stage 3 — Ship breakup fragments inherit gravity (not drag-only drift)
     status: pending
   - id: stage-3-multi-station-traffic
-    content: "Stage 3 — Ambient traffic at all 12 live station anchors; patrolDensity scales spawn near each port"
-    status: pending
+    content: "Stage 3 — Ambient traffic at all 12 live station anchors; patrolDensity scales spawn; tier-radial affinity from socialOrbitInner"
+    status: completed
   - id: stage-3-dev-gravity-slider
     content: Stage 3 — Dev drawer gravity μ slider + co-orbit acceptance helper
     status: pending
@@ -72,7 +72,7 @@ These were agreed in discussion **after** the initial plan draft and must stay i
 | **Planet names** | **Therissa Prime** (official) · **Thera** (short HUD/chart copy). |
 | **Origin** | Planet Center `(0,0)` on Thera — **not** Jennings. Jennings moves to authored orbital slot. |
 | **Fringe distance** | Unique POIs ~**5 min past nearest ring** (~270k u), not 10 min from center. |
-| **Kinematic POIs** | Belts, **all 12 stations**, `warp_ring` gates orbit; **deep fringe** (`landmark`, `warp_instance`) static. |
+| **Kinematic POIs** | Belts, **all 12 stations**, `warp_ring` gates, **`landmark` / `warp_instance`** orbit; manual nav pins stay static. |
 | **HUD positions** | Orbiting POIs use **`worldPosition(poi, gameTime)`** — never stale bootstrap `x/y`. |
 | **Co-orbit assist** | TELEMETRY **prograde speed** hint; **SYNC hold** (not one-shot toggle) at **≥95%** manual match — while held, Precision-authority thrusters track contact **live** velocity/heading. |
 | **Regulatory speed** | Posted **LIM** zones + fines when witnessed — **not** a physics clamp (global hard cap removed). |
@@ -95,7 +95,7 @@ These were agreed in discussion **after** the initial plan draft and must stay i
 - **Social orbit ladder:** **Elite + military** sit **closest** to the planet in the station shell; each step **outward** drops social tier until **pirate (outlaw)** at the **outer edge**. Stations are **spread around the full 360°** (existing spacing rules); **multiple ports may share the same `orbitR`** (same “ring” distance) if angular separation keeps ≥5 min chord clearance.
 - **Spacing:** Closest pair among orbital/space POIs ≥ **5 min at reference transit speed** (~900 u/s baseline for map authoring — not a hard in-flight cap; see [Physics speed limits](#physics-speed-limits-open-space-flight)).
 - **Instance warp gates** (`warp_instance`): fringe stubs only in v1; destination content later.
-- **Belt motion:** Ring asteroids, **all 12 stations**, **`warp_ring` gates**, use **kinematic orbits** around **Planet Center**. **Deep fringe** (`landmark`, `warp_instance`) stay **static**. Player + fragments use **gravity**. HUD always **calculates** live world position for orbiting POIs (see [Planetary gravity + kinematic belt orbits](#planetary-gravity--kinematic-belt-orbits)).
+- **Belt motion:** Ring asteroids, **all 12 stations**, **`warp_ring` gates**, **`landmark` / `warp_instance`**, use **kinematic orbits** around **Planet Center**. Player + fragments use **gravity**. HUD always **calculates** live world position for orbiting POIs (see [Planetary gravity + kinematic belt orbits](#planetary-gravity--kinematic-belt-orbits)).
 - **Co-orbit assist:** TELEMETRY **prograde speed** hint; **SYNC** hold button (like space brakes) — enabled at **≥95%** manual match; while held, auto-thrusters at **Precision authority** track the contact's **live** speed/heading each frame (not a toggle; no deselect required).
 - **Visual read:** Viewport — ring annuli above starfield, below asteroids/ships; Sector map — planet/rings brightness follows fog (unseen dark → stale dim → active full). See [Visual layers](#visual-layers-viewport--sector-map).
 - **Traffic law (regulatory speed):** Posted **speed limits** by zone (planet ring bands + per-station distance shells) — **not** a physics clamp (auto-throttle may come later). Exceeding the posted limit triggers **automatic fines** when **witnessed** (inner ring: station **sensors**; elsewhere: **patrol** line-of-sight). Unpaid debt blocks **trade** past a threshold; higher debt → **outlaw** (station attacks). Pay off at a **broker** at any station. See [Regulatory speed limits (traffic law)](#regulatory-speed-limits-traffic-law).
@@ -279,14 +279,14 @@ Fine-tune exact radii, patrol counts, and limit numbers in the **Sector Map edit
 |------|--------|-----------------|
 | `station`, `warp_ring` | `orbit` | `OrbitKinematics.positionAt(simTime)` |
 | `planetary` | `surface` | **`surfaceAngle` + planet spin** → `worldPosition(poi, gameTime)` on disc rim |
-| `landmark`, `warp_instance` | `static` | Authored `x, y` (deep fringe only) |
+| `landmark`, `warp_instance` | `orbit` | `orbitR` + `orbitAngle0`; `fringeClearance` from outermost belt |
 | Manual player pins | `static` | Dropped world coords (unchanged) |
 
 **Placement rules (enforced in dev tooling):**
 - Orbiting sites: **not** inside any ring annulus (`ringAt` at `t=0` snapshot); pairwise **closest-approach** separation ≥ `minOrbitalSep` (270k) — validates across full orbit or at `t=0` with offset `orbitR` / `orbitAngle0`
 - **Social ladder:** `orbitR` should increase as tier decreases (military/elite inner → pirate outer); editor **warns** on inversion
 - **Shared radius OK:** multiple stations may use the **same `orbitR`** (co-tier or paired inner ports) — separate by **`orbitAngle0`** with sufficient chord gap
-- Unique fringe sites (`kind ∈ {landmark, warp_instance}`): **static** coords; **not** inside any ring; `distToNearestRing ≥ minFringeFromRing` (~5 min)
+- Unique fringe sites (`kind ∈ {landmark, warp_instance}`): **orbital** at `max(ring.outerR) + fringeClearance`; **not** inside any ring; `distToNearestRing ≥ minFringeFromRing` (~5 min)
 - Ring warp gates: **inside** a ring volume on **kinematic orbit**; **exactly 3 pairs (6 gates)** — inner / mid / outer band, each pair on **opposite sides** of the planet (teleport reflects through Planet Center)
 
 ---

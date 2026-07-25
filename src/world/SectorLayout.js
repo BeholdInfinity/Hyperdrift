@@ -69,11 +69,11 @@ export function siteWorldPosition(site, gameTime = 0, layout = getSectorLayout()
   if (motion === 'surface' || site.kind === 'planetary') {
     return surfacePositionAt(site, gameTime, layout);
   }
-  if (motion === 'static' || site.kind === 'landmark' || site.kind === 'warp_instance') {
-    return { x: site.x ?? 0, y: site.y ?? 0 };
-  }
   if (site.orbit) {
     return positionAt(site.orbit, gameTime, layout);
+  }
+  if (motion === 'static') {
+    return { x: site.x ?? 0, y: site.y ?? 0 };
   }
   return { x: site.x ?? 0, y: site.y ?? 0 };
 }

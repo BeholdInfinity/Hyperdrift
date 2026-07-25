@@ -78,10 +78,51 @@ export function getTierOrbitR(tierId, layout = sectorEditorDraft) {
   return getSocialOrbitInner(layout)[tierId];
 }
 
+export function stationsForTier(tierId, layout = sectorEditorDraft) {
+  return listSites('station', layout).filter((s) => s.socialTier === tierId);
+}
+
+export function computeTierOrbitFromStations(tierId, layout = sectorEditorDraft) {
+  const stations = stationsForTier(tierId, layout);
+  const radii = stations
+    .map((s) => s.orbit?.orbitR)
+    .filter((r) => Number.isFinite(r))
+    .sort((a, b) => a - b);
+  if (!radii.length) return getTierOrbitR(tierId, layout);
+  const mid = Math.floor(radii.length / 2);
+  return radii.length % 2 ? radii[mid] : (radii[mid - 1] + radii[mid]) / 2;
+}
+
+/** Write socialOrbitInner[tierId] from station median; optional silent skip notify. */
+export function syncTierOrbitFromStations(tierId, layout = sectorEditorDraft, { silent = false } = {}) {
+  const stations = stationsForTier(tierId, layout);
+  if (!stations.length) return false;
+  const tiers = ensureSocialOrbitInner(layout);
+  const planetR = layout.planet?.radius ?? 35000;
+  tiers[tierId] = Math.max(planetR + 5000, computeTierOrbitFromStations(tierId, layout));
+  if (!silent) notifySectorEditorChange();
+  return true;
+}
+
+export function syncAllTierOrbitsFromStations(layout = sectorEditorDraft, { silent = false } = {}) {
+  for (const tierId of listSocialTierIds(layout)) {
+    syncTierOrbitFromStations(tierId, layout, { silent: true });
+  }
+  if (!silent) notifySectorEditorChange();
+}
+
 export function setTierOrbitR(tierId, orbitR, layout = sectorEditorDraft) {
   const tiers = ensureSocialOrbitInner(layout);
   const planetR = layout.planet?.radius ?? 35000;
-  tiers[tierId] = Math.max(planetR + 5000, Number(orbitR) || planetR + 5000);
+  const r = Math.max(planetR + 5000, Number(orbitR) || planetR + 5000);
+  tiers[tierId] = r;
+  for (const site of stationsForTier(tierId, layout)) {
+    if (!site.orbit) continue;
+    site.orbit.orbitR = r;
+    const pos = siteWorldPosition(site, 0, layout);
+    site.x = pos.x;
+    site.y = pos.y;
+  }
   notifySectorEditorChange();
   return true;
 }
@@ -121,11 +162,120 @@ export function notifySectorEditorChange() {
   _changeListener?.();
 }
 
+export const PAIR_TO_RING_ID = {
+  inner: 'inner_ore',
+  mid: 'mid_mixed',
+  outer: 'outer_ice',
+};
+
+export const RING_TO_PAIR_ID = {
+  inner_ore: 'inner',
+  mid_mixed: 'mid',
+  outer_ice: 'outer',
+};
+
+/** Radial inset from ring innerR — gates sit just inside the belt (outside band, validator-safe). */
+export const WARP_GATE_INNER_OFFSET = 1000;
+
+export function warpGateOrbitR(ring, layout = sectorEditorDraft) {
+  const planetR = layout.planet?.radius ?? 35000;
+  const minR = planetR + 1000;
+  const innerR = ring?.innerR ?? 0;
+  const offset = layout.spacing?.warpGateInnerOffset ?? WARP_GATE_INNER_OFFSET;
+  return Math.max(minR, innerR - offset);
+}
+
+export function maxRingOuterR(layout = sectorEditorDraft) {
+  let max = 0;
+  for (const ring of layout.rings ?? []) {
+    max = Math.max(max, ring.outerR ?? 0);
+  }
+  return max;
+}
+
+export function isFringeSite(site) {
+  return site?.kind === 'landmark' || site?.kind === 'warp_instance';
+}
+
+export function migrateStaticFringeToOrbit(layout = sectorEditorDraft) {
+  const cx = layout.planet?.center?.x ?? 0;
+  const cy = layout.planet?.center?.y ?? 0;
+  let changed = false;
+  for (const site of layout.sites ?? []) {
+    if (!isFringeSite(site)) continue;
+    if (site.orbit?.orbitR != null && site.motion !== 'static') continue;
+    const x = site.x ?? 0;
+    const y = site.y ?? 0;
+    const orbitR = Math.hypot(x - cx, y - cy);
+    const orbitAngle0 = Math.atan2(y - cy, x - cx);
+    site.motion = 'orbit';
+    site.orbit = { orbitR, orbitAngle0, orbitOmega: site.orbit?.orbitOmega ?? null };
+    if (site.fringeClearance == null) {
+      const pos = siteWorldPosition(site, 0, layout);
+      site.fringeClearance =
+        distToNearestRing(pos.x, pos.y, layout) || layout.spacing?.minFringeFromRing || 270000;
+    }
+    changed = true;
+  }
+  if (changed) hydrateOrbitParams(layout);
+  return changed;
+}
+
+export function syncWarpGatesFromRing(ringId, layout = sectorEditorDraft, { silent = false } = {}) {
+  const pairId = RING_TO_PAIR_ID[ringId];
+  if (!pairId) return false;
+  const ring = layout.rings?.find((r) => r.id === ringId);
+  if (!ring) return false;
+  const gateR = warpGateOrbitR(ring, layout);
+  for (const site of layout.sites ?? []) {
+    if (site.kind !== 'warp_ring' || site.pairId !== pairId || !site.orbit) continue;
+    site.orbit.orbitR = gateR;
+    const pos = siteWorldPosition(site, 0, layout);
+    site.x = pos.x;
+    site.y = pos.y;
+  }
+  if (!silent) notifySectorEditorChange();
+  return true;
+}
+
+export function syncAllWarpGatesFromRings(layout = sectorEditorDraft, { silent = false } = {}) {
+  for (const ringId of Object.keys(RING_TO_PAIR_ID)) {
+    syncWarpGatesFromRing(ringId, layout, { silent: true });
+  }
+  if (!silent) notifySectorEditorChange();
+}
+
+export function syncFringeSitesFromRings(layout = sectorEditorDraft, { silent = false } = {}) {
+  const outer = maxRingOuterR(layout);
+  if (outer <= 0) return false;
+  for (const site of layout.sites ?? []) {
+    if (!isFringeSite(site) || !site.orbit) continue;
+    const clearance =
+      site.fringeClearance ?? layout.spacing?.minFringeFromRing ?? 270000;
+    site.orbit.orbitR = outer + clearance;
+    const pos = siteWorldPosition(site, 0, layout);
+    site.x = pos.x;
+    site.y = pos.y;
+  }
+  if (!silent) notifySectorEditorChange();
+  return true;
+}
+
+function afterRingRadiiChange(ringId, layout = sectorEditorDraft) {
+  syncWarpGatesFromRing(ringId, layout, { silent: true });
+  syncFringeSitesFromRings(layout, { silent: true });
+  hydrateOrbitParams(layout);
+  notifySectorEditorChange();
+}
+
 export function setSectorEditorActive(active, engine = null) {
   sectorEditorUI.active = !!active;
   if (sectorEditorUI.active) {
+    migrateStaticFringeToOrbit(sectorEditorDraft);
     hydrateOrbitParams(sectorEditorDraft);
     ensureSocialOrbitInner(sectorEditorDraft);
+    syncAllTierOrbitsFromStations(sectorEditorDraft, { silent: true });
+    syncAllWarpGatesFromRings(sectorEditorDraft, { silent: true });
     setSectorLayoutOverride(sectorEditorDraft);
     syncPlanetRadiusSlider();
     if (engine?.sectorMapView) {
@@ -233,7 +383,7 @@ export function setRingInnerR(ringId, innerR) {
   const next = clampRingRadii(innerR, ring.outerR);
   ring.innerR = next.innerR;
   ring.outerR = next.outerR;
-  notifySectorEditorChange();
+  afterRingRadiiChange(ringId);
   return true;
 }
 
@@ -243,7 +393,7 @@ export function setRingOuterR(ringId, outerR) {
   const next = clampRingRadii(ring.innerR, outerR);
   ring.innerR = next.innerR;
   ring.outerR = next.outerR;
-  notifySectorEditorChange();
+  afterRingRadiiChange(ringId);
   return true;
 }
 
@@ -253,7 +403,7 @@ export function setRingRadii(ringId, innerR, outerR) {
   const next = clampRingRadii(innerR, outerR);
   ring.innerR = next.innerR;
   ring.outerR = next.outerR;
-  notifySectorEditorChange();
+  afterRingRadiiChange(ringId);
   return true;
 }
 
@@ -340,6 +490,11 @@ export function moveSiteOrbit(siteId, orbitR, orbitAngle0) {
   const pos = siteWorldPosition(site, 0, sectorEditorDraft);
   site.x = pos.x;
   site.y = pos.y;
+  if (isFringeSite(site)) {
+    site.fringeClearance = distToNearestRing(pos.x, pos.y, sectorEditorDraft);
+  } else if (site.kind === 'station' && site.socialTier) {
+    syncTierOrbitFromStations(site.socialTier, sectorEditorDraft, { silent: true });
+  }
   notifySectorEditorChange();
   return true;
 }
@@ -364,6 +519,19 @@ export function moveStaticSite(siteId, x, y) {
   return true;
 }
 
+export function setSiteFringeClearance(siteId, clearance, layout = sectorEditorDraft) {
+  const site = layout.sites?.find((s) => s.id === siteId);
+  if (!site?.orbit || !isFringeSite(site)) return false;
+  site.fringeClearance = Math.max(0, Number(clearance) || 0);
+  const outer = maxRingOuterR(layout);
+  site.orbit.orbitR = outer + site.fringeClearance;
+  const pos = siteWorldPosition(site, 0, layout);
+  site.x = pos.x;
+  site.y = pos.y;
+  notifySectorEditorChange();
+  return true;
+}
+
 function pairDistance(a, b, layout) {
   const pa = siteWorldPosition(a, 0, layout);
   const pb = siteWorldPosition(b, 0, layout);
@@ -382,7 +550,12 @@ export const VALIDATOR_RULE_DEFS = [
       const issues = [];
       const minSep = layout.spacing?.minOrbitalSep ?? 150000;
       const orbital = listSites(null, layout).filter(
-        (s) => s.motion === 'orbit' || s.kind === 'station' || s.kind === 'warp_ring'
+        (s) =>
+          s.motion === 'orbit' ||
+          s.kind === 'station' ||
+          s.kind === 'warp_ring' ||
+          s.kind === 'landmark' ||
+          s.kind === 'warp_instance'
       );
       for (let i = 0; i < orbital.length; i++) {
         for (let j = i + 1; j < orbital.length; j++) {
@@ -399,14 +572,20 @@ export const VALIDATOR_RULE_DEFS = [
   },
   {
     id: 'station_in_ring',
-    label: 'Stations outside rings',
+    label: 'Orbital sites outside rings',
     hint:
-      'Orbital stations must not sit inside an asteroid ring band — rings are for mining debris, not station shells.',
+      'Stations, warp gates, landmarks, and warp instances must not sit inside an asteroid ring band.',
     severity: 'error',
     collect(layout) {
       const issues = [];
       for (const site of layout.sites ?? []) {
-        if (site.kind === 'station' && siteInsideRing(site, layout)) {
+        if (
+          (site.kind === 'station' ||
+            site.kind === 'warp_ring' ||
+            site.kind === 'landmark' ||
+            site.kind === 'warp_instance') &&
+          siteInsideRing(site, layout)
+        ) {
           issues.push(`${site.id} sits inside a ring band`);
         }
       }
@@ -438,16 +617,20 @@ export const VALIDATOR_RULE_DEFS = [
     id: 'social_tier_orbit',
     label: 'Social tier orbit',
     hint:
-      'Warns when a station orbit radius is far outside its social tier inner band — higher tiers should generally orbit closer to the planet.',
+      'Warns when a station orbit radius is an outlier within its tier group (>80k u from tier median when multiple stations share the tier).',
     severity: 'warning',
     collect(layout) {
       const warnings = [];
-      for (const site of layout.sites ?? []) {
-        if (site.kind === 'station' && site.socialTier) {
-          const target = getSocialOrbitInner(layout)[site.socialTier];
-          if (target && site.orbit?.orbitR > target + 80000) {
+      const tierOutlier = 80000;
+      for (const tierId of listSocialTierIds(layout)) {
+        const stations = stationsForTier(tierId, layout);
+        if (stations.length < 2) continue;
+        const median = computeTierOrbitFromStations(tierId, layout);
+        for (const site of stations) {
+          const r = site.orbit?.orbitR;
+          if (r != null && Math.abs(r - median) > tierOutlier) {
             warnings.push(
-              `${site.id} orbitR ${site.orbit.orbitR} outer for tier ${site.socialTier}`
+              `${site.id} orbitR ${Math.round(r)} outlier for tier ${tierId} (median ${Math.round(median)})`
             );
           }
         }
@@ -668,7 +851,10 @@ export function resetSectorEditorDraft() {
   const fresh = JSON.parse(JSON.stringify(SECTOR_LAYOUT));
   Object.keys(sectorEditorDraft).forEach((k) => delete sectorEditorDraft[k]);
   Object.assign(sectorEditorDraft, fresh);
+  migrateStaticFringeToOrbit(sectorEditorDraft);
   hydrateOrbitParams(sectorEditorDraft);
   ensureSocialOrbitInner(sectorEditorDraft);
+  syncAllTierOrbitsFromStations(sectorEditorDraft, { silent: true });
+  syncAllWarpGatesFromRings(sectorEditorDraft, { silent: true });
   notifySectorEditorChange();
 }

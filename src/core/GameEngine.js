@@ -27,7 +27,7 @@ import { WarpGateSystem } from '../world/WarpGateSystem.js';
 import { TrafficRecord } from '../world/TrafficRecord.js';
 import { TrafficEnforcement } from '../world/TrafficEnforcement.js';
 import { drawRingBackdrop } from '../world/RingBackdrop.js';
-import { getSiteById, siteWorldPosition } from '../world/SectorLayout.js';
+import { getSiteById, getSectorLayout, siteWorldPosition } from '../world/SectorLayout.js';
 import { NavRoute } from '../world/NavRoute.js';
 import { SectorMapView } from '../systems/SectorMapView.js';
 import { drawSectorEditorFrame, processSectorEditorInput } from '../systems/SectorEditorPanel.js';
@@ -727,6 +727,8 @@ export class GameEngine {
       asteroids: this.asteroidSystem.getActiveAsteroids(),
       particles: this.particleSystem,
       camera: view,
+      layout: getSectorLayout(),
+      gameTime: this.gameTime || 0,
     });
 
     if (this._hangarHud) this._hangarHud.classList.add('hidden');
@@ -2047,6 +2049,8 @@ export class GameEngine {
       hangarBay: null,
       asteroids,
       particles: this.particleSystem,
+      layout: getSectorLayout(),
+      gameTime: this.gameTime || 0,
       camera: {
         x: this.camera.position.x,
         y: this.camera.position.y,
@@ -3268,6 +3272,7 @@ export class GameEngine {
       asteroids,
       particles: this.particleSystem,
       gameTime: this.gameTime || 0,
+      layout: getSectorLayout(),
       camera: {
         x: this.camera.position.x,
         y: this.camera.position.y,

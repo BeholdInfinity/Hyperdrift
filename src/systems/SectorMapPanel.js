@@ -28,56 +28,7 @@ const DIM = 'rgba(150, 178, 202, 0.55)';
 const COPPER = 'rgba(230, 171, 109, 0.92)';
 const ACCENT = 'rgba(120, 200, 255, 0.85)';
 
-/** Cached light-gray speckle tile for asteroid belt fills. */
-let _ringBeltPatternCanvas = null;
-
-function ringBeltPattern(ctx) {
-  if (!_ringBeltPatternCanvas) {
-    const size = 16;
-    _ringBeltPatternCanvas = document.createElement('canvas');
-    _ringBeltPatternCanvas.width = size;
-    _ringBeltPatternCanvas.height = size;
-    const p = _ringBeltPatternCanvas.getContext('2d');
-    p.fillStyle = '#a8b0ba';
-    p.fillRect(0, 0, size, size);
-    for (let y = 0; y < size; y++) {
-      for (let x = 0; x < size; x++) {
-        const v = ((x * 17 + y * 31 + (x ^ y) * 13) % 9) / 9;
-        p.fillStyle = v > 0.55 ? 'rgba(255, 255, 255, 0.16)' : 'rgba(60, 68, 78, 0.1)';
-        p.fillRect(x, y, 1, 1);
-      }
-    }
-  }
-  return ctx.createPattern(_ringBeltPatternCanvas, 'repeat');
-}
-
-/** Filled annulus with a light gray repeating texture (screen px radii). */
-export function drawRingBeltFill(ctx, cx, cy, innerPx, outerPx, alpha = 1) {
-  if (outerPx < innerPx + 0.5 || outerPx < 2 || alpha <= 0.01) return;
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(cx, cy, outerPx, 0, Math.PI * 2);
-  ctx.arc(cx, cy, innerPx, 0, Math.PI * 2, true);
-  ctx.closePath();
-  ctx.clip();
-
-  ctx.globalAlpha = alpha;
-  ctx.fillStyle = 'rgba(170, 178, 188, 0.28)';
-  ctx.beginPath();
-  ctx.arc(cx, cy, outerPx, 0, Math.PI * 2);
-  ctx.arc(cx, cy, innerPx, 0, Math.PI * 2, true);
-  ctx.fill('evenodd');
-
-  const pat = ringBeltPattern(ctx);
-  if (pat) {
-    ctx.fillStyle = pat;
-    ctx.globalAlpha = alpha * 0.55;
-    ctx.fillRect(cx - outerPx, cy - outerPx, outerPx * 2, outerPx * 2);
-  }
-  ctx.restore();
-}
-
-/** Offscreen cache for panned sector map (follow-ship mode pans every frame). */
+import { drawRingBeltFill } from '../world/RingBeltVisual.js';
 const _mapStaticCache = { canvas: null, ctx: null, w: 0, h: 0, key: '' };
 
 function ensureMapStaticCache(w, h) {
@@ -309,7 +260,7 @@ function drawMapStaticLayers(ctx, box, engine, view, { fog, scale, span, bright 
       ringAlpha *= fade;
       fillAlpha *= fade;
     }
-    drawRingBeltFill(ctx, ps.x, ps.y, ri, ro, fillAlpha);
+    drawRingBeltFill(ctx, ps.x, ps.y, ri, ro, ring, fillAlpha);
     ctx.strokeStyle = `rgba(80, 100, 120, ${ringAlpha})`;
     ctx.lineWidth = 1;
     ctx.beginPath();

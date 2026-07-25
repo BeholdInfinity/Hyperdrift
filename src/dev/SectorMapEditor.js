@@ -178,7 +178,7 @@ function applySiteWorldPosition(site, wx, wy, layout, shiftKey) {
     return true;
   }
 
-  if (site.kind === 'landmark' || site.kind === 'warp_instance' || site.motion === 'static') {
+  if (site.motion === 'static') {
     moveStaticSite(site.id, wx, wy);
     return true;
   }

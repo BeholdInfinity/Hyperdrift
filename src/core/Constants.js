@@ -428,6 +428,9 @@ export const AMBIENT = {
    * off the radar. Cheap: still capped by MAX_SHIPS.
    */
   SCAN_HORIZON_MARGIN: 1200,
+  /** Social tier radial spawn — low-but-nonzero cross-tier spillover */
+  TIER_SPAWN_FLOOR: 0.05,
+  TIER_SPAWN_SIGMA_FACTOR: 0.35,
   /** Seed this many non-police near the station on flight start (off-screen) */
   SEED_NEAR_TRAFFIC: 3,
   /**

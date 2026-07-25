@@ -7,7 +7,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 ## [Unreleased]
 
 ### Added
-- **Full-screen sector map editor (dev)** — Blueprint-style **SECTOR MAP EDITOR** mode: unified list, editable rings/tiers/socialOrbitInner, filter fading, expanded validator with rule hover hints; asteroid belts render with a light gray speckle fill on the map; **Save anyway** bypasses blocking validator errors; `minOrbitalSep` lowered to **150k u**.
+- **Tier-radial multi-station ambient traffic** — spawns anchor on live station sites weighted by `patrolDensity`; ship class picked from social-tier pools with planet-radial affinity (`SocialTierTraffic.js`, `socialOrbitInner`); police pack at military tier; bay mouth traffic still Jennings-only.
+- **Sector map belt infill** — Saturn-style concentric sub-bands with gaps, directional lighting, and composition tints (`RingBeltVisual.js`).
+- **Full-screen sector map editor (dev)** — Blueprint-style **SECTOR MAP EDITOR** mode: unified list, editable rings/tiers/socialOrbitInner, filter fading, expanded validator with rule hover hints; asteroid belts render with composition-tinted fills on the map; **Save anyway** bypasses blocking validator errors; `minOrbitalSep` lowered to **150k u**; right dock **Layout output** panel (live baked draft + **Copy**) for manual recovery when save fails; warp gates auto-sync to just inside each belt’s inner edge (validator-safe).
 - **Dev sector map editor (Stage 2 polish)** — live `sectorEditorDraft` override on the sector layout; traffic-shell + tier-band overlays; bake still prefers validator pass but can be forced.
 
 ### Planned

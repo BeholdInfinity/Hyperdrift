@@ -26,6 +26,7 @@ import {
   setRingWidth,
   setRingDensity,
   setTierOrbitR,
+  setSiteFringeClearance,
   setSiteListFilter,
   formatOrbitStats,
   ringMidRadius,
@@ -36,6 +37,7 @@ import {
   SITE_TIER_FILTERS,
   selectRing,
   selectTier,
+  formatSectorLayoutModule,
 } from './dev/DevSectorEditor.js';
 import { selectSite } from './dev/SectorMapEditor.js';
 import { saveToRepo, exportToClipboard, SAVE_PATHS } from './dev/DevSave.js';
@@ -388,6 +390,12 @@ function syncSectorEditorLayoutVars() {
   hud.style.setProperty('--bp-dock-w', `${dockW}px`);
 }
 
+function syncSmeLayoutOutput() {
+  const el = document.getElementById('sme-layout-output');
+  if (!el) return;
+  el.textContent = formatSectorLayoutModule(sectorEditorDraft);
+}
+
 function syncSectorSaveButtons(report = buildValidatorReport()) {
   const blocked = !report.ok;
   const saveBtn = document.getElementById('sme-save');
@@ -558,8 +566,11 @@ function syncSectorEditorHud() {
     }
   } else if (ring) {
     if (nameEl) nameEl.textContent = ring.id;
+    const comp = ring.composition ?? {};
+    const topComp = Object.entries(comp).sort((a, b) => b[1] - a[1])[0];
+    const compHint = topComp ? ` · ${topComp[0]} ${Math.round(topComp[1] * 100)}%` : '';
     if (metaEl) {
-      metaEl.textContent = `Asteroid ring · mid ${Math.round(ringMidRadius(ring))} u · width ${Math.round(ringWidth(ring))} u · density ${ring.density ?? 1}`;
+      metaEl.textContent = `Asteroid ring · mid ${Math.round(ringMidRadius(ring))} u · width ${Math.round(ringWidth(ring))} u · density ${ring.density ?? 1}${compHint}`;
     }
   } else if (site) {
     if (nameEl) nameEl.textContent = site.name || site.id;
@@ -575,10 +586,7 @@ function syncSectorEditorHud() {
   ringFields?.classList.toggle('hidden', !ring);
   orbitFields?.classList.toggle('hidden', !site?.orbit);
   surfaceFields?.classList.toggle('hidden', !(site?.kind === 'planetary' || site?.motion === 'surface'));
-  staticFields?.classList.toggle(
-    'hidden',
-    !(site?.kind === 'landmark' || site?.kind === 'warp_instance' || site?.motion === 'static')
-  );
+  staticFields?.classList.toggle('hidden', !(site?.motion === 'static' && !site?.orbit));
 
   const statsTitle = document.getElementById('sme-orbit-stats-title');
   const statsR = document.getElementById('sme-orbit-radius');
@@ -649,14 +657,21 @@ function syncSectorEditorHud() {
       sEl.value = Math.round(((site.surfaceAngle * 180) / Math.PI + 360) % 360);
     }
   }
-  if (site && (site.kind === 'landmark' || site.kind === 'warp_instance' || site.motion === 'static')) {
+  if (site?.motion === 'static' && !site?.orbit) {
     const xEl = document.getElementById('sme-static-x');
     const yEl = document.getElementById('sme-static-y');
     if (xEl && document.activeElement !== xEl) xEl.value = Math.round(site.x ?? 0);
     if (yEl && document.activeElement !== yEl) yEl.value = Math.round(site.y ?? 0);
   }
+  const fringeEl = document.getElementById('sme-fringe-clearance');
+  const isFringe = site && (site.kind === 'landmark' || site.kind === 'warp_instance');
+  fringeEl?.closest('.sme-field')?.classList.toggle('hidden', !isFringe);
+  if (isFringe && fringeEl && document.activeElement !== fringeEl) {
+    fringeEl.value = Math.round(site.fringeClearance ?? sectorEditorDraft.spacing?.minFringeFromRing ?? 270000);
+  }
 
   renderSmeValidatorPanel();
+  syncSmeLayoutOutput();
 
   const pr = document.getElementById('sme-planet-r');
   if (pr && document.activeElement !== pr) {
@@ -1234,24 +1249,35 @@ if (bpMountRoster) {
   });
 }
 
+async function copyPanelText(text, btn, label = 'Copy') {
+  if (!text || !btn) return;
+  try {
+    await navigator.clipboard.writeText(text);
+    btn.textContent = 'Copied';
+    setTimeout(() => {
+      btn.textContent = label;
+    }, 900);
+  } catch {
+    btn.textContent = 'Failed';
+    setTimeout(() => {
+      btn.textContent = label;
+    }, 900);
+  }
+}
+
 const bpInspectorCopy = document.getElementById('bp-inspector-copy');
 if (bpInspectorCopy) {
   bpInspectorCopy.addEventListener('click', async () => {
     const body = document.getElementById('bp-inspector-body');
-    const text = body?.textContent || '';
-    if (!text) return;
-    try {
-      await navigator.clipboard.writeText(text);
-      bpInspectorCopy.textContent = 'Copied';
-      setTimeout(() => {
-        bpInspectorCopy.textContent = 'Copy';
-      }, 900);
-    } catch {
-      bpInspectorCopy.textContent = 'Failed';
-      setTimeout(() => {
-        bpInspectorCopy.textContent = 'Copy';
-      }, 900);
-    }
+    await copyPanelText(body?.textContent || '', bpInspectorCopy);
+  });
+}
+
+const smeLayoutCopy = document.getElementById('sme-layout-copy');
+if (smeLayoutCopy) {
+  smeLayoutCopy.addEventListener('click', async () => {
+    const body = document.getElementById('sme-layout-output');
+    await copyPanelText(body?.textContent || '', smeLayoutCopy);
   });
 }
 
@@ -1524,6 +1550,11 @@ wireSmeField('sme-orbit-angle', (deg) => {
   const site = getSelectedSite();
   if (!site?.orbit) return;
   moveSiteOrbit(site.id, site.orbit.orbitR, (deg * Math.PI) / 180);
+});
+wireSmeField('sme-fringe-clearance', (v) => {
+  const site = getSelectedSite();
+  if (!site) return;
+  setSiteFringeClearance(site.id, v);
 });
 wireSmeField('sme-surface-angle', (deg) => {
   const site = getSelectedSite();

@@ -16,6 +16,19 @@ import { generateShip, generateVisitor } from '../ships/ShipGenerator.js';
 import { SHIP_CLASSES } from '../ships/ShipClasses.js';
 import { drawVisitorShip, makeVisitorThrusters } from './HangarVisitorShips.js';
 import { corridorSpawnFactor } from './TransitCorridor.js';
+import {
+  getSectorLayout,
+  listSites,
+  siteWorldPosition,
+  siteWorldVelocity,
+  stationTrafficOuterRadius,
+} from './SectorLayout.js';
+import {
+  pickSocialTierForRadius,
+  shipClassForTier,
+  tierAffinityAtRadius,
+  planetRadialDistance,
+} from './SocialTierTraffic.js';
 import { emitMountExhaust, hasActivePropulsion } from '../ships/PlumeDraw.js';
 import {
   clearThrusters,
@@ -189,6 +202,8 @@ export class AmbientTrafficSystem {
     /** Jennings inertial frame — refreshed each update for spawn + patrol AI */
     this._frameVx = 0;
     this._frameVy = 0;
+    this._layout = null;
+    this._gameTime = 0;
   }
 
   reset() {
@@ -200,9 +215,66 @@ export class AmbientTrafficSystem {
     this._mouthBusyId = null;
     this._frameVx = 0;
     this._frameVy = 0;
+    this._layout = null;
+    this._gameTime = 0;
   }
 
-  /** @param {{ vx?: number, vy?: number }|null|undefined} [station] */
+  _layoutOrDefault(ctx) {
+    return ctx?.layout ?? this._layout ?? getSectorLayout();
+  }
+
+  _planetCenter(layout) {
+    return {
+      x: layout?.planet?.center?.x ?? 0,
+      y: layout?.planet?.center?.y ?? 0,
+    };
+  }
+
+  /** Weighted pick of spawn anchor station (skips trafficPolicy none for local spawns). */
+  _pickSpawnAnchorStation(layout, px, py, localOnly = true) {
+    const stations = listSites('station', layout);
+    const candidates = [];
+    for (const site of stations) {
+      if (localOnly && site.trafficPolicy === 'none') continue;
+      const w = Math.max(0.05, site.patrolDensity ?? 0.5);
+      candidates.push({ site, w });
+    }
+    if (!candidates.length) {
+      for (const site of stations) {
+        candidates.push({ site, w: 0.1 });
+      }
+    }
+    if (!candidates.length) return null;
+    let sum = 0;
+    for (const c of candidates) sum += c.w;
+    let r = Math.random() * sum;
+    for (const c of candidates) {
+      r -= c.w;
+      if (r <= 0) return c.site;
+    }
+    return candidates[candidates.length - 1].site;
+  }
+
+  _nearestStationSite(px, py, layout, gameTime = 0) {
+    let best = null;
+    let bestD = Infinity;
+    for (const site of listSites('station', layout)) {
+      const pos = siteWorldPosition(site, gameTime, layout);
+      const d = Math.hypot(px - pos.x, py - pos.y);
+      if (d < bestD) {
+        bestD = d;
+        best = site;
+      }
+    }
+    return best;
+  }
+
+  _stationFrameAt(site, layout, gameTime) {
+    if (!site) return { x: STATION.WORLD_X, y: STATION.WORLD_Y, vx: 0, vy: 0 };
+    const pos = siteWorldPosition(site, gameTime, layout);
+    const vel = siteWorldVelocity(site, gameTime, layout);
+    return { x: pos.x, y: pos.y, vx: vel.vx, vy: vel.vy };
+  }
   _stationFrameOpts(station) {
     return {
       frameVx: station?.vx ?? this._frameVx ?? 0,
@@ -557,6 +629,8 @@ export class AmbientTrafficSystem {
     const station = ctx.station;
     const hangarBay = ctx.hangarBay || null;
     this._gameTime = ctx.gameTime ?? 0;
+    this._layout = this._layoutOrDefault(ctx);
+    const layout = this._layout;
     this._frameVx = station?.vx ?? 0;
     this._frameVy = station?.vy ?? 0;
     const sx = station?.x ?? STATION.WORLD_X;
@@ -566,12 +640,16 @@ export class AmbientTrafficSystem {
     const asteroids = ctx.asteroids || [];
     const view = this._resolveView(ctx.camera, px, py);
 
-    // First frame after reset: seed cops + a few near-station ships (all off-screen)
+    const seedAnchor =
+      this._nearestStationSite(px, py, layout, this._gameTime) ||
+      listSites('station', layout).find((s) => s.id === 'site.jennings');
+    const seedFrame = this._stationFrameAt(seedAnchor, layout, this._gameTime);
+
     if (this.ships.length === 0 && this._spawnCooldown <= 0.85) {
-      this._seedStationBubble(sx, sy, px, py, view);
+      this._seedStationBubble(seedFrame.x, seedFrame.y, px, py, view, layout);
     }
 
-    this._maintainPolice(sx, sy, px, py, view);
+    this._maintainPolice(seedFrame.x, seedFrame.y, px, py, view, layout);
 
     // Hangar departures → nearby space actors (re-queue if spawn fails)
     if (hangarBay?.drainSpaceEgress && station) {
@@ -589,7 +667,7 @@ export class AmbientTrafficSystem {
     this._bayApproachCooldown -= dt;
 
     if (this._spawnCooldown <= 0 && this.ships.length < AMBIENT.MAX_SHIPS) {
-      this._trySpawn(sx, sy, px, py, view);
+      this._trySpawn(seedFrame.x, seedFrame.y, px, py, view, layout);
       this._spawnCooldown =
         AMBIENT.SPAWN_INTERVAL_MIN +
         Math.random() * (AMBIENT.SPAWN_INTERVAL_MAX - AMBIENT.SPAWN_INTERVAL_MIN);
@@ -665,8 +743,17 @@ export class AmbientTrafficSystem {
   }
 
   /** Guarantee the fixed police pack (1 Heavy Mk5 + 2 Standard Mk2); off-screen only. */
-  _maintainPolice(sx, sy, px, py, view) {
+  _maintainPolice(sx, sy, px, py, view, layout = this._layout) {
     if (this.ships.length >= AMBIENT.MAX_SHIPS) return;
+
+    const military = listSites('station', layout).find(
+      (s) => s.socialTier === 'military' && (s.patrolDensity ?? 0) > 0
+    );
+    const frame = military
+      ? this._stationFrameAt(military, layout, this._gameTime)
+      : { x: sx, y: sy, vx: this._frameVx, vy: this._frameVy };
+    const ax = frame.x;
+    const ay = frame.y;
 
     const slots = AMBIENT.POLICE_SLOTS || [];
     const have = { heavyFighter: 0, standardFighter: 0 };
@@ -696,14 +783,14 @@ export class AmbientTrafficSystem {
       if (this.ships.length >= AMBIENT.MAX_SHIPS) break;
       if (this.countPolice() >= AMBIENT.MAX_POLICE) break;
       const slot = missing[placed];
-      let pos = this._pickOffscreenNearStation(sx, sy, px, py, view, ring);
+      let pos = this._pickOffscreenNearStation(ax, ay, px, py, view, ring);
       // Seed fallback: place on the orbit even if the ring is partly on-screen
       if (!pos && attempt > 16) {
         const ang = Math.random() * Math.PI * 2;
         const r = ring[0] + Math.random() * (ring[1] - ring[0]);
         pos = {
-          x: sx + Math.cos(ang) * r,
-          y: sy + Math.sin(ang) * r,
+          x: ax + Math.cos(ang) * r,
+          y: ay + Math.sin(ang) * r,
           r,
           orbitAng: ang,
         };
@@ -730,20 +817,34 @@ export class AmbientTrafficSystem {
   }
 
   /** One-shot near-station population so flight isn't empty. */
-  _seedStationBubble(sx, sy, px, py, view) {
-    this._maintainPolice(sx, sy, px, py, view);
+  _seedStationBubble(sx, sy, px, py, view, layout = this._layout) {
+    this._maintainPolice(sx, sy, px, py, view, layout);
 
+    const tierOpts = {
+      floor: AMBIENT.TIER_SPAWN_FLOOR,
+      sigmaFactor: AMBIENT.TIER_SPAWN_SIGMA_FACTOR,
+    };
     let toAdd = AMBIENT.SEED_NEAR_TRAFFIC;
     for (let attempt = 0; attempt < 20 && toAdd > 0; attempt++) {
       if (this.ships.length >= AMBIENT.MAX_SHIPS) break;
-      const classId = pickWeighted(SEED_NEAR_WEIGHTS);
-      const role = ROLE_BEHAVIOR[classId] || ROLE_BEHAVIOR.generalist;
+      const anchorSite = this._pickSpawnAnchorStation(layout, px, py, true);
+      if (!anchorSite) break;
+      const anchor = this._stationFrameAt(anchorSite, layout, this._gameTime);
+      const outer = stationTrafficOuterRadius(anchorSite, layout);
+      const spawnRing = [outer * 0.35, outer * 0.95];
+      const pos = this._pickOffscreenNearStation(anchor.x, anchor.y, px, py, view, spawnRing);
+      if (!pos) continue;
+      const radialR = planetRadialDistance(pos.x, pos.y, layout);
+      const tierId = pickSocialTierForRadius(radialR, layout, Math.random, tierOpts);
+      let classId = shipClassForTier(tierId, Math.random);
+      let role = ROLE_BEHAVIOR[classId] || ROLE_BEHAVIOR.generalist;
+      if (role.police || role.behavior === 'police') {
+        classId = pickWeighted(SEED_NEAR_WEIGHTS);
+        role = ROLE_BEHAVIOR[classId] || ROLE_BEHAVIOR.generalist;
+      }
       const asPolice = !!(role.police || role.behavior === 'police');
       if (asPolice && this.countPolice() >= AMBIENT.MAX_POLICE) continue;
       if (!asPolice && this.countNonPolice() >= AMBIENT.MAX_NEAR_NON_POLICE) continue;
-      const ring = role.ring || [AMBIENT.NEAR_RADIUS * 0.75, AMBIENT.MID_RADIUS * 0.55];
-      const pos = this._pickOffscreenNearStation(sx, sy, px, py, view, ring);
-      if (!pos) continue;
       const heading = pos.orbitAng + Math.PI / 2 + (Math.random() - 0.5) * 0.6;
       const ship = this._makeShip(classId, role, pos.x, pos.y, heading, _nextGroup++, asPolice);
       if (!ship) continue;
@@ -826,25 +927,79 @@ export class AmbientTrafficSystem {
     ship._leaveTarget = { x: tx, y: ty, spd };
   }
 
-  _trySpawn(sx, sy, px, py, view) {
+  _trySpawn(sx, sy, px, py, view, layout = this._layout) {
+    const tierOpts = {
+      floor: AMBIENT.TIER_SPAWN_FLOOR,
+      sigmaFactor: AMBIENT.TIER_SPAWN_SIGMA_FACTOR,
+    };
     const preferDeep = Math.random() < AMBIENT.DEEP_SPAWN_CHANCE;
-    const table = preferDeep ? DEEP_SPAWN_WEIGHTS : NEAR_SPAWN_WEIGHTS;
-    const classId = pickWeighted(table);
-    const role = ROLE_BEHAVIOR[classId] || ROLE_BEHAVIOR.generalist;
-    const asPolice = !!(role.police || role.behavior === 'police');
 
-    if (asPolice && this.countPolice() >= AMBIENT.MAX_POLICE) return;
-    if (!asPolice && !role.deep && this.countNonPolice() >= AMBIENT.MAX_NEAR_NON_POLICE) {
+    if (preferDeep) {
+      const spawnR =
+        AMBIENT.DEEP_SPAWN_MIN +
+        Math.random() * (AMBIENT.DEEP_SPAWN_MAX - AMBIENT.DEEP_SPAWN_MIN);
+      const pc = this._planetCenter(layout);
+      const pos = this._pickOffscreenDeep(pc.x, pc.y, px, py, view, spawnR);
+      if (!pos) return;
+      const radialR = planetRadialDistance(pos.x, pos.y, layout);
+      const tierId = pickSocialTierForRadius(radialR, layout, Math.random, tierOpts);
+      let classId = shipClassForTier(tierId, Math.random);
+      let role = ROLE_BEHAVIOR[classId] || ROLE_BEHAVIOR.generalist;
+      if (!role.deep) {
+        classId = pickWeighted(DEEP_SPAWN_WEIGHTS);
+        role = ROLE_BEHAVIOR[classId] || ROLE_BEHAVIOR.generalist;
+      }
+      const tierWeight = tierAffinityAtRadius(radialR, tierId, layout, tierOpts);
+      const dens = densityAtDistance(spawnR);
+      const corridorMult = corridorSpawnFactor(pos.x, pos.y, this._gameTime ?? 0, layout);
+      if (Math.random() > (dens * AMBIENT.DEEP_ACCEPT * tierWeight) / corridorMult) return;
+      const groupId = _nextGroup++;
+      const heading = pos.orbitAng + Math.PI / 2 + (Math.random() - 0.5) * 0.8;
+      const ship = this._makeShip(classId, role, pos.x, pos.y, heading, groupId, false);
+      if (ship) {
+        ship.orbitAngle = pos.orbitAng;
+        ship.orbitR = pos.r;
+        this.ships.push(ship);
+      }
       return;
     }
 
-    // Flyby / race: enter from off-screen edge
+    const anchorSite = this._pickSpawnAnchorStation(layout, px, py, true);
+    if (!anchorSite) return;
+    const anchor = this._stationFrameAt(anchorSite, layout, this._gameTime);
+    const outer = stationTrafficOuterRadius(anchorSite, layout);
+    const spawnRing = [outer * 0.35, outer * 1.05];
+    const pos = this._pickOffscreenNearStation(anchor.x, anchor.y, px, py, view, spawnRing);
+    if (!pos) return;
+
+    const radialR = planetRadialDistance(pos.x, pos.y, layout);
+    const tierId = pickSocialTierForRadius(radialR, layout, Math.random, tierOpts);
+    let classId = shipClassForTier(tierId, Math.random);
+    let role = ROLE_BEHAVIOR[classId] || ROLE_BEHAVIOR.generalist;
+
+    if (role.police || role.behavior === 'police') {
+      if (this.countPolice() >= AMBIENT.MAX_POLICE) return;
+    }
+    if (!role.deep && this.countNonPolice() >= AMBIENT.MAX_NEAR_NON_POLICE) return;
+
     if (role.behavior === 'flyby' || role.behavior === 'race') {
-      const edge = this._pickOffscreenFlyby(sx, sy, px, py, view);
+      const edge = this._pickOffscreenFlyby(anchor.x, anchor.y, px, py, view);
       if (!edge) return;
-      const dens = densityAtDistance(dist(edge.x, edge.y, sx, sy));
-      const corridorMult = corridorSpawnFactor(edge.x, edge.y, this._gameTime ?? 0);
-      if (Math.random() > (dens * AMBIENT.NEAR_ACCEPT) / corridorMult) return;
+      const edgeRadial = planetRadialDistance(edge.x, edge.y, layout);
+      const edgeTier = pickSocialTierForRadius(edgeRadial, layout, Math.random, tierOpts);
+      classId = shipClassForTier(edgeTier, Math.random);
+      role = ROLE_BEHAVIOR[classId] || ROLE_BEHAVIOR.generalist;
+      if (role.behavior !== 'flyby' && role.behavior !== 'race') {
+        role = ROLE_BEHAVIOR.racer;
+        classId = 'racer';
+      }
+      const tierWeight = tierAffinityAtRadius(edgeRadial, edgeTier, layout, tierOpts);
+      const dens = densityAtDistance(dist(edge.x, edge.y, anchor.x, anchor.y));
+      const corridorMult = corridorSpawnFactor(edge.x, edge.y, this._gameTime ?? 0, layout);
+      const patrolScale = 0.65 + 0.35 * (anchorSite.patrolDensity ?? 1);
+      if (Math.random() > (dens * AMBIENT.NEAR_ACCEPT * tierWeight * patrolScale) / corridorMult) {
+        return;
+      }
       const n =
         role.groupMin != null
           ? role.groupMin +
@@ -866,32 +1021,13 @@ export class AmbientTrafficSystem {
       return;
     }
 
-    let spawnR;
-    if (role.deep) {
-      spawnR =
-        AMBIENT.DEEP_SPAWN_MIN +
-        Math.random() * (AMBIENT.DEEP_SPAWN_MAX - AMBIENT.DEEP_SPAWN_MIN);
-    } else {
-      const ring = role.ring || [AMBIENT.NEAR_RADIUS * 0.7, AMBIENT.MID_RADIUS * 0.85];
-      spawnR = ring[0] + Math.random() * (ring[1] - ring[0]);
+    const tierWeight = tierAffinityAtRadius(radialR, tierId, layout, tierOpts);
+    const dens = densityAtDistance(dist(pos.x, pos.y, anchor.x, anchor.y));
+    const corridorMult = corridorSpawnFactor(pos.x, pos.y, this._gameTime ?? 0, layout);
+    const patrolScale = 0.65 + 0.35 * (anchorSite.patrolDensity ?? 1);
+    if (Math.random() > (dens * AMBIENT.NEAR_ACCEPT * tierWeight * patrolScale) / corridorMult) {
+      return;
     }
-
-    const dens = densityAtDistance(spawnR);
-    const accept = role.deep ? AMBIENT.DEEP_ACCEPT : AMBIENT.NEAR_ACCEPT;
-
-    const pos = role.deep
-      ? this._pickOffscreenDeep(sx, sy, px, py, view, spawnR)
-      : this._pickOffscreenNearStation(
-          sx,
-          sy,
-          px,
-          py,
-          view,
-          role.ring || [spawnR * 0.9, spawnR * 1.1]
-        );
-    if (!pos) return;
-    const corridorMult = corridorSpawnFactor(pos.x, pos.y, this._gameTime ?? 0);
-    if (Math.random() > (dens * accept) / corridorMult) return;
 
     const n =
       role.groupMin != null
@@ -904,7 +1040,6 @@ export class AmbientTrafficSystem {
 
     for (let i = 0; i < n; i++) {
       if (this.ships.length >= AMBIENT.MAX_SHIPS) break;
-      if (asPolice && this.countPolice() >= AMBIENT.MAX_POLICE) break;
       const ox = (i - (n - 1) / 2) * 42;
       const oy = i * 28;
       const cos = Math.cos(leadHeading);
@@ -913,7 +1048,7 @@ export class AmbientTrafficSystem {
       const gy = pos.y + ox * sin + oy * cos;
       if (this._isInPresenceBubble(gx, gy, view)) continue;
       if (dist(gx, gy, px, py) < AMBIENT.PLAYER_CLEARANCE) continue;
-      const ship = this._makeShip(classId, role, gx, gy, leadHeading, groupId, asPolice);
+      const ship = this._makeShip(classId, role, gx, gy, leadHeading, groupId, false);
       if (ship) {
         ship.orbitAngle = pos.orbitAng;
         ship.orbitR = pos.r;
@@ -971,6 +1106,11 @@ export class AmbientTrafficSystem {
     const vx = frame.frameVx + Math.cos(heading) * speed;
     const vy = frame.frameVy + Math.sin(heading) * speed;
 
+    const layout = this._layout ?? getSectorLayout();
+    const pc = this._planetCenter(layout);
+    const orbitR = dist(x, y, pc.x, pc.y);
+    const orbitAng = Math.atan2(y - pc.y, x - pc.x);
+
     const ship = {
       id: _nextId++,
       groupId,
@@ -990,8 +1130,8 @@ export class AmbientTrafficSystem {
       pendingCull: false,
       state: 'enter',
       stateT: 0,
-      orbitAngle: Math.atan2(y - STATION.WORLD_Y, x - STATION.WORLD_X),
-      orbitR: dist(x, y, STATION.WORLD_X, STATION.WORLD_Y),
+      orbitAngle: orbitAng,
+      orbitR,
       targetAsteroid: null,
       scanTarget: null,
       miningLaserFiring: false,
@@ -1005,8 +1145,8 @@ export class AmbientTrafficSystem {
       getTurretLocalAngle: () => 0,
       velocity: { x: vx, y: vy },
       patrolLeg: 0,
-      patrolPhase: Math.atan2(y - STATION.WORLD_Y, x - STATION.WORLD_X),
-      patrolR: dist(x, y, STATION.WORLD_X, STATION.WORLD_Y),
+      patrolPhase: orbitAng,
+      patrolR: orbitR,
       holdLeg: 0,
       holdReverse: false,
       cruiseSpd: speed,

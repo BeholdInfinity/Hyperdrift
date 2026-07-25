@@ -411,37 +411,49 @@
       </aside>
 
       <aside class="bp-dock bp-dock-right" id="sme-panel-right">
-        <section class="bp-card bp-card-grow">
-          <h3 class="bp-card-title">Selection</h3>
-          <p class="bp-meta" id="sme-sel-name">—</p>
-          <p class="bp-meta" id="sme-sel-meta">Click a site, ring, or tier band on the map</p>
-          <div class="sme-orbit-stats hidden" id="sme-orbit-stats">
-            <p class="bp-meta sme-orbit-stats-title" id="sme-orbit-stats-title">Circular orbit</p>
-            <p class="bp-meta" id="sme-orbit-radius">Radius — u</p>
-            <p class="bp-meta" id="sme-orbit-speed">Speed — u/s</p>
-            <p class="bp-meta" id="sme-orbit-period">Period —</p>
-          </div>
-          <div class="sme-field-row hidden" id="sme-tier-fields">
-            <label class="sme-field">Orbit R <input type="number" id="sme-tier-orbit-r" class="dev-num-input" step="1000" /></label>
-          </div>
-          <div class="sme-field-row hidden" id="sme-ring-fields">
-            <label class="sme-field">Mid R <input type="number" id="sme-ring-mid" class="dev-num-input" step="1000" /></label>
-            <label class="sme-field">Width <input type="number" id="sme-ring-width" class="dev-num-input" step="1000" min="5000" /></label>
-            <label class="sme-field">Density <input type="number" id="sme-ring-density" class="dev-num-input" step="0.05" min="0" max="3" /></label>
-          </div>
-          <div class="sme-field-row hidden" id="sme-orbit-fields">
-            <label class="sme-field">Orbit R <input type="number" id="sme-orbit-r" class="dev-num-input" step="1000" /></label>
-            <label class="sme-field">Angle° <input type="number" id="sme-orbit-angle" class="dev-num-input" step="1" /></label>
-          </div>
-          <div class="sme-field-row hidden" id="sme-surface-fields">
-            <label class="sme-field">Surface° <input type="number" id="sme-surface-angle" class="dev-num-input" step="1" /></label>
-          </div>
-          <div class="sme-field-row hidden" id="sme-static-fields">
-            <label class="sme-field">X <input type="number" id="sme-static-x" class="dev-num-input" step="1000" /></label>
-            <label class="sme-field">Y <input type="number" id="sme-static-y" class="dev-num-input" step="1000" /></label>
-          </div>
-        </section>
-        <p class="bp-hint"><kbd>DRAG</kbd> move · <kbd>CLICK</kbd> rings/tiers · <kbd>SHIFT</kbd> snap tier · <kbd>ESC</kbd> back</p>
+        <div class="sme-right-split">
+          <section class="bp-card sme-selection-card">
+            <h3 class="bp-card-title">Selection</h3>
+            <div class="sme-selection-scroll">
+              <p class="bp-meta sme-sel-line" id="sme-sel-name">—</p>
+              <p class="bp-meta sme-sel-line" id="sme-sel-meta">Click a site, ring, or tier band on the map</p>
+              <div class="sme-orbit-stats hidden" id="sme-orbit-stats">
+                <p class="bp-meta sme-orbit-stats-title" id="sme-orbit-stats-title">Circular orbit</p>
+                <p class="bp-meta sme-sel-line" id="sme-orbit-radius">Radius — u</p>
+                <p class="bp-meta sme-sel-line" id="sme-orbit-speed">Speed — u/s</p>
+                <p class="bp-meta sme-sel-line" id="sme-orbit-period">Period —</p>
+              </div>
+              <div class="sme-field-row hidden" id="sme-tier-fields">
+                <label class="sme-field">Orbit R <input type="number" id="sme-tier-orbit-r" class="dev-num-input" step="1000" /></label>
+              </div>
+              <div class="sme-field-row hidden" id="sme-ring-fields">
+                <label class="sme-field">Mid R <input type="number" id="sme-ring-mid" class="dev-num-input" step="1000" /></label>
+                <label class="sme-field">Width <input type="number" id="sme-ring-width" class="dev-num-input" step="1000" min="5000" /></label>
+                <label class="sme-field">Density <input type="number" id="sme-ring-density" class="dev-num-input" step="0.05" min="0" max="3" /></label>
+              </div>
+              <div class="sme-field-row hidden" id="sme-orbit-fields">
+                <label class="sme-field">Orbit R <input type="number" id="sme-orbit-r" class="dev-num-input" step="1000" /></label>
+                <label class="sme-field">Angle° <input type="number" id="sme-orbit-angle" class="dev-num-input" step="1" /></label>
+                <label class="sme-field hidden">Fringe clearance <input type="number" id="sme-fringe-clearance" class="dev-num-input" step="1000" min="0" /></label>
+              </div>
+              <div class="sme-field-row hidden" id="sme-surface-fields">
+                <label class="sme-field">Surface° <input type="number" id="sme-surface-angle" class="dev-num-input" step="1" /></label>
+              </div>
+              <div class="sme-field-row hidden" id="sme-static-fields">
+                <label class="sme-field">X <input type="number" id="sme-static-x" class="dev-num-input" step="1000" /></label>
+                <label class="sme-field">Y <input type="number" id="sme-static-y" class="dev-num-input" step="1000" /></label>
+              </div>
+            </div>
+          </section>
+          <section class="sme-layout-output" aria-label="Layout draft export">
+            <header class="sme-layout-output-head">
+              <span class="sme-layout-output-title">Layout output</span>
+              <button type="button" class="bp-inspector-copy" id="sme-layout-copy" title="Copy baked layout module">Copy</button>
+            </header>
+            <pre class="sme-layout-output-body" id="sme-layout-output"></pre>
+          </section>
+        </div>
+        <p class="bp-hint sme-right-hint"><kbd>DRAG</kbd> move · <kbd>CLICK</kbd> rings/tiers · <kbd>SHIFT</kbd> snap tier · <kbd>ESC</kbd> back</p>
       </aside>
 
       <button id="sector-editor-back-btn" class="menu-btn panel-btn" type="button">Back</button>

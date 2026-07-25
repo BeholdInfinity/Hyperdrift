@@ -108,7 +108,9 @@ src/
       CrewShared.js       Shared crew movement/heading helpers
     ServiceBoard.js       Pad status board service checklist (row layout, scroll, column draw)
     HangarVisitorShips.js Modular hangar visitors (generateVisitor + ShipRenderer; locked shipDef)
-    AmbientTrafficSystem.js Near-station traffic + always-on cops; off-screen spawn/despawn
+    AmbientTrafficSystem.js Multi-station traffic + tier-radial spawn affinity; police at military tier; off-screen spawn/despawn
+    SocialTierTraffic.js   Planet-radial social tier weights for ambient class selection
+    RingBeltVisual.js      Composition/density/width-aware sector map belt fills
     NpcPilot.js           Shared Newtonian thruster pilot (holds, police hex, ambient burns)
     Station.js            Jennings Station overworld exterior + dock zones
     PoiSystem.js          POI address book + discovery; `worldPosition(poi, t)` for orbital/surface sites
@@ -225,7 +227,7 @@ Full plan + todo list: [`WORLD_GEOGRAPHY_PLAN.md`](WORLD_GEOGRAPHY_PLAN.md) (cod
 
 **Shipped:** Stage 1 foundation; Stage 2 visuals core + **map editor MVP** (drag sites, validator, bake); Stage 3 motion core (gravity, orbiting stations/gates, `worldPosition`, PRO/SYNC, corridors, Jennings ambient co-orbit v0.1.290); Stage 4 systems core (warp gates, LIM/fines stub, chart zoom); Stage 5 Place registry (Jennings-clone + planetary stubs); **`InteriorSession`** hangar instancing.
 
-**Open (see plan todos):** sector editor advanced (ring handles, undo); kinematic asteroid belts; multi-station ambient traffic; trade block / broker / outlaw IFF wiring; non-Jennings dock exterior stubs; fragment gravity; dev gravity μ slider.
+**Open (see plan todos):** sector editor advanced (ring handles, undo); kinematic asteroid belts; trade block / broker / outlaw IFF wiring; non-Jennings dock exterior stubs; fragment gravity; dev gravity μ slider.
 
 ### Polish / follow-ups
 - **Thruster cup size** — tune via Blueprint Author sliders / `visualTuning.js` (still subjective)
