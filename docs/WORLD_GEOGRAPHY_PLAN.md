@@ -5,26 +5,62 @@ todos:
   - id: stage-1-foundation
     content: Stage 1 — Layout v2, SectorBootstrap, bootstrap sites, planet spin, soft fringe, persistence bump
     status: completed
-  - id: stage-2-editor-visuals
-    content: Stage 2 — Sector Map editor (polish), RingBackdrop, fog-tier map, proc exclusion zones
+  - id: stage-2-visuals-core
+    content: "Stage 2 (core) — RingBackdrop, fog-tier sector map, proc exclusion zones, validator + bake gate"
     status: completed
-  - id: stage-3-motion
-    content: Stage 3 — Gravity, OrbitKinematics, kinematic belts/stations, worldPosition HUD, PRO/SYNC, corridors
+  - id: stage-2-editor-polish
+    content: "Stage 2 (polish) — Sector Map editor on LIVE map (drag sites, site list, tier/traffic overlays, live validator, bake); Validate in dev drawer"
     status: completed
-  - id: stage-4-systems
-    content: Stage 4 — Warp gates, Iron Crown, traffic law/fines/LIM, patrol tiers, chart zoom
+  - id: stage-2-editor-advanced
+    content: "Stage 2 (follow-up) — Ring band drag handles, warp-pair placement tool, undo stack, corridor overlay preview"
+    status: pending
+  - id: stage-3-motion-core
+    content: "Stage 3 (core) — Gravity, OrbitKinematics, orbiting stations/warp gates, worldPosition HUD, PRO/SYNC, transit corridors, Jennings ambient co-orbit"
     status: completed
-  - id: stage-5-content
-    content: Stage 5 — Jennings-clone Place stubs, planetary outposts, handoff docs
+  - id: stage-3-kinematic-belts
+    content: "Stage 3 — Kinematic asteroid belts + chunk positions from seed + simTime (not static spawn xy)"
+    status: pending
+  - id: stage-3-fragment-gravity
+    content: Stage 3 — Ship breakup fragments inherit gravity (not drag-only drift)
+    status: pending
+  - id: stage-3-multi-station-traffic
+    content: "Stage 3 — Ambient traffic at all 12 live station anchors; patrolDensity scales spawn near each port"
+    status: pending
+  - id: stage-3-dev-gravity-slider
+    content: Stage 3 — Dev drawer gravity μ slider + co-orbit acceptance helper
+    status: pending
+  - id: stage-4-systems-core
+    content: "Stage 4 (core) — Warp gates, Iron Crown proximity stub, SpeedLimit/LIM, TrafficRecord fines, chart zoom, regulatory shell overlays"
     status: completed
+  - id: stage-4-trade-law-wire
+    content: "Stage 4 — Wire trade block (canTradeAt), broker payoff (payStation UI), outlaw IFF → hostile radar/combat"
+    status: pending
+  - id: stage-4-sensor-jurisdiction
+    content: "Stage 4 — Inner-ring sensor_auto cites correct station/jurisdiction (not hardcoded site.jennings)"
+    status: pending
+  - id: stage-5-place-registry
+    content: "Stage 5 (core) — Jennings-clone Place factories (socialTier themes), planetary outpost stubs, GDD/OPEN_QUESTIONS geography sync"
+    status: completed
+  - id: stage-5-multi-port-dock
+    content: "Stage 5 — Non-Jennings overworld exterior stub + dock prompt (Neon Moon, Dry County playtest path)"
+    status: pending
+  - id: rec-priority-editor
+    content: "Recommended next — Stage 2 editor polish (largest spec vs code gap; unlocks layout tuning without code edits)"
+    status: completed
+  - id: rec-priority-belts
+    content: "Recommended — Stage 3 kinematic belts (rings feel alive; pairs with gravity tuning)"
+    status: pending
+  - id: rec-priority-traffic-law
+    content: "Recommended — Stage 4 trade-law wiring (fines ledger exists; economic consequences are no-ops today)"
+    status: pending
 isProject: false
 ---
 
 # World Geography Plan
 
-> **Implementation status:** **RESTORED** (2026-07-24). Rebuilt from agent transcript after v0.1.286 revert. Edge benchmarks ~75 FPS at full zoom-out on reverted build — geography + perf work re-applied; validate in standalone browser (not Cursor embedded browser).
+> **Implementation status:** **PARTIAL** (code audit 2026-07-25). Stage 1 + core slices of Stages 2–5 shipped in v0.1.287–290. **Open:** polished sector editor, kinematic belts, multi-station traffic, trade-law gameplay hooks, non-Jennings dock exteriors. See frontmatter todos. Edge benchmarks ~75 FPS hangar + quick launch (Jul 2026).
 
-> **Build policy:** **Stage 1 only** per session unless the user explicitly approves the next stage. Full Stages 1–5 were restored in one pass per user request.
+> **Build policy:** Ship **one todo cluster** per session unless the user explicitly approves more. Stage 1 is done; pick from pending todos by priority.
 
 ## Post-plan decisions (locked after plan freeze)
 

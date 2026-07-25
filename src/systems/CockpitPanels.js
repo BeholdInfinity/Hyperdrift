@@ -22,6 +22,11 @@ import {
   updateSectorMapMarkerHover,
 } from './SectorMapPanel.js';
 import { stepTravelLogListScroll } from '../world/TravelLogTable.js';
+import { isSectorEditorActive } from '../dev/DevSectorEditor.js';
+import {
+  processSectorEditorPointer,
+  sectorEditorBlocksMapClick,
+} from '../dev/SectorMapEditor.js';
 import {
   drawPipLoadoutPanel,
   drawPipLoadoutPreview,
@@ -76,6 +81,7 @@ export class CockpitPanels {
   constructor() {
     this.tabs = { destination: 0, power: 0, sector: 0 };
     this._mapDragTracking = false;
+    this._sectorEditorTracking = false;
     /** @type {Array<{x:number,y:number,w:number,h:number,action:Function}>} */
     this._regions = [];
     /** @type {Array<{x:number,y:number,w:number,h:number,entryId:string}>} */
@@ -377,6 +383,9 @@ export class CockpitPanels {
 
   /** Right-click on travel log rows opens rename menu. */
   handleRightClick(x, y, engine) {
+    if (sectorEditorBlocksMapClick() && engine.sectorMapView?.containsMapPoint(x, y)) {
+      return true;
+    }
     if (pipLoadoutRightClick(engine, x, y, this)) {
       engine.sectorMapView.travelLogMenu = null;
       this.poiBookMenu = null;
@@ -1230,7 +1239,15 @@ export class CockpitPanels {
     }
     const mx = input.mouseScreen.x;
     const my = input.mouseScreen.y;
-    if (!zoomWheel && !input.mouseDown && !this._mapDragTracking) {
+
+    if (isSectorEditorActive() && view.mapBody && view.containsMapPoint(mx, my)) {
+      view.followShip = false;
+      if (processSectorEditorPointer(engine, input, this, zoomWheel)) return true;
+    } else if (!input.mouseDown) {
+      this._sectorEditorTracking = false;
+    }
+
+    if (!zoomWheel && !input.mouseDown && !this._mapDragTracking && !this._sectorEditorTracking) {
       const overMap = view.mapBody && view.containsMapPoint(mx, my);
       const overLog =
         view.tabs.sector === 1 && view.containsTravelLogList(mx, my);
@@ -1262,7 +1279,7 @@ export class CockpitPanels {
       view.hoverWorld = null;
       view.mapHoverTooltip = null;
     }
-    if (engine.mode !== 'playing' || !view.mapBody || view.modal) {
+    if (engine.mode !== 'playing' || !view.mapBody || view.modal || isSectorEditorActive()) {
       if (!input.mouseDown) this._mapDragTracking = false;
       return false;
     }
@@ -1285,6 +1302,7 @@ export class CockpitPanels {
   trySectorMapClick(engine, sx, sy, shiftKey) {
     const view = engine.sectorMapView;
     if (!view.mapBody || !view.containsMapPoint(sx, sy)) return false;
+    if (sectorEditorBlocksMapClick()) return true;
     if (view.suppressClick || view.pointerDragging()) return false;
     const w = view.screenToWorld(sx, sy, view.mapBody);
     sectorMapClick(engine, w.x, w.y, shiftKey);
@@ -1293,6 +1311,7 @@ export class CockpitPanels {
 
   /** MMB on LIVE sector map — add nav stop. */
   trySectorMapMiddleClick(engine, sx, sy) {
+    if (sectorEditorBlocksMapClick()) return true;
     return sectorMapMiddleClick(engine, sx, sy);
   }
 

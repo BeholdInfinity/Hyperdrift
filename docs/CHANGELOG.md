@@ -6,6 +6,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Added
+- **Full-screen sector map editor (dev)** — Blueprint-style **SECTOR MAP EDITOR** mode: unified list, editable rings/tiers/socialOrbitInner, filter fading, expanded validator with rule hover hints; asteroid belts render with a light gray speckle fill on the map; **Save anyway** bypasses blocking validator errors; `minOrbitalSep` lowered to **150k u**.
+- **Dev sector map editor (Stage 2 polish)** — live `sectorEditorDraft` override on the sector layout; traffic-shell + tier-band overlays; bake still prefers validator pass but can be forced.
+
 ### Planned
 
 - Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)

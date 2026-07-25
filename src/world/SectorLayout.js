@@ -6,8 +6,19 @@ import { SECTOR_LAYOUT } from './data/sectorLayout.js';
 import { positionAt, velocityAt } from './OrbitKinematics.js';
 import { surfacePositionAt } from './PlanetSpin.js';
 
+/** When set, dev sector editor preview uses the in-memory draft. */
+let _layoutOverride = null;
+
+export function setSectorLayoutOverride(layout) {
+  _layoutOverride = layout;
+}
+
+export function clearSectorLayoutOverride() {
+  _layoutOverride = null;
+}
+
 export function getSectorLayout() {
-  return SECTOR_LAYOUT;
+  return _layoutOverride ?? SECTOR_LAYOUT;
 }
 
 export function getJenningsSite(layout = getSectorLayout()) {

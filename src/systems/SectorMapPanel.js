@@ -5,6 +5,8 @@
 import { IFF, NAV } from '../core/Constants.js';
 import { getSectorLayout, listSites, siteWorldPosition, stationTrafficZonesFor } from '../world/SectorLayout.js';
 import { planetSpinAngle } from '../world/PlanetSpin.js';
+import { isSectorEditorActive, sectorEditorUI } from '../dev/DevSectorEditor.js';
+import { drawSectorEditorOverlay } from '../dev/SectorMapEditor.js';
 import { formatTripDate } from '../world/TravelLog.js';
 import { trailDistance } from '../world/SectorMap.js';
 import {
@@ -25,6 +27,55 @@ const TXT = 'rgba(200, 224, 246, 0.9)';
 const DIM = 'rgba(150, 178, 202, 0.55)';
 const COPPER = 'rgba(230, 171, 109, 0.92)';
 const ACCENT = 'rgba(120, 200, 255, 0.85)';
+
+/** Cached light-gray speckle tile for asteroid belt fills. */
+let _ringBeltPatternCanvas = null;
+
+function ringBeltPattern(ctx) {
+  if (!_ringBeltPatternCanvas) {
+    const size = 16;
+    _ringBeltPatternCanvas = document.createElement('canvas');
+    _ringBeltPatternCanvas.width = size;
+    _ringBeltPatternCanvas.height = size;
+    const p = _ringBeltPatternCanvas.getContext('2d');
+    p.fillStyle = '#a8b0ba';
+    p.fillRect(0, 0, size, size);
+    for (let y = 0; y < size; y++) {
+      for (let x = 0; x < size; x++) {
+        const v = ((x * 17 + y * 31 + (x ^ y) * 13) % 9) / 9;
+        p.fillStyle = v > 0.55 ? 'rgba(255, 255, 255, 0.16)' : 'rgba(60, 68, 78, 0.1)';
+        p.fillRect(x, y, 1, 1);
+      }
+    }
+  }
+  return ctx.createPattern(_ringBeltPatternCanvas, 'repeat');
+}
+
+/** Filled annulus with a light gray repeating texture (screen px radii). */
+export function drawRingBeltFill(ctx, cx, cy, innerPx, outerPx, alpha = 1) {
+  if (outerPx < innerPx + 0.5 || outerPx < 2 || alpha <= 0.01) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, outerPx, 0, Math.PI * 2);
+  ctx.arc(cx, cy, innerPx, 0, Math.PI * 2, true);
+  ctx.closePath();
+  ctx.clip();
+
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = 'rgba(170, 178, 188, 0.28)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, outerPx, 0, Math.PI * 2);
+  ctx.arc(cx, cy, innerPx, 0, Math.PI * 2, true);
+  ctx.fill('evenodd');
+
+  const pat = ringBeltPattern(ctx);
+  if (pat) {
+    ctx.fillStyle = pat;
+    ctx.globalAlpha = alpha * 0.55;
+    ctx.fillRect(cx - outerPx, cy - outerPx, outerPx * 2, outerPx * 2);
+  }
+  ctx.restore();
+}
 
 /** Offscreen cache for panned sector map (follow-ship mode pans every frame). */
 const _mapStaticCache = { canvas: null, ctx: null, w: 0, h: 0, key: '' };
@@ -49,7 +100,11 @@ function mapStaticCacheKey(box, engine, view, span, fog) {
   const spin = Math.floor((engine.gameTime || 0) * 3);
   const fogRev = engine.sectorMap.fogRevision || 0;
   const trails = engine.travelLog.visibleEntries().length;
-  return `${box.w}x${box.h}|${px},${py}|${z}|${Math.round(span)}|${spin}|${fogRev}|${trails}|${fog ? 1 : 0}`;
+  const ed =
+    isSectorEditorActive()
+      ? `|ed${sectorEditorUI.revision}|${sectorEditorUI.selectedSiteId}|${sectorEditorUI.showTrafficPreview}|${sectorEditorUI.showTierBands}`
+      : '';
+  return `${box.w}x${box.h}|${px},${py}|${z}|${Math.round(span)}|${spin}|${fogRev}|${trails}|${fog ? 1 : 0}${ed}`;
 }
 
 export function drawSectorMapPanel(ctx, box, engine, panels) {
@@ -185,24 +240,27 @@ function drawMapCanvas(ctx, box, engine, view, { fog, liveTrail }) {
   ctx.restore();
 }
 
-function drawMapStaticLayers(ctx, box, engine, view, { fog, scale, span }) {
+function drawMapStaticLayers(ctx, box, engine, view, { fog, scale, span, bright = false, skipPoi = false, gameTime = null, editorFilterFade = null }) {
   const map = engine.sectorMap;
   const cell = map.cellSize;
+  const t = gameTime ?? engine.gameTime ?? 0;
 
   ctx.fillStyle = 'rgba(8, 16, 24, 0.6)';
   ctx.fillRect(box.x, box.y, box.w, box.h);
 
   const layout = getSectorLayout();
   const pr = layout.planet.radius;
-  const spin = planetSpinAngle(engine.gameTime || 0, layout);
+  const spin = planetSpinAngle(t, layout);
   const ps = view.worldToScreen(0, 0, box);
   const prScreen = pr * scale;
   const fogAt = (wx, wy) => {
+    if (bright) return 2;
     const cx = Math.floor(wx / cell);
     const cy = Math.floor(wy / cell);
     return map.cellLevel(cx, cy);
   };
   const geoAlpha = (wx, wy, active = 0.85, stale = 0.35, unseen = 0.12) => {
+    if (bright) return active;
     const lvl = fogAt(wx, wy);
     if (lvl >= 2) return active;
     if (lvl === 1) return stale;
@@ -244,7 +302,14 @@ function drawMapStaticLayers(ctx, box, engine, view, { fog, scale, span }) {
     const ro = ring.outerR * scale;
     if (ro < 2) continue;
     const midR = (ring.innerR + ring.outerR) * 0.5;
-    const ringAlpha = geoAlpha(Math.cos(spin) * midR, Math.sin(spin) * midR, 0.22, 0.14, 0.06);
+    let ringAlpha = geoAlpha(Math.cos(spin) * midR, Math.sin(spin) * midR, 0.22, 0.14, 0.06);
+    let fillAlpha = geoAlpha(Math.cos(spin) * midR, Math.sin(spin) * midR, 0.38, 0.24, 0.1);
+    if (typeof editorFilterFade === 'function') {
+      const fade = editorFilterFade('ring', ring);
+      ringAlpha *= fade;
+      fillAlpha *= fade;
+    }
+    drawRingBeltFill(ctx, ps.x, ps.y, ri, ro, fillAlpha);
     ctx.strokeStyle = `rgba(80, 100, 120, ${ringAlpha})`;
     ctx.lineWidth = 1;
     ctx.beginPath();
@@ -258,7 +323,7 @@ function drawMapStaticLayers(ctx, box, engine, view, { fog, scale, span }) {
   if (span < 120000) {
     for (const site of listSites('station', layout)) {
       if (site.trafficPolicy === 'none') continue;
-      const pos = siteWorldPosition(site, engine.gameTime || 0, layout);
+      const pos = siteWorldPosition(site, t, layout);
       const ss = view.worldToScreen(pos.x, pos.y, box);
       const zones = stationTrafficZonesFor(site, layout);
       for (const z of zones) {
@@ -313,8 +378,9 @@ function drawMapStaticLayers(ctx, box, engine, view, { fog, scale, span }) {
     strokeTrail(ctx, entry.trail, box, view, engine.travelLog.colorForEntry(entry));
   }
 
+  if (!skipPoi) {
   for (const poi of engine.poiSystem.mapPois()) {
-    const pos = engine.poiSystem.worldPosition(poi, engine.gameTime || 0);
+    const pos = engine.poiSystem.worldPosition(poi, t);
     const s = view.worldToScreen(pos.x, pos.y, box);
     const sel = poi.id === engine.poiSystem.selectedId;
     const isPin = engine.poiSystem.isUserPin(poi);
@@ -334,7 +400,31 @@ function drawMapStaticLayers(ctx, box, engine, view, { fog, scale, span }) {
       }
     }
   }
+  }
   ctx.globalAlpha = 1;
+}
+
+/** Standalone map draw for full-screen sector editor (no ship / no fog). */
+export function drawStandaloneSectorMap(ctx, box, engine, view, opts = {}) {
+  const fog = opts.fog ?? false;
+  const bright = opts.bright ?? false;
+  const gameTime = opts.gameTime ?? engine.gameTime ?? 0;
+  const scale = view.scaleForBox(box.w, box.h);
+  const span = view.worldSpan(box.w, box.h);
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(box.x, box.y, box.w, box.h);
+  ctx.clip();
+  drawMapStaticLayers(ctx, box, engine, view, {
+    fog,
+    scale,
+    span,
+    bright,
+    skipPoi: true,
+    gameTime,
+    editorFilterFade: opts.editorFilterFade ?? null,
+  });
+  ctx.restore();
 }
 
 function drawMapDynamicLayers(ctx, box, engine, view, { liveTrail, ship }) {
@@ -478,6 +568,9 @@ function drawMapRecenterButton(ctx, mapBox, panels, action) {
 
 function drawMapOverlays(ctx, mapBox, engine, panels, { travelLogOpen = false } = {}) {
   const view = engine.sectorMapView;
+  if (isSectorEditorActive()) {
+    drawSectorEditorOverlay(ctx, mapBox, engine, view);
+  }
   if (travelLogOpen && !view.followShip) {
     drawMapRecenterButton(ctx, mapBox, panels, (e) => e.sectorMapView.recenter(e.ship));
   }

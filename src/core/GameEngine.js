@@ -30,6 +30,8 @@ import { drawRingBackdrop } from '../world/RingBackdrop.js';
 import { getSiteById, siteWorldPosition } from '../world/SectorLayout.js';
 import { NavRoute } from '../world/NavRoute.js';
 import { SectorMapView } from '../systems/SectorMapView.js';
+import { drawSectorEditorFrame, processSectorEditorInput } from '../systems/SectorEditorPanel.js';
+import { setSectorEditorActive } from '../dev/DevSectorEditor.js';
 import { WeaponSystem } from '../systems/WeaponSystem.js';
 import { CombatSystem } from '../combat/CombatSystem.js';
 import {
@@ -130,7 +132,7 @@ export class GameEngine {
     this.canvas = canvas;
     this.running = false;
     this.paused = false;
-    /** @type {'title'|'playing'|'hangar'|'controls'|'blueprint'} */
+    /** @type {'title'|'playing'|'hangar'|'controls'|'blueprint'|'sectorEditor'} */
     this.mode = 'title';
     this.lastTime = 0;
 
@@ -152,6 +154,10 @@ export class GameEngine {
     this.sectorMap = new SectorMap();
     this.travelLog = new TravelLog();
     this.sectorMapView = new SectorMapView();
+    this._sectorEditorView = new SectorMapView();
+    this._sectorEditorReturn = 'title';
+    /** @type {'pan'|'site'|null} */
+    this._sectorEditorPointer = null;
     this.nextExpeditionId = 1;
     this.expeditionStartedAt = 0;
     this._expeditionActive = false;
@@ -285,6 +291,7 @@ export class GameEngine {
     this._overlay = document.getElementById('overlay');
     this._controlsHud = document.getElementById('controls-hud');
     this._blueprintHud = document.getElementById('blueprint-hud');
+    this._sectorEditorHud = document.getElementById('sector-editor-hud');
     this._dockHud = document.getElementById('dock-hud');
     this._hangarLaunchBtn = document.getElementById('hangar-launch-btn');
 
@@ -1069,6 +1076,105 @@ export class GameEngine {
     this._setLaunchBtnVisible(false);
     this._setDockHud(false);
     if (typeof this.onBlueprintEnter === 'function') this.onBlueprintEnter();
+  }
+
+  /**
+   * Dev full-screen Thera sector map editor.
+   * @param {'title'|'hangar'|'playing'} [returnTo]
+   */
+  beginSectorEditor(returnTo = 'title') {
+    if (!Settings.isDevMode()) return false;
+    this._sectorEditorReturn =
+      returnTo === 'hangar' ? 'hangar' : returnTo === 'playing' ? 'playing' : 'title';
+
+    if (this.mode === 'playing' || this.mode === 'hangar') {
+      this._savedCam = {
+        x: this.camera.position.x,
+        y: this.camera.position.y,
+        userZoom: this.camera.userZoom,
+        targetUserZoom: this.camera.targetUserZoom,
+        speedZoom: this.camera.speedZoom,
+        effectiveZoom: this.camera.effectiveZoom,
+        rotation: this.camera.rotation,
+      };
+    }
+
+    setSectorEditorActive(true);
+    const view = this._sectorEditorView;
+    view.followShip = false;
+    view.panCenter.x = 0;
+    view.panCenter.y = 0;
+    view.zoom = 0.55;
+    view.mapBody = null;
+    view.mapHoverTooltip = null;
+    this._sectorEditorPointer = null;
+
+    this.mode = 'sectorEditor';
+    this.input.enable();
+    this.input.paused = false;
+    this.canvas.style.opacity = '1';
+    if (this._sectorEditorHud) this._sectorEditorHud.classList.remove('hidden');
+    if (this._blueprintHud) this._blueprintHud.classList.add('hidden');
+    if (this._controlsHud) this._controlsHud.classList.add('hidden');
+    if (this._hangarHud) this._hangarHud.classList.add('hidden');
+    this._setLaunchBtnVisible(false);
+    this._setDockHud(false);
+    if (typeof this.onSectorEditorEnter === 'function') this.onSectorEditorEnter();
+    return true;
+  }
+
+  exitSectorEditor() {
+    if (this.mode !== 'sectorEditor') return null;
+    setSectorEditorActive(false);
+    this._sectorEditorPointer = null;
+    if (this._sectorEditorHud) this._sectorEditorHud.classList.add('hidden');
+    const ret = this._sectorEditorReturn;
+
+    if (ret === 'playing') {
+      this.mode = 'playing';
+      this.input.enable();
+      this.input.paused = false;
+      if (this._savedCam) {
+        this.camera.position.set(this._savedCam.x, this._savedCam.y);
+        this.camera.userZoom = this._savedCam.userZoom;
+        this.camera.targetUserZoom = this._savedCam.targetUserZoom;
+        this.camera.speedZoom = this._savedCam.speedZoom;
+        this.camera.effectiveZoom = this._savedCam.effectiveZoom;
+        this.camera.rotation = this._savedCam.rotation || 0;
+        this.camera.offset.set(0, 0);
+      }
+      this._setDockHud(false);
+      return 'playing';
+    }
+
+    if (ret === 'hangar') {
+      this.mode = 'hangar';
+      this.input.enable();
+      this.input.paused = false;
+      if (this._savedCam) {
+        this.camera.position.set(this._savedCam.x, this._savedCam.y);
+        this.camera.userZoom = this._savedCam.userZoom;
+        this.camera.targetUserZoom = this._savedCam.targetUserZoom;
+        this.camera.speedZoom = this._savedCam.speedZoom;
+        this.camera.effectiveZoom = this._savedCam.effectiveZoom;
+        this.camera.rotation = this._savedCam.rotation || 0;
+        this.camera.offset.set(0, 0);
+      }
+      if (this._hangarHud) this._hangarHud.classList.remove('hidden');
+      this._setLaunchBtnVisible(true);
+      return 'hangar';
+    }
+
+    this.input.disable();
+    this.mode = 'title';
+    this.paused = false;
+    this._titleHasDrawn = true;
+    this._enterTitleSim({ fadeIn: false });
+    return 'title';
+  }
+
+  getSectorEditorView() {
+    return this._sectorEditorView;
   }
 
   /** Rebuild sandbox ship from current blueprint selectors. */
@@ -1865,6 +1971,9 @@ export class GameEngine {
       } else if (this.mode === 'blueprint' && this.input.consumePauseToggle()) {
         const dest = this.exitBlueprint();
         if (typeof this.onBlueprintExit === 'function') this.onBlueprintExit(dest);
+      } else if (this.mode === 'sectorEditor' && this.input.consumePauseToggle()) {
+        const dest = this.exitSectorEditor();
+        if (typeof this.onSectorEditorExit === 'function') this.onSectorEditorExit(dest);
       }
 
       const speed = this.simSpeed;
@@ -1883,6 +1992,8 @@ export class GameEngine {
           this._updateControls(deltaTime);
         } else if (this.mode === 'blueprint') {
           this._updateBlueprint(deltaTime);
+        } else if (this.mode === 'sectorEditor') {
+          this._updateSectorEditor(deltaTime);
         } else {
           this.update(deltaTime);
         }
@@ -3572,6 +3683,11 @@ export class GameEngine {
       return;
     }
 
+    if (this.mode === 'sectorEditor') {
+      this._renderSectorEditor();
+      return;
+    }
+
     const playerDead = this.combat.playerDead(this.ship);
     const hudBursting = this.combat.hudBursting(this.ship);
 
@@ -4140,6 +4256,36 @@ export class GameEngine {
       DevTools.overlay.mounts = prev;
     }
     this.renderer.endCircularClip();
+  }
+
+  _updateSectorEditor(deltaTime) {
+    processSectorEditorInput(this, this.input, this._sectorEditorView);
+  }
+
+  _renderSectorEditor() {
+    this.renderer.beginFrame();
+    const ctx = this.renderer.ctx;
+    ctx.fillStyle = '#020508';
+    ctx.fillRect(0, 0, this.renderer.width, this.renderer.height);
+    drawSectorEditorFrame(ctx, this.renderer, this, this._sectorEditorView);
+    const tip = this._sectorEditorView.mapHoverTooltip;
+    if (tip?.text) {
+      ctx.save();
+      ctx.font = "600 11px 'Barlow Condensed', 'Segoe UI', sans-serif";
+      const tw = ctx.measureText(tip.text).width + 14;
+      const tx = tip.sx - tw / 2;
+      const ty = tip.sy - 20;
+      ctx.fillStyle = 'rgba(6, 12, 22, 0.92)';
+      ctx.strokeStyle = 'rgba(255, 154, 80, 0.4)';
+      ctx.lineWidth = 1;
+      ctx.fillRect(tx, ty, tw, 16);
+      ctx.strokeRect(tx + 0.5, ty + 0.5, tw - 1, 15);
+      ctx.fillStyle = 'rgba(200, 224, 246, 0.95)';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(tip.text, tip.sx, ty + 8);
+      ctx.restore();
+    }
   }
 
   /**

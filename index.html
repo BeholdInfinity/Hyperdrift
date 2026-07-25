@@ -38,6 +38,7 @@
           <button id="quick-launch-btn" class="panel-btn" type="button">QUICK LAUNCH</button>
           <button id="settings-title-btn" class="panel-btn" type="button">SETTINGS</button>
           <button id="blueprint-title-btn" class="panel-btn" type="button">BLUEPRINT</button>
+          <button id="sector-editor-title-btn" class="panel-btn sme-dev-only hidden" type="button">SECTOR MAP</button>
         </nav>
       </div>
       <div id="build-meta" class="build-meta">
@@ -130,11 +131,21 @@
             <button type="button" class="hangar-dev-btn" id="dev-gen-save">Save generator default</button>
             <span id="dev-scan-readout" class="dev-drawer-status">tier — · — km</span>
           </div>
-          <div class="dev-drawer-section" data-dev-modes="playing">
+          <div class="dev-drawer-section" data-dev-modes="playing sectorEditor title">
             <span class="dev-drawer-label">SECTOR MAP</span>
-            <label class="dev-check">Planet R <input type="range" id="dev-sector-planet-r" min="8000" max="20000" step="500" value="12000" /></label>
+            <button type="button" class="hangar-dev-btn" id="dev-sector-edit-toggle">Open map editor</button>
+            <label class="dev-check">Site
+              <select id="dev-sector-site-select" class="dev-place-select"></select>
+            </label>
+            <label class="dev-check">Planet R <input type="range" id="dev-sector-planet-r" min="20000" max="60000" step="500" value="35000" /></label>
+            <label class="dev-check"><input type="checkbox" id="dev-sector-traffic-preview" checked /> Traffic shells</label>
+            <label class="dev-check"><input type="checkbox" id="dev-sector-tier-bands" /> Tier bands</label>
+            <button type="button" class="hangar-dev-btn" id="dev-sector-validate">Validate</button>
             <button type="button" class="hangar-dev-btn" id="dev-sector-randomize">Randomize look</button>
+            <button type="button" class="hangar-dev-btn" id="dev-sector-reset">Reset draft</button>
             <button type="button" class="hangar-dev-btn" id="dev-sector-save">Save layout</button>
+            <button type="button" class="hangar-dev-btn hidden" id="dev-sector-save-anyway">Save anyway</button>
+            <pre id="dev-sector-validator" class="dev-inspect dev-sector-validator">—</pre>
           </div>
           <div class="dev-drawer-section" data-dev-modes="title">
             <span class="dev-drawer-label">TITLE</span>
@@ -346,6 +357,94 @@
       </section>
 
       <button id="blueprint-back-btn" class="menu-btn panel-btn" type="button">Back</button>
+    </div>
+
+    <div id="sector-editor-hud" class="hidden">
+      <header class="bp-topbar">
+        <div class="bp-topbar-brand">
+          <span class="bp-topbar-kicker">DEV</span>
+          <span class="bp-topbar-title">SECTOR MAP EDITOR</span>
+        </div>
+        <p class="bp-topbar-sub" id="sme-status">Thera system layout · drag sites on map · click to select</p>
+      </header>
+
+      <aside class="bp-dock bp-dock-left" id="sme-panel-left">
+        <section class="bp-card">
+          <h3 class="bp-card-title">Sites & rings <span class="bp-card-hint" id="sme-site-count">—</span></h3>
+          <div class="sme-site-filters">
+            <label class="sme-filter">Kind
+              <select id="sme-filter-kind" class="dev-place-select sme-filter-select"></select>
+            </label>
+            <label class="sme-filter">Tier
+              <select id="sme-filter-tier" class="dev-place-select sme-filter-select"></select>
+            </label>
+            <label class="sme-filter sme-filter-search">Search
+              <input type="search" id="sme-filter-search" class="sme-filter-input" placeholder="name or id" />
+            </label>
+          </div>
+          <div id="sme-site-list" class="sme-site-list"></div>
+        </section>
+        <section class="bp-card">
+          <h3 class="bp-card-title">Planet</h3>
+          <label class="bp-author-slider">Radius <input type="range" id="sme-planet-r" min="20000" max="60000" step="500" value="35000" /></label>
+          <div class="bp-btn-row">
+            <button type="button" class="bp-action" id="sme-randomize">Randomize look</button>
+          </div>
+        </section>
+        <section class="bp-card">
+          <h3 class="bp-card-title">Overlays</h3>
+          <label class="dev-check"><input type="checkbox" id="sme-traffic-preview" checked /> Traffic shells</label>
+          <label class="dev-check"><input type="checkbox" id="sme-tier-bands" /> Social tier bands</label>
+        </section>
+        <section class="bp-card sme-validator-card">
+          <h3 class="bp-card-title">Validator <span class="bp-card-hint" id="sme-validator-status">—</span></h3>
+          <div id="sme-validator" class="sme-validator-body" aria-live="polite"></div>
+          <div class="bp-btn-row">
+            <button type="button" class="bp-action" id="sme-validate">Validate</button>
+            <button type="button" class="bp-action" id="sme-reset">Reset draft</button>
+          </div>
+          <div class="bp-btn-row">
+            <button type="button" class="bp-action bp-apply" id="sme-save">Save layout</button>
+            <button type="button" class="bp-action bp-warn hidden" id="sme-save-anyway">Save anyway</button>
+          </div>
+        </section>
+      </aside>
+
+      <aside class="bp-dock bp-dock-right" id="sme-panel-right">
+        <section class="bp-card bp-card-grow">
+          <h3 class="bp-card-title">Selection</h3>
+          <p class="bp-meta" id="sme-sel-name">—</p>
+          <p class="bp-meta" id="sme-sel-meta">Click a site, ring, or tier band on the map</p>
+          <div class="sme-orbit-stats hidden" id="sme-orbit-stats">
+            <p class="bp-meta sme-orbit-stats-title" id="sme-orbit-stats-title">Circular orbit</p>
+            <p class="bp-meta" id="sme-orbit-radius">Radius — u</p>
+            <p class="bp-meta" id="sme-orbit-speed">Speed — u/s</p>
+            <p class="bp-meta" id="sme-orbit-period">Period —</p>
+          </div>
+          <div class="sme-field-row hidden" id="sme-tier-fields">
+            <label class="sme-field">Orbit R <input type="number" id="sme-tier-orbit-r" class="dev-num-input" step="1000" /></label>
+          </div>
+          <div class="sme-field-row hidden" id="sme-ring-fields">
+            <label class="sme-field">Mid R <input type="number" id="sme-ring-mid" class="dev-num-input" step="1000" /></label>
+            <label class="sme-field">Width <input type="number" id="sme-ring-width" class="dev-num-input" step="1000" min="5000" /></label>
+            <label class="sme-field">Density <input type="number" id="sme-ring-density" class="dev-num-input" step="0.05" min="0" max="3" /></label>
+          </div>
+          <div class="sme-field-row hidden" id="sme-orbit-fields">
+            <label class="sme-field">Orbit R <input type="number" id="sme-orbit-r" class="dev-num-input" step="1000" /></label>
+            <label class="sme-field">Angle° <input type="number" id="sme-orbit-angle" class="dev-num-input" step="1" /></label>
+          </div>
+          <div class="sme-field-row hidden" id="sme-surface-fields">
+            <label class="sme-field">Surface° <input type="number" id="sme-surface-angle" class="dev-num-input" step="1" /></label>
+          </div>
+          <div class="sme-field-row hidden" id="sme-static-fields">
+            <label class="sme-field">X <input type="number" id="sme-static-x" class="dev-num-input" step="1000" /></label>
+            <label class="sme-field">Y <input type="number" id="sme-static-y" class="dev-num-input" step="1000" /></label>
+          </div>
+        </section>
+        <p class="bp-hint"><kbd>DRAG</kbd> move · <kbd>CLICK</kbd> rings/tiers · <kbd>SHIFT</kbd> snap tier · <kbd>ESC</kbd> back</p>
+      </aside>
+
+      <button id="sector-editor-back-btn" class="menu-btn panel-btn" type="button">Back</button>
     </div>
 
     <div id="controls-hud" class="hidden">

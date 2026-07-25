@@ -4,11 +4,40 @@ import { RADAR, PIPS } from './core/Constants.js';
 import { DevTools } from './dev/DevTools.js';
 import {
   sectorEditorDraft,
+  sectorEditorUI,
   randomizePlanetLook,
   bakeSectorLayout,
   validateSectorLayout,
+  formatValidationSummary,
+  buildValidatorReport,
+  listSitesForSelect,
+  listEntriesForSelect,
+  setSectorEditorActive,
+  setSectorEditorChangeListener,
+  syncPlanetRadiusSlider,
+  resetSectorEditorDraft,
+  getSelectedSite,
+  getSelectedRing,
+  getSelectedTier,
   moveSiteOrbit,
+  setSiteSurfaceAngle,
+  moveStaticSite,
+  setRingMidRadius,
+  setRingWidth,
+  setRingDensity,
+  setTierOrbitR,
+  setSiteListFilter,
+  formatOrbitStats,
+  ringMidRadius,
+  ringWidth,
+  getTierOrbitR,
+  getSocialOrbitInner,
+  SITE_KIND_FILTERS,
+  SITE_TIER_FILTERS,
+  selectRing,
+  selectTier,
 } from './dev/DevSectorEditor.js';
+import { selectSite } from './dev/SectorMapEditor.js';
 import { saveToRepo, exportToClipboard, SAVE_PATHS } from './dev/DevSave.js';
 import {
   enableDevPanelDrag,
@@ -32,6 +61,7 @@ const startBtn = document.getElementById('start-btn');
 const quickLaunchBtn = document.getElementById('quick-launch-btn');
 const settingsTitleBtn = document.getElementById('settings-title-btn');
 const blueprintTitleBtn = document.getElementById('blueprint-title-btn');
+const sectorEditorTitleBtn = document.getElementById('sector-editor-title-btn');
 const hangarBackBtn = document.getElementById('hangar-back-btn');
 const hangarLaunchBtn = document.getElementById('hangar-launch-btn');
 const hangarBlueprintBtn = document.getElementById('hangar-blueprint-btn');
@@ -42,6 +72,8 @@ const devTitlePanel = document.getElementById('dev-title-panel');
 const hangarHud = document.getElementById('hangar-hud');
 const controlsHud = document.getElementById('controls-hud');
 const blueprintHud = document.getElementById('blueprint-hud');
+const sectorEditorHud = document.getElementById('sector-editor-hud');
+const sectorEditorBackBtn = document.getElementById('sector-editor-back-btn');
 const controlsBackBtn = document.getElementById('controls-back-btn');
 const blueprintBackBtn = document.getElementById('blueprint-back-btn');
 const devModeToggle = document.getElementById('dev-mode-toggle');
@@ -100,6 +132,9 @@ function syncDevModeUi() {
   if (devModeToggle) devModeToggle.checked = on;
   // Blueprint is always available to players
   if (blueprintTitleBtn) blueprintTitleBtn.classList.remove('hidden');
+  document.querySelectorAll('.sme-dev-only').forEach((el) => {
+    el.classList.toggle('hidden', !on);
+  });
   if (devDrawer) {
     devDrawer.classList.toggle('hidden', !on);
     if (!on) {
@@ -121,6 +156,10 @@ function syncDevModeUi() {
   if (!on && HangarLayoutEditor.isActive()) {
     HangarLayoutEditor.exit();
     if (hangarEditPanel) hangarEditPanel.classList.add('hidden');
+  }
+  if (!on && engine.mode === 'sectorEditor') {
+    const dest = engine.exitSectorEditor();
+    leaveSectorEditor(dest);
   }
   if (on) {
     syncDevDrawerMode();
@@ -328,6 +367,322 @@ function syncHangarEditInspector() {
 
 function escapeBpAttr(s) {
   return String(s).replace(/"/g, '&quot;');
+}
+
+function syncSectorEditorLayoutVars() {
+  const hud = sectorEditorHud;
+  const r = engine.renderer;
+  if (!hud || !r?.width) return;
+  const cx = r.centerX;
+  const cy = r.centerY;
+  const rad = r.viewportRadius;
+  const gap = Math.max(8, Math.round(Math.min(r.width, r.height) * 0.012));
+  const leftGutter = Math.max(0, cx - rad);
+  const rightGutter = Math.max(0, r.width - (cx + rad));
+  const sideGutter = Math.min(leftGutter, rightGutter);
+  const dockW = Math.max(0, Math.min(300, Math.floor(sideGutter - gap * 2)));
+  hud.style.setProperty('--bp-cx', `${cx}px`);
+  hud.style.setProperty('--bp-cy', `${cy}px`);
+  hud.style.setProperty('--bp-r', `${rad}px`);
+  hud.style.setProperty('--bp-gap', `${gap}px`);
+  hud.style.setProperty('--bp-dock-w', `${dockW}px`);
+}
+
+function syncSectorSaveButtons(report = buildValidatorReport()) {
+  const blocked = !report.ok;
+  const saveBtn = document.getElementById('sme-save');
+  const saveAnyway = document.getElementById('sme-save-anyway');
+  const devSaveAnyway = document.getElementById('dev-sector-save-anyway');
+  if (saveBtn) saveBtn.disabled = blocked;
+  if (saveAnyway) saveAnyway.hidden = !blocked;
+  if (devSaveAnyway) devSaveAnyway.hidden = !blocked;
+}
+
+async function commitSectorLayoutSave({ force = false } = {}) {
+  if (!force) {
+    const check = validateSectorLayout(sectorEditorDraft);
+    if (!check.ok) {
+      return { ok: false, message: `Sector validator: ${check.issues[0]}` };
+    }
+  }
+  const res = await bakeSectorLayout({ force });
+  const message = res.ok
+    ? force
+      ? 'Sector layout saved (validator bypassed) — refresh browser'
+      : 'Sector layout saved — refresh browser to load baked file'
+    : res.error || 'Sector save failed';
+  return { ok: res.ok, message };
+}
+
+function renderSmeValidatorPanel() {
+  const el = document.getElementById('sme-validator');
+  const statusEl = document.getElementById('sme-validator-status');
+  if (!el) return;
+  const report = buildValidatorReport();
+  const warnCount = report.warnings.length;
+  if (statusEl) {
+    if (report.ok && !warnCount) statusEl.textContent = 'ready to bake';
+    else if (report.ok) statusEl.textContent = `${warnCount} warning${warnCount === 1 ? '' : 's'}`;
+    else statusEl.textContent = `${report.issues.length} blocking`;
+  }
+  el.innerHTML = '';
+  for (const rule of report.rules) {
+    const row = document.createElement('div');
+    row.className = `sme-rule-row ${
+      rule.ok ? 'sme-rule-ok' : rule.severity === 'warning' ? 'sme-rule-warn' : 'sme-rule-fail'
+    }`;
+    row.title = rule.hint;
+
+    const head = document.createElement('div');
+    head.className = 'sme-rule-head';
+
+    const icon = document.createElement('span');
+    icon.className = 'sme-rule-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.textContent = rule.ok ? '✓' : rule.severity === 'warning' ? '!' : '✕';
+
+    const label = document.createElement('span');
+    label.className = 'sme-rule-label';
+    label.textContent = rule.label;
+
+    head.appendChild(icon);
+    head.appendChild(label);
+    row.appendChild(head);
+
+    if (!rule.ok && rule.items.length) {
+      const ul = document.createElement('ul');
+      ul.className = 'sme-rule-items';
+      for (const item of rule.items) {
+        const li = document.createElement('li');
+        li.textContent = item;
+        ul.appendChild(li);
+      }
+      row.appendChild(ul);
+    }
+
+    el.appendChild(row);
+  }
+  syncSectorSaveButtons(report);
+}
+
+function syncSectorEditorHud() {
+  const kindSel = document.getElementById('sme-filter-kind');
+  const tierSel = document.getElementById('sme-filter-tier');
+  const searchEl = document.getElementById('sme-filter-search');
+
+  if (kindSel && !kindSel.dataset.wired) {
+    kindSel.dataset.wired = '1';
+    for (const opt of SITE_KIND_FILTERS) {
+      const o = document.createElement('option');
+      o.value = opt.id;
+      o.textContent = opt.label;
+      kindSel.appendChild(o);
+    }
+  }
+  if (tierSel && !tierSel.dataset.wired) {
+    tierSel.dataset.wired = '1';
+    for (const opt of SITE_TIER_FILTERS) {
+      const o = document.createElement('option');
+      o.value = opt.id;
+      o.textContent = opt.label;
+      tierSel.appendChild(o);
+    }
+  }
+  if (kindSel && document.activeElement !== kindSel) {
+    kindSel.value = sectorEditorUI.siteFilters?.kind || 'all';
+  }
+  if (tierSel && document.activeElement !== tierSel) {
+    tierSel.value = sectorEditorUI.siteFilters?.tier || 'all';
+  }
+  if (searchEl && document.activeElement !== searchEl) {
+    searchEl.value = sectorEditorUI.siteFilters?.search || '';
+  }
+
+  const list = document.getElementById('sme-site-list');
+  const filtered = listEntriesForSelect();
+  if (list) {
+    list.innerHTML = '';
+    if (!filtered.length) {
+      const empty = document.createElement('p');
+      empty.className = 'bp-meta sme-list-empty';
+      empty.textContent = 'No entries match filters';
+      list.appendChild(empty);
+    }
+    for (const entry of filtered) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'sme-site-btn';
+      if (entry.type === 'ring') btn.classList.add('sme-entry-ring');
+      if (entry.type === 'tier') btn.classList.add('sme-entry-tier');
+      const active =
+        entry.type === 'ring'
+          ? entry.id === sectorEditorUI.selectedRingId
+          : entry.type === 'tier'
+            ? entry.id === sectorEditorUI.selectedTierId
+            : entry.id === sectorEditorUI.selectedSiteId;
+      if (active) btn.classList.add('active');
+      btn.dataset.entryId = entry.id;
+      btn.dataset.entryType = entry.type;
+      if (entry.type === 'ring') {
+        const ring = entry.ring;
+        btn.textContent = `⬤ ${entry.name}`;
+        btn.title = `ring · ${Math.round(ring.innerR)}–${Math.round(ring.outerR)} u`;
+      } else if (entry.type === 'tier') {
+        btn.textContent = `◎ ${entry.name}`;
+        btn.title = `social tier · ${Math.round(entry.tier.orbitR)} u`;
+      } else {
+        const site = entry.site;
+        btn.textContent = site.name || site.id;
+        btn.title = `${site.kind}${site.socialTier ? ` · ${site.socialTier}` : ''}`;
+      }
+      list.appendChild(btn);
+    }
+  }
+
+  const site = getSelectedSite();
+  const ring = getSelectedRing();
+  const tier = getSelectedTier();
+  const nameEl = document.getElementById('sme-sel-name');
+  const metaEl = document.getElementById('sme-sel-meta');
+  const orbitFields = document.getElementById('sme-orbit-fields');
+  const surfaceFields = document.getElementById('sme-surface-fields');
+  const staticFields = document.getElementById('sme-static-fields');
+  const ringFields = document.getElementById('sme-ring-fields');
+  const tierFields = document.getElementById('sme-tier-fields');
+  const orbitStats = document.getElementById('sme-orbit-stats');
+
+  if (tier) {
+    if (nameEl) nameEl.textContent = tier.name;
+    if (metaEl) {
+      metaEl.textContent = `Social tier band · ${tier.id} · inner orbit ${Math.round(tier.orbitR)} u`;
+    }
+  } else if (ring) {
+    if (nameEl) nameEl.textContent = ring.id;
+    if (metaEl) {
+      metaEl.textContent = `Asteroid ring · mid ${Math.round(ringMidRadius(ring))} u · width ${Math.round(ringWidth(ring))} u · density ${ring.density ?? 1}`;
+    }
+  } else if (site) {
+    if (nameEl) nameEl.textContent = site.name || site.id;
+    if (metaEl) {
+      metaEl.textContent = `${site.kind}${site.socialTier ? ` · ${site.socialTier}` : ''} · ${site.id}`;
+    }
+  } else {
+    if (nameEl) nameEl.textContent = '—';
+    if (metaEl) metaEl.textContent = 'Click a site, ring, or tier band on the map';
+  }
+
+  tierFields?.classList.toggle('hidden', !tier);
+  ringFields?.classList.toggle('hidden', !ring);
+  orbitFields?.classList.toggle('hidden', !site?.orbit);
+  surfaceFields?.classList.toggle('hidden', !(site?.kind === 'planetary' || site?.motion === 'surface'));
+  staticFields?.classList.toggle(
+    'hidden',
+    !(site?.kind === 'landmark' || site?.kind === 'warp_instance' || site?.motion === 'static')
+  );
+
+  const statsTitle = document.getElementById('sme-orbit-stats-title');
+  const statsR = document.getElementById('sme-orbit-radius');
+  const statsS = document.getElementById('sme-orbit-speed');
+  const statsP = document.getElementById('sme-orbit-period');
+  let statsRadius = null;
+  if (tier) {
+    statsRadius = tier.orbitR;
+    if (statsTitle) statsTitle.textContent = 'Orbit @ tier band';
+  } else if (ring) {
+    statsRadius = (ring.innerR + ring.outerR) * 0.5;
+    if (statsTitle) statsTitle.textContent = 'Orbit @ ring mid-radius';
+  } else if (site?.orbit?.orbitR) {
+    statsRadius = site.orbit.orbitR;
+    if (statsTitle) statsTitle.textContent = 'Orbit @ site radius';
+  } else {
+    if (statsTitle) statsTitle.textContent = 'Circular orbit';
+  }
+  const showStats = statsRadius != null || ring != null || tier != null;
+  orbitStats?.classList.toggle('hidden', !showStats);
+  if (ring) {
+    const inner = formatOrbitStats(ring.innerR);
+    const mid = formatOrbitStats((ring.innerR + ring.outerR) * 0.5);
+    const outer = formatOrbitStats(ring.outerR);
+    if (statsR) {
+      statsR.textContent = `Radius ${inner.radius.toLocaleString()} · ${mid.radius.toLocaleString()} · ${outer.radius.toLocaleString()} u (in/mid/out)`;
+    }
+    if (statsS) {
+      statsS.textContent = `Speed ${inner.speed.toLocaleString()} · ${mid.speed.toLocaleString()} · ${outer.speed.toLocaleString()} u/s`;
+    }
+    if (statsP) {
+      statsP.textContent = `Period ${inner.period} · ${mid.period} · ${outer.period}`;
+    }
+  } else if (showStats && statsRadius != null) {
+    const st = formatOrbitStats(statsRadius);
+    if (statsR) statsR.textContent = `Radius ${st.radius.toLocaleString()} u`;
+    if (statsS) statsS.textContent = `Speed ${st.speed.toLocaleString()} u/s`;
+    if (statsP) statsP.textContent = `Period ${st.period}`;
+  }
+
+  if (tier) {
+    const tierOrbitEl = document.getElementById('sme-tier-orbit-r');
+    if (tierOrbitEl && document.activeElement !== tierOrbitEl) {
+      tierOrbitEl.value = Math.round(tier.orbitR);
+    }
+  }
+
+  if (ring) {
+    const midEl = document.getElementById('sme-ring-mid');
+    const widthEl = document.getElementById('sme-ring-width');
+    const densEl = document.getElementById('sme-ring-density');
+    if (midEl && document.activeElement !== midEl) midEl.value = Math.round(ringMidRadius(ring));
+    if (widthEl && document.activeElement !== widthEl) widthEl.value = Math.round(ringWidth(ring));
+    if (densEl && document.activeElement !== densEl) densEl.value = String(ring.density ?? 1);
+  }
+
+  if (site?.orbit) {
+    const rEl = document.getElementById('sme-orbit-r');
+    const aEl = document.getElementById('sme-orbit-angle');
+    if (rEl && document.activeElement !== rEl) rEl.value = Math.round(site.orbit.orbitR);
+    if (aEl && document.activeElement !== aEl) {
+      aEl.value = Math.round(((site.orbit.orbitAngle0 * 180) / Math.PI + 360) % 360);
+    }
+  }
+  if (site && (site.kind === 'planetary' || site.motion === 'surface')) {
+    const sEl = document.getElementById('sme-surface-angle');
+    if (sEl && document.activeElement !== sEl) {
+      sEl.value = Math.round(((site.surfaceAngle * 180) / Math.PI + 360) % 360);
+    }
+  }
+  if (site && (site.kind === 'landmark' || site.kind === 'warp_instance' || site.motion === 'static')) {
+    const xEl = document.getElementById('sme-static-x');
+    const yEl = document.getElementById('sme-static-y');
+    if (xEl && document.activeElement !== xEl) xEl.value = Math.round(site.x ?? 0);
+    if (yEl && document.activeElement !== yEl) yEl.value = Math.round(site.y ?? 0);
+  }
+
+  renderSmeValidatorPanel();
+
+  const pr = document.getElementById('sme-planet-r');
+  if (pr && document.activeElement !== pr) {
+    pr.value = String(sectorEditorDraft.planet?.radius ?? 35000);
+  }
+  const traffic = document.getElementById('sme-traffic-preview');
+  const tiers = document.getElementById('sme-tier-bands');
+  if (traffic) traffic.checked = sectorEditorUI.showTrafficPreview;
+  if (tiers) tiers.checked = sectorEditorUI.showTierBands;
+
+  const countEl = document.getElementById('sme-site-count');
+  if (countEl) {
+    const ringTotal = (sectorEditorDraft.rings ?? []).length;
+    const siteTotal = (sectorEditorDraft.sites ?? []).length;
+    const tierTotal = Object.keys(getSocialOrbitInner()).length;
+    const ringShown = filtered.filter((e) => e.type === 'ring').length;
+    const siteShown = filtered.filter((e) => e.type === 'site').length;
+    const tierShown = filtered.filter((e) => e.type === 'tier').length;
+    const total = ringTotal + siteTotal + tierTotal;
+    const shown = filtered.length;
+    if (shown === total) {
+      countEl.textContent = `${tierTotal} tiers · ${ringTotal} rings · ${siteTotal} sites`;
+    } else {
+      countEl.textContent = `${tierShown}/${tierTotal} tiers · ${ringShown}/${ringTotal} rings · ${siteShown}/${siteTotal} sites`;
+    }
+  }
 }
 
 /** Keep HUD chrome outside the sacred viewport circle (circle-aligned, not screen-edge). */
@@ -545,6 +900,7 @@ function showTitleUi() {
   if (hangarHud) hangarHud.classList.add('hidden');
   if (controlsHud) controlsHud.classList.add('hidden');
   if (blueprintHud) blueprintHud.classList.add('hidden');
+  if (sectorEditorHud) sectorEditorHud.classList.add('hidden');
   hud.classList.add('hidden');
   pauseMenu.classList.add('hidden');
   if (deathMenu) deathMenu.classList.add('hidden');
@@ -564,8 +920,7 @@ function showPlayingUi() {
   if (hangarHud) hangarHud.classList.add('hidden');
   if (controlsHud) controlsHud.classList.add('hidden');
   if (blueprintHud) blueprintHud.classList.add('hidden');
-  // SPD/ZOOM/PREC + corner placeholders are now drawn on the canvas cockpit
-  // frame (CockpitFrame corner screens); keep the legacy DOM HUD hidden.
+  if (sectorEditorHud) sectorEditorHud.classList.add('hidden');
   hud.classList.add('hidden');
   pauseMenu.classList.add('hidden');
   if (deathMenu) deathMenu.classList.add('hidden');
@@ -583,6 +938,7 @@ function showHangarUi() {
   if (cornerUi) cornerUi.classList.add('hidden');
   if (controlsHud) controlsHud.classList.add('hidden');
   if (blueprintHud) blueprintHud.classList.add('hidden');
+  if (sectorEditorHud) sectorEditorHud.classList.add('hidden');
   if (hangarHud) hangarHud.classList.remove('hidden');
   if (dockHud) dockHud.classList.add('hidden');
   syncDevModeUi();
@@ -598,9 +954,55 @@ function showControlsUi() {
   if (cornerUi) cornerUi.classList.add('hidden');
   if (hangarHud) hangarHud.classList.add('hidden');
   if (blueprintHud) blueprintHud.classList.add('hidden');
+  if (sectorEditorHud) sectorEditorHud.classList.add('hidden');
   if (controlsHud) controlsHud.classList.remove('hidden');
   if (dockHud) dockHud.classList.add('hidden');
   syncDevModeUi();
+}
+
+function showSectorEditorUi() {
+  closeChangelogPanel();
+  startScreen.classList.add('hidden');
+  overlay.classList.add('hidden');
+  hud.classList.add('hidden');
+  pauseMenu.classList.add('hidden');
+  if (deathMenu) deathMenu.classList.add('hidden');
+  if (cornerUi) cornerUi.classList.add('hidden');
+  if (hangarHud) hangarHud.classList.add('hidden');
+  if (blueprintHud) blueprintHud.classList.add('hidden');
+  if (controlsHud) controlsHud.classList.add('hidden');
+  if (sectorEditorHud) sectorEditorHud.classList.remove('hidden');
+  if (dockHud) dockHud.classList.add('hidden');
+  DevTools.bayPanelOpen = false;
+  if (devBayPanel) devBayPanel.classList.add('hidden');
+  syncSectorEditorLayoutVars();
+  syncSectorEditorHud();
+  syncDevModeUi();
+}
+
+function openSectorEditor(from = 'title') {
+  if (!Settings.isDevMode()) return;
+  const ret =
+    from === 'playing' ? 'playing' : from === 'hangar' ? 'hangar' : 'title';
+  showSectorEditorUi();
+  engine.beginSectorEditor(ret);
+  syncSectorEditorLayoutVars();
+  syncSectorEditorHud();
+}
+
+function leaveSectorEditor(dest) {
+  if (dest === 'playing') {
+    hud.classList.remove('hidden');
+    if (cornerUi) cornerUi.classList.remove('hidden');
+    if (sectorEditorHud) sectorEditorHud.classList.add('hidden');
+    syncDevModeUi();
+    return;
+  }
+  if (dest === 'hangar') {
+    showHangarUi();
+    return;
+  }
+  showTitleUi();
 }
 
 function showBlueprintUi() {
@@ -614,6 +1016,7 @@ function showBlueprintUi() {
   if (hangarHud) hangarHud.classList.add('hidden');
   if (controlsHud) controlsHud.classList.add('hidden');
   if (blueprintHud) blueprintHud.classList.remove('hidden');
+  if (sectorEditorHud) sectorEditorHud.classList.add('hidden');
   if (dockHud) dockHud.classList.add('hidden');
   DevTools.bayPanelOpen = false;
   if (devBayPanel) devBayPanel.classList.add('hidden');
@@ -644,6 +1047,10 @@ function openBlueprint(from = 'title') {
   engine.beginBlueprint(from === 'hangar' ? 'hangar' : 'title');
   syncBlueprintUi();
   syncDevModeUi();
+}
+
+function openSectorEditorFromUi(from = 'title') {
+  openSectorEditor(from);
 }
 
 function leaveControls(dest) {
@@ -689,11 +1096,27 @@ engine.onBlueprintExit = (dest) => {
   leaveBlueprint(dest);
 };
 
+engine.onSectorEditorEnter = () => {
+  syncSectorEditorLayoutVars();
+  syncSectorEditorHud();
+};
+
+engine.onSectorEditorSelection = () => {
+  syncSectorEditorHud();
+};
+
+engine.onSectorEditorExit = (dest) => {
+  leaveSectorEditor(dest);
+};
+
 if (startBtn) startBtn.addEventListener('click', openHangar);
 if (quickLaunchBtn) quickLaunchBtn.addEventListener('click', startGame);
 if (settingsTitleBtn) settingsTitleBtn.addEventListener('click', () => openSettings('title'));
 if (blueprintTitleBtn) {
   blueprintTitleBtn.addEventListener('click', () => openBlueprint('title'));
+}
+if (sectorEditorTitleBtn) {
+  sectorEditorTitleBtn.addEventListener('click', () => openSectorEditor('title'));
 }
 if (hangarBackBtn) hangarBackBtn.addEventListener('click', leaveHangar);
 if (hangarLaunchBtn) {
@@ -726,6 +1149,12 @@ if (blueprintBackBtn) {
   blueprintBackBtn.addEventListener('click', () => {
     const dest = engine.exitBlueprint();
     leaveBlueprint(dest);
+  });
+}
+if (sectorEditorBackBtn) {
+  sectorEditorBackBtn.addEventListener('click', () => {
+    const dest = engine.exitSectorEditor();
+    leaveSectorEditor(dest);
   });
 }
 
@@ -828,6 +1257,7 @@ if (bpInspectorCopy) {
 
 window.addEventListener('resize', () => {
   if (engine.mode === 'blueprint') syncBlueprintLayoutVars();
+  if (engine.mode === 'sectorEditor') syncSectorEditorLayoutVars();
 });
 
 const bpViewBtn = document.getElementById('bp-view-btn');
@@ -999,30 +1429,246 @@ document.getElementById('dev-gen-save')?.addEventListener('click', async () => {
 });
 
 document.getElementById('dev-sector-planet-r')?.addEventListener('input', (e) => {
-  sectorEditorDraft.planet.radius = Number(e.target.value) || 12000;
+  sectorEditorDraft.planet.radius = Number(e.target.value) || 35000;
+  if (typeof sectorEditorDraft.planet.surfaceBlockRadius === 'number') {
+    sectorEditorDraft.planet.surfaceBlockRadius = sectorEditorDraft.planet.radius;
+  }
+  refreshSectorEditorUI();
 });
+
+function refreshSectorSiteSelect() {
+  const sel = document.getElementById('dev-sector-site-select');
+  if (!sel) return;
+  const cur = sectorEditorUI.selectedSiteId;
+  sel.innerHTML = '<option value="">— select site —</option>';
+  for (const site of listSitesForSelect()) {
+    const opt = document.createElement('option');
+    opt.value = site.id;
+    opt.textContent = `${site.name || site.id} (${site.kind})`;
+    sel.appendChild(opt);
+  }
+  if (cur) sel.value = cur;
+}
+
+function refreshSectorValidatorPanel() {
+  const pre = document.getElementById('dev-sector-validator');
+  if (pre) pre.textContent = formatValidationSummary();
+  syncSectorSaveButtons();
+}
+
+function refreshSectorEditorUI() {
+  refreshSectorSiteSelect();
+  refreshSectorValidatorPanel();
+}
+
+setSectorEditorChangeListener(() => {
+  refreshSectorValidatorPanel();
+  syncSectorEditorHud();
+  const sel = document.getElementById('dev-sector-site-select');
+  if (sel && sectorEditorUI.selectedSiteId) sel.value = sectorEditorUI.selectedSiteId;
+});
+
+document.getElementById('dev-sector-edit-toggle')?.addEventListener('click', () => {
+  const from =
+    engine.mode === 'playing' ? 'playing' : engine.mode === 'hangar' ? 'hangar' : 'title';
+  openSectorEditor(from);
+});
+
+document.getElementById('sme-site-list')?.addEventListener('click', (e) => {
+  const btn = e.target.closest('.sme-site-btn');
+  if (!btn?.dataset.entryId) return;
+  if (btn.dataset.entryType === 'ring') {
+    selectRing(btn.dataset.entryId);
+  } else if (btn.dataset.entryType === 'tier') {
+    selectTier(btn.dataset.entryId);
+  } else {
+    selectSite(btn.dataset.entryId, engine);
+  }
+  syncSectorEditorHud();
+});
+
+document.getElementById('sme-filter-kind')?.addEventListener('change', (e) => {
+  setSiteListFilter('kind', e.target.value);
+  refreshSectorSiteSelect();
+  syncSectorEditorHud();
+});
+document.getElementById('sme-filter-tier')?.addEventListener('change', (e) => {
+  setSiteListFilter('tier', e.target.value);
+  refreshSectorSiteSelect();
+  syncSectorEditorHud();
+});
+document.getElementById('sme-filter-search')?.addEventListener('input', (e) => {
+  setSiteListFilter('search', e.target.value);
+  refreshSectorSiteSelect();
+  syncSectorEditorHud();
+});
+
+document.getElementById('dev-sector-site-select')?.addEventListener('change', (e) => {
+  selectSite(e.target.value || null, engine);
+  refreshSectorEditorUI();
+});
+
+function wireSmeField(id, applyFn) {
+  document.getElementById(id)?.addEventListener('change', (e) => {
+    applyFn(Number(e.target.value));
+    syncSectorEditorHud();
+  });
+}
+
+wireSmeField('sme-orbit-r', (v) => {
+  const site = getSelectedSite();
+  if (!site?.orbit) return;
+  moveSiteOrbit(site.id, v, site.orbit.orbitAngle0);
+});
+wireSmeField('sme-orbit-angle', (deg) => {
+  const site = getSelectedSite();
+  if (!site?.orbit) return;
+  moveSiteOrbit(site.id, site.orbit.orbitR, (deg * Math.PI) / 180);
+});
+wireSmeField('sme-surface-angle', (deg) => {
+  const site = getSelectedSite();
+  if (!site) return;
+  setSiteSurfaceAngle(site.id, (deg * Math.PI) / 180);
+});
+document.getElementById('sme-static-x')?.addEventListener('change', (e) => {
+  const site = getSelectedSite();
+  if (!site) return;
+  moveStaticSite(site.id, Number(e.target.value), site.y ?? 0);
+  syncSectorEditorHud();
+});
+document.getElementById('sme-static-y')?.addEventListener('change', (e) => {
+  const site = getSelectedSite();
+  if (!site) return;
+  moveStaticSite(site.id, site.x ?? 0, Number(e.target.value));
+  syncSectorEditorHud();
+});
+
+document.getElementById('sme-tier-orbit-r')?.addEventListener('change', (e) => {
+  const tier = getSelectedTier();
+  if (!tier) return;
+  setTierOrbitR(tier.id, Number(e.target.value));
+  syncSectorEditorHud();
+});
+
+document.getElementById('sme-ring-mid')?.addEventListener('change', (e) => {
+  const ring = getSelectedRing();
+  if (!ring) return;
+  setRingMidRadius(ring.id, Number(e.target.value));
+  syncSectorEditorHud();
+});
+document.getElementById('sme-ring-width')?.addEventListener('change', (e) => {
+  const ring = getSelectedRing();
+  if (!ring) return;
+  setRingWidth(ring.id, Number(e.target.value));
+  syncSectorEditorHud();
+});
+document.getElementById('sme-ring-density')?.addEventListener('change', (e) => {
+  const ring = getSelectedRing();
+  if (!ring) return;
+  setRingDensity(ring.id, Number(e.target.value));
+  syncSectorEditorHud();
+});
+
+document.getElementById('sme-planet-r')?.addEventListener('input', (e) => {
+  sectorEditorDraft.planet.radius = Number(e.target.value) || 35000;
+  if (typeof sectorEditorDraft.planet.surfaceBlockRadius === 'number') {
+    sectorEditorDraft.planet.surfaceBlockRadius = sectorEditorDraft.planet.radius;
+  }
+  syncSectorEditorHud();
+});
+
+document.getElementById('sme-traffic-preview')?.addEventListener('change', (e) => {
+  sectorEditorUI.showTrafficPreview = !!e.target.checked;
+  syncSectorEditorHud();
+});
+document.getElementById('sme-tier-bands')?.addEventListener('change', (e) => {
+  sectorEditorUI.showTierBands = !!e.target.checked;
+  syncSectorEditorHud();
+});
+
+document.getElementById('sme-randomize')?.addEventListener('click', () => {
+  randomizePlanetLook();
+  syncSectorEditorHud();
+});
+document.getElementById('sme-reset')?.addEventListener('click', () => {
+  resetSectorEditorDraft();
+  syncSectorEditorHud();
+});
+document.getElementById('sme-save')?.addEventListener('click', async () => {
+  const res = await commitSectorLayoutSave();
+  DevTools.status = res.message;
+  syncSectorEditorHud();
+  setDevStatus(DevTools.status);
+});
+document.getElementById('sme-save-anyway')?.addEventListener('click', async () => {
+  const res = await commitSectorLayoutSave({ force: true });
+  DevTools.status = res.message;
+  syncSectorEditorHud();
+  setDevStatus(DevTools.status);
+});
+document.getElementById('sme-validate')?.addEventListener('click', () => {
+  const check = validateSectorLayout(sectorEditorDraft);
+  syncSectorEditorHud();
+  DevTools.status = check.ok && !check.warnings.length
+    ? 'Sector layout: validator OK'
+    : check.ok
+      ? `Sector warnings: ${check.warnings[0]}`
+      : `Sector validator: ${check.issues[0]}`;
+  setDevStatus(DevTools.status);
+});
+
+document.getElementById('dev-sector-traffic-preview')?.addEventListener('change', (e) => {
+  sectorEditorUI.showTrafficPreview = !!e.target.checked;
+  refreshSectorEditorUI();
+});
+
+document.getElementById('dev-sector-tier-bands')?.addEventListener('change', (e) => {
+  sectorEditorUI.showTierBands = !!e.target.checked;
+  refreshSectorEditorUI();
+});
+
 document.getElementById('dev-sector-randomize')?.addEventListener('click', () => {
   randomizePlanetLook();
   DevTools.status = `Sector: seed ${sectorEditorDraft.planet.visualSeed}`;
+  refreshSectorEditorUI();
 });
+
+document.getElementById('dev-sector-reset')?.addEventListener('click', () => {
+  resetSectorEditorDraft();
+  syncPlanetRadiusSlider();
+  DevTools.status = 'Sector draft reset from baked layout';
+  refreshSectorEditorUI();
+  setDevStatus(DevTools.status);
+});
+
 document.getElementById('dev-sector-save')?.addEventListener('click', async () => {
-  const check = validateSectorLayout(sectorEditorDraft);
-  if (!check.ok) {
-    DevTools.status = `Sector validator: ${check.issues[0]}`;
-    return;
-  }
-  const res = await bakeSectorLayout();
-  DevTools.status = res.ok ? 'Sector layout saved' : res.error || 'Sector save failed';
+  const res = await commitSectorLayoutSave();
+  DevTools.status = res.message;
+  refreshSectorValidatorPanel();
+  setDevStatus(DevTools.status);
 });
+document.getElementById('dev-sector-save-anyway')?.addEventListener('click', async () => {
+  const res = await commitSectorLayoutSave({ force: true });
+  DevTools.status = res.message;
+  refreshSectorValidatorPanel();
+  setDevStatus(DevTools.status);
+});
+
 document.getElementById('dev-sector-validate')?.addEventListener('click', () => {
   const check = validateSectorLayout(sectorEditorDraft);
+  refreshSectorValidatorPanel();
   if (check.ok && !check.warnings.length) {
     DevTools.status = 'Sector layout: validator OK';
+    setDevStatus(DevTools.status);
     return;
   }
   const msg = check.ok ? check.warnings[0] : check.issues[0];
   DevTools.status = check.ok ? `Sector warnings: ${msg}` : `Sector validator: ${msg}`;
+  setDevStatus(DevTools.status);
 });
+
+syncPlanetRadiusSlider();
+refreshSectorEditorUI();
 
 function wireTuneSlider(id, key) {
   const el = document.getElementById(id);

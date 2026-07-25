@@ -77,11 +77,23 @@ export const SECTOR_LAYOUT = {
     },
   ],
   spacing: {
-    minOrbitalSep: 270000,
+    minOrbitalSep: 150000,
     minFringeFromRing: 270000,
     referenceTransitSpeed: 900,
     softEdgeRadius: 750000,
     siteExclusionRadius: 45000,
+  },
+  /** Inner-orbit target radii (u) per station social tier — Shift-snap + validator. */
+  socialOrbitInner: {
+    military: 450000,
+    elite: 450000,
+    home: 490000,
+    upper: 520000,
+    mid: 540000,
+    guild: 560000,
+    poor: 590000,
+    derelict: 600000,
+    pirate: 620000,
   },
   trafficCorridors: {
     halfWidth: 30000,

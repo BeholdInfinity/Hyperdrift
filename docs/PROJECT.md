@@ -219,9 +219,13 @@ src/
 
 ## Known gaps / next steps
 
-### World geography (v0.1.287)
+### World geography (v0.1.287–290, partial)
 
-Full plan + deferred follow-ups: [`WORLD_GEOGRAPHY_PLAN.md`](WORLD_GEOGRAPHY_PLAN.md). **Shipped in v0.1.287** — Thera system layout v2, orbital motion, gravity, ring backdrop, traffic-law stubs, warp gates, dev sector editor, and **`InteriorSession`** (hangar instancing with frozen exterior + launch handoff catch-up). Edge benchmarks ~75 FPS hangar + quick launch (Jul 2026).
+Full plan + todo list: [`WORLD_GEOGRAPHY_PLAN.md`](WORLD_GEOGRAPHY_PLAN.md) (code audit **2026-07-25**).
+
+**Shipped:** Stage 1 foundation; Stage 2 visuals core + **map editor MVP** (drag sites, validator, bake); Stage 3 motion core (gravity, orbiting stations/gates, `worldPosition`, PRO/SYNC, corridors, Jennings ambient co-orbit v0.1.290); Stage 4 systems core (warp gates, LIM/fines stub, chart zoom); Stage 5 Place registry (Jennings-clone + planetary stubs); **`InteriorSession`** hangar instancing.
+
+**Open (see plan todos):** sector editor advanced (ring handles, undo); kinematic asteroid belts; multi-station ambient traffic; trade block / broker / outlaw IFF wiring; non-Jennings dock exterior stubs; fragment gravity; dev gravity μ slider.
 
 ### Polish / follow-ups
 - **Thruster cup size** — tune via Blueprint Author sliders / `visualTuning.js` (still subjective)
