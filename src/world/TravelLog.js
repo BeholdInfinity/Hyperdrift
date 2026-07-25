@@ -45,6 +45,20 @@ function parseExpeditionNumberFromLabel(label) {
   return m ? parseInt(m[1], 10) : null;
 }
 
+/** Always retain the newest N archived expeditions. */
+export const TRAVEL_LOG_MAX_RECENT = 25;
+/** Locked expeditions beyond the recent window are kept up to this cap (union with recent). */
+export const TRAVEL_LOG_MAX_LOCKED = 25;
+
+function sortEntriesNewestFirst(entries) {
+  return [...entries].sort((a, b) => {
+    const ta = a.endedAt ?? a.startedAt ?? 0;
+    const tb = b.endedAt ?? b.startedAt ?? 0;
+    if (tb !== ta) return tb - ta;
+    return (b.expeditionNumber ?? 0) - (a.expeditionNumber ?? 0);
+  });
+}
+
 export class TravelLog {
   constructor() {
     /** @type {Array<object>} */
@@ -103,6 +117,7 @@ export class TravelLog {
       colorIndex: safeTrailColorIndex(this.entries.length),
     };
     this.entries.unshift(entry);
+    this._enforceRetention();
     return entry;
   }
 
@@ -128,7 +143,9 @@ export class TravelLog {
 
   toggleLock(id) {
     const e = this.entries.find((x) => x.id === id);
-    if (e) e.locked = !e.locked;
+    if (!e) return;
+    e.locked = !e.locked;
+    this._enforceRetention();
   }
 
   deleteEntry(id) {
@@ -150,6 +167,21 @@ export class TravelLog {
     const ids = new Set(toRemove.map((e) => e.id));
     this.entries = this.entries.filter((e) => !ids.has(e.id));
     return toRemove.length;
+  }
+
+  /**
+   * Keep the newest {@link TRAVEL_LOG_MAX_RECENT} trips plus locked trips outside
+   * that window (newest locked first), capped at {@link TRAVEL_LOG_MAX_LOCKED} locked
+   * total — at most 50 entries when the sets are disjoint.
+   */
+  _enforceRetention() {
+    if (this.entries.length === 0) return;
+    const sorted = sortEntriesNewestFirst(this.entries);
+    const recentIds = new Set(sorted.slice(0, TRAVEL_LOG_MAX_RECENT).map((e) => e.id));
+    const locked = sorted.filter((e) => e.locked);
+    const keptLockedIds = new Set(locked.slice(0, TRAVEL_LOG_MAX_LOCKED).map((e) => e.id));
+    const keepIds = new Set([...recentIds, ...keptLockedIds]);
+    this.entries = sorted.filter((e) => keepIds.has(e.id));
   }
 
   _migrateRaw(raw) {
@@ -200,5 +232,6 @@ export class TravelLog {
     for (const raw of data.entries || []) {
       this.entries.push(this._migrateRaw(raw));
     }
+    this._enforceRetention();
   }
 }

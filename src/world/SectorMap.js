@@ -55,11 +55,10 @@ export class SectorMap {
     const py = ship.position.y;
     const prevRevealed = this.revealed.size;
 
-    // Trail sampling (every ~600 world units).
+    // Trail sampling (every ~600 world units); full path kept until expedition reset.
     if (!this._lastTrail || Math.hypot(px - this._lastTrail.x, py - this._lastTrail.y) > 600) {
       this.trail.push({ x: px, y: py });
       this._lastTrail = { x: px, y: py };
-      if (this.trail.length > 400) this.trail.shift();
     }
 
     this._inRange.clear();
