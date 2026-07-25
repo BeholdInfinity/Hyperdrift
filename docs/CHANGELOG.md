@@ -23,6 +23,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ---
 
+## [0.1.290] — 2026-07-25
+
+### Fixed
+- **Ambient traffic station frame** — near-station spawns inherit Jennings orbital velocity (~1900 u/s) plus patrol cruise; lane/police/hold/leave AI uses station-relative `cruiseTo` so ships co-orbit instead of falling behind and depopulating.
+
+---
+
 ## [0.1.289] — 2026-07-25
 
 ### Added

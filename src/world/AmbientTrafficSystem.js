@@ -186,6 +186,9 @@ export class AmbientTrafficSystem {
     this._view = null;
     /** Mouth transit mutex — one bayApproach/Ingress/Egress at a time */
     this._mouthBusyId = null;
+    /** Jennings inertial frame — refreshed each update for spawn + patrol AI */
+    this._frameVx = 0;
+    this._frameVy = 0;
   }
 
   reset() {
@@ -195,6 +198,16 @@ export class AmbientTrafficSystem {
     this._bayApproachCooldown = 1.5;
     this._view = null;
     this._mouthBusyId = null;
+    this._frameVx = 0;
+    this._frameVy = 0;
+  }
+
+  /** @param {{ vx?: number, vy?: number }|null|undefined} [station] */
+  _stationFrameOpts(station) {
+    return {
+      frameVx: station?.vx ?? this._frameVx ?? 0,
+      frameVy: station?.vy ?? this._frameVy ?? 0,
+    };
   }
 
   countNonPolice() {
@@ -428,8 +441,9 @@ export class AmbientTrafficSystem {
     ship.cruiseSpd = spd;
     ship.maxAge =
       state === 'bayInbound' ? 140 + Math.random() * 80 : 80 + Math.random() * 40;
-    ship.vx = Math.cos(heading) * spd;
-    ship.vy = Math.sin(heading) * spd;
+    const frame = this._stationFrameOpts(station);
+    ship.vx = frame.frameVx + Math.cos(heading) * spd;
+    ship.vy = frame.frameVy + Math.sin(heading) * spd;
     ship.velocity.x = ship.vx;
     ship.velocity.y = ship.vy;
     ensureBody(ship);
@@ -472,6 +486,8 @@ export class AmbientTrafficSystem {
     if (!station || !egress?.shipDef) return null;
     if (this.ships.length >= AMBIENT.MAX_SHIPS) return null;
     const spawn = station.getExitSpawn(egress.bayIndex ?? 1);
+    const frame = this._stationFrameOpts(station);
+    const exitSpd = 200;
     const thrusters = makeVisitorThrusters(egress.shipDef);
     const ship = {
       id: _nextId++,
@@ -484,8 +500,8 @@ export class AmbientTrafficSystem {
       x: spawn.x,
       y: spawn.y,
       angle: spawn.angle,
-      vx: Math.cos(spawn.angle) * 200,
-      vy: Math.sin(spawn.angle) * 200,
+      vx: frame.frameVx + Math.cos(spawn.angle) * exitSpd,
+      vy: frame.frameVy + Math.sin(spawn.angle) * exitSpd,
       angularVelocity: 0,
       age: 0,
       maxAge: 45 + Math.random() * 40,
@@ -541,7 +557,8 @@ export class AmbientTrafficSystem {
     const station = ctx.station;
     const hangarBay = ctx.hangarBay || null;
     this._gameTime = ctx.gameTime ?? 0;
-    this._gameTime = ctx.gameTime ?? 0;
+    this._frameVx = station?.vx ?? 0;
+    this._frameVy = station?.vy ?? 0;
     const sx = station?.x ?? STATION.WORLD_X;
     const sy = station?.y ?? STATION.WORLD_Y;
     const px = player?.position?.x ?? sx;
@@ -950,8 +967,9 @@ export class AmbientTrafficSystem {
     const behavior = asPolice ? 'police' : role.behavior;
     const thrusters = makeVisitorThrusters(shipDef);
     const speed = this._cruiseSpeed(behavior);
-    const vx = Math.cos(heading) * speed;
-    const vy = Math.sin(heading) * speed;
+    const frame = this._stationFrameOpts(null);
+    const vx = frame.frameVx + Math.cos(heading) * speed;
+    const vy = frame.frameVy + Math.sin(heading) * speed;
 
     const ship = {
       id: _nextId++,
@@ -1086,6 +1104,7 @@ export class AmbientTrafficSystem {
             brakeForArrival: false,
             speedBand: AMBIENT.COAST_SPEED_BAND,
             headingTol: AMBIENT.COAST_HEADING_TOL,
+            ...this._stationFrameOpts(station),
           });
         } else {
           holdSpeed(ship, Math.max(180, this._cruiseSpeed(ship.behavior)), dt);
@@ -1100,14 +1119,14 @@ export class AmbientTrafficSystem {
 
     switch (ship.behavior) {
       case 'police':
-        this._tickPolice(ship, dt, sx, sy, player, peers);
+        this._tickPolice(ship, dt, sx, sy, player, peers, station);
         break;
       case 'flyby':
       case 'race':
         this._tickFlyby(ship, dt);
         break;
       case 'mine':
-        this._tickMine(ship, dt, asteroids, sx, sy);
+        this._tickMine(ship, dt, asteroids, sx, sy, station);
         break;
       case 'survey':
       case 'deepSurvey':
@@ -1117,14 +1136,14 @@ export class AmbientTrafficSystem {
       case 'freight':
       case 'cruise':
       case 'recon':
-        this._tickLane(ship, dt, sx, sy);
+        this._tickLane(ship, dt, sx, sy, station);
         this._maybeBeginBayApproach(ship, station, hangarBay);
         break;
       case 'deepCruise':
         this._tickDeep(ship, dt);
         break;
       default:
-        this._tickLane(ship, dt, sx, sy);
+        this._tickLane(ship, dt, sx, sy, station);
         break;
     }
   }
@@ -1224,6 +1243,7 @@ export class AmbientTrafficSystem {
         speedBand: AMBIENT.COAST_SPEED_BAND,
         headingTol: AMBIENT.COAST_HEADING_TOL,
         yawMult: 1.05,
+        ...this._stationFrameOpts(station),
       });
       const d = dist(ship.x, ship.y, stage.x, stage.y);
       if (d < AMBIENT.CUSTOMER_STAGE_ARRIVAL_R * 1.25) {
@@ -1267,6 +1287,7 @@ export class AmbientTrafficSystem {
         arrivalR: AMBIENT.HOLD_ARRIVAL_R,
         speedBand: AMBIENT.COAST_SPEED_BAND,
         headingTol: AMBIENT.COAST_HEADING_TOL,
+        ...this._stationFrameOpts(station),
       });
       return;
     }
@@ -1345,7 +1366,7 @@ export class AmbientTrafficSystem {
     }
   }
 
-  _tickPolice(ship, dt, sx, sy, player, peers) {
+  _tickPolice(ship, dt, sx, sy, player, peers, station) {
     if (ship.state === 'scan') {
       this._tickPoliceScan(ship, dt, player, peers);
       return;
@@ -1376,6 +1397,7 @@ export class AmbientTrafficSystem {
       speedBand: AMBIENT.COAST_SPEED_BAND,
       headingTol: AMBIENT.COAST_HEADING_TOL,
       brakeForArrival: true,
+      ...this._stationFrameOpts(station),
     });
 
     this._tickPoliceScan(ship, dt, player, peers);
@@ -1443,7 +1465,7 @@ export class AmbientTrafficSystem {
     holdSpeed(ship, spd, dt);
   }
 
-  _tickMine(ship, dt, asteroids, sx, sy) {
+  _tickMine(ship, dt, asteroids, sx, sy, station) {
     if (ship.state === 'leave') {
       holdSpeed(ship, 200, dt, { faceAngle: ship.angle });
       ship.miningLaserFiring = false;
@@ -1468,7 +1490,7 @@ export class AmbientTrafficSystem {
     }
 
     if (ship.state === 'wander' || !ship.targetAsteroid) {
-      this._tickLane(ship, dt, sx, sy);
+      this._tickLane(ship, dt, sx, sy, station);
       if (ship.stateT > 18) {
         ship.state = 'leave';
         ship.pendingCull = true;
@@ -1549,7 +1571,7 @@ export class AmbientTrafficSystem {
     }
   }
 
-  _tickLane(ship, dt, sx, sy) {
+  _tickLane(ship, dt, sx, sy, station) {
     const r =
       ship.patrolR ||
       dist(ship.x, ship.y, sx, sy) ||
@@ -1574,6 +1596,7 @@ export class AmbientTrafficSystem {
       arrivalR: AMBIENT.LANE_ARRIVAL_R,
       speedBand: AMBIENT.COAST_SPEED_BAND,
       headingTol: AMBIENT.COAST_HEADING_TOL,
+      ...this._stationFrameOpts(station),
     });
   }
 
