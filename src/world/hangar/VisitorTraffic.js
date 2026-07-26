@@ -830,7 +830,7 @@ export function attachVisitorTraffic(HangarBay) {
         break;
       }
       case 'turn': {
-        // Pad + ship: south → north (same as B2 turntable)
+        // Pad + ship: south → north (standard pad turntable)
         this.setPadRim(pad.bayIndex, 'on');
         const u = smoothstep(s.t / HANGAR.PAD_TURN_TIME);
         const angle = FACE_SOUTH + (FACE_NORTH - FACE_SOUTH) * u;

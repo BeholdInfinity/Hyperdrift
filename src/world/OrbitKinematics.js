@@ -32,12 +32,18 @@ export function orbitOmegaFor(R, layout = getSectorLayout()) {
   return angularSpeed(R, gravityMu(layout));
 }
 
+/** Circular ω from layout μ and orbitR — ignores stale baked orbitOmega. */
+export function resolveOrbitOmega(orbit, layout = getSectorLayout()) {
+  const R = orbit?.orbitR ?? 0;
+  return orbitOmegaFor(R, layout);
+}
+
 export function positionAt(orbit, gameTime, layout = getSectorLayout()) {
   const t = finiteGameTime(gameTime);
   const cx = layout.planet?.center?.x ?? 0;
   const cy = layout.planet?.center?.y ?? 0;
   const R = orbit.orbitR ?? 0;
-  const omega = orbit.orbitOmega ?? orbitOmegaFor(R, layout);
+  const omega = resolveOrbitOmega(orbit, layout);
   const theta = (orbit.orbitAngle0 ?? 0) + omega * t;
   return { x: cx + Math.cos(theta) * R, y: cy + Math.sin(theta) * R };
 }
@@ -45,10 +51,9 @@ export function positionAt(orbit, gameTime, layout = getSectorLayout()) {
 export function velocityAt(orbit, gameTime, layout = getSectorLayout()) {
   const t = finiteGameTime(gameTime);
   const R = orbit.orbitR ?? 0;
-  const omega = orbit.orbitOmega ?? orbitOmegaFor(R, layout);
+  const omega = resolveOrbitOmega(orbit, layout);
   const theta = (orbit.orbitAngle0 ?? 0) + omega * t;
-  // Speed must match d(positionAt)/dt — same omega as position integration.
-  // Using circularSpeed(μ) alone drifts from authored orbitOmega in sectorLayout.
+  // v = ωR matches circularSpeed(μ, R) and GravitySystem at the same radius.
   const v = omega * R;
   return {
     vx: -Math.sin(theta) * v,

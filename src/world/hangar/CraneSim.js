@@ -198,7 +198,7 @@ export function attachCraneSim(HangarBay) {
       c.carried = null;
       c.phase = 'idle';
       if (!opts.keepOpsFreeze) c.pause = 0.15;
-      // Park on a non-ops bay mid-in (never force B2 — may be the hot bay)
+      // Park on a non-ops bay mid-in (never force the player/ops bay)
       const parkBay =
         [0, 1, 2].find((b) => b !== bayIndex) ??
         ((bayIndex + 1) % 3);

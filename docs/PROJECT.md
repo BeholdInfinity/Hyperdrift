@@ -227,7 +227,7 @@ Full plan + todo list: [`WORLD_GEOGRAPHY_PLAN.md`](WORLD_GEOGRAPHY_PLAN.md) (cod
 
 **Shipped:** Stage 1 foundation; Stage 2 visuals core + **map editor MVP** (drag sites, validator, bake); Stage 3 motion core (gravity, orbiting stations/gates, `worldPosition`, PRO/SYNC, corridors, Jennings ambient co-orbit v0.1.290); Stage 4 systems core (warp gates, LIM/fines stub, chart zoom); Stage 5 Place registry (Jennings-clone + planetary stubs); **`InteriorSession`** hangar instancing.
 
-**Open (see plan todos):** sector editor advanced (ring handles, undo); kinematic asteroid belts; trade block / broker / outlaw IFF wiring; non-Jennings dock exterior stubs; fragment gravity; dev gravity μ slider.
+**Open (see plan todos):** sector editor advanced (ring handles, undo); kinematic asteroid belts (same μ-derived ω); trade block / broker / outlaw IFF wiring; non-Jennings dock exterior stubs; fragment gravity; dev gravity μ slider.
 
 ### Polish / follow-ups
 - **Thruster cup size** — tune via Blueprint Author sliders / `visualTuning.js` (still subjective)
@@ -367,7 +367,7 @@ Cosmetic / lower priority:
 - **v0.1.164** Hangar LMB pan + fire together again (deselect to stop shooting)
 - **v0.1.163** Visitor thruster isolation; player weapons
 - **v0.1.162** Hangar ship select/control (player + visitors); full player Door/Elev Dev scenes
-- **v0.1.161** Hangar free-look pan camera; random player bay (B1–B3); player ops no longer hardcoded to B2
+- **v0.1.161** Hangar free-look pan camera; random player bay (B1–B3); player ops follow `playerBayIndex`
 - **v0.1.160** Dev Bay Options side menu (replaces hangar REROLL/ELEV strip); per-bay offline flag
 - **v0.1.159** Dev Mode drawer, Blueprint player+Author, hangar layout editor, gossip circle, linger bay/facing, `/dev/save` bake-back
 - Modular catalog + Blueprint (2D default, 2.5D side peeks, pads, reset, hardpoint **variant** picker)
@@ -378,7 +378,7 @@ Cosmetic / lower priority:
 - **Stranger subsystems** (not started) — narrative runtime (portraits + ambient barks), shared 2.5D interior explorer (`shipInterior` then `derelict`), station economy, bot companion — phased in [`VISION.md`](VISION.md)
 - Unique art polish per Class×Section×Theme×Mk×variant (matrix is parametric templates today)
 - Ship Upgrade UI economy / gated install (grows on player Blueprint — see [Dev blueprint mode](#dev-blueprint-mode))
-- Home Base: B2 player-request job queue still future; interim B2 uses the same captain checklist as B1/B3 — see `GDD.md`
+- Home Base: player-request job queue still future; controlled pad uses the same captain checklist as visitor bays — see `GDD.md`
 - **Hangar mount install choreography** — weld-detach → crane removes old turret → crane places new from staging → weld-seat (see `GDD.md` cargo hardpoints); today’s strip/install is interim
 - Hangar layout editor follow-ups (undo/redo, snap) — MVP shipped; see [Hangar room editor](#hangar-room-editor)
 - Mega-capable hangar bays → **Heavy** group needs **Mk3** pads (none at Jennings yet; Heavy twins are space-only)
@@ -420,7 +420,7 @@ Cosmetic / lower priority:
 
 **Status:** Flavor MVP shipped (v0.1.159); bay unit spacing (v0.1.173); unified categorized props (v0.1.174); `decor` wall art / crew poster (v0.1.215). Structural sim (doors, pads, piles, crane, danger lanes) is code-owned but follows `sidePadX`.
 
-**Entry:** Dev drawer → **Edit layout** (hangar only). Freezes crew; palette add / delete / copy / 8-dir rotate; linger bay multi-select + face arrow/slack; gossip capacity; **Bays** layer — drag B1/B3 grips (or nudge) to move whole bay units left/right with B2-centered symmetry; **Save layout**.
+**Entry:** Dev drawer → **Edit layout** (hangar only). Freezes crew; palette add / delete / copy / 8-dir rotate; linger bay multi-select + face arrow/slack; gossip capacity; **Bays** layer — drag outer-bay grips (or nudge) to move B1/B3 left/right with center-bay symmetry; **Save layout**.
 
 ### Follow-ups
 - Undo / redo, snap-to-grid, multi-select

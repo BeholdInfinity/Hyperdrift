@@ -366,7 +366,7 @@ const VISITOR_CARGO_MK = {
 
 
 /**
- * Weighted padMk for a fresh B1/B3 visitor — mostly `peerPadMk` (matches the
+ * Weighted padMk for a fresh visitor-bay ship — mostly `peerPadMk` (matches the
  * player's own pad tier, e.g. Mk2 Standard), occasionally Mk1 (UltraLight +
  * Light) for size variety. If the player is already Mk1, there's nothing
  * smaller to roll, so it's always Mk1.

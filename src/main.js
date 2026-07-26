@@ -331,7 +331,7 @@ function syncHangarEditInspector() {
       `<div>bay B${sel.bayIndex + 1}<br/>pad x ${sel.ref?.x ?? 0}<br/>` +
       `spacing ±${side} (symmetric)</div>` +
       (locked
-        ? `<div class="hangar-edit-tools">B2 is the center anchor</div>`
+        ? `<div class="hangar-edit-tools">Center bay is the symmetry anchor</div>`
         : `<div class="hangar-edit-tools">` +
           `<button type="button" class="hangar-dev-btn" data-bay-nudge="-5">« 5</button>` +
           `<button type="button" class="hangar-dev-btn" data-bay-nudge="-1">‹</button>` +

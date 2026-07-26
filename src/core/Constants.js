@@ -142,7 +142,7 @@ export const BLUEPRINT = {
 
 /** Home Base hangar (docked bay; new-game / between-mission hub seed) */
 export const HANGAR = {
-  /** Dock pad disc radius (B2 Mk2; HangarBay BAY.PAD_R) */
+  /** Dock pad disc radius (Mk2; HangarBay BAY.PAD_R) */
   PAD_R: 38,
   /**
    * Widest zoom-out floor (actual min also tracks sidePadX so B1–B3 stay
@@ -168,7 +168,7 @@ export const HANGAR = {
   DOOR_H: 42,
   /** North of doors = clear of hangar for launch handoff */
   LAUNCH_EXIT_Y: -260,
-  /** Landing start: north of open B2 doors */
+  /** Landing start: north of open bay doors */
   LAND_START_Y: -245,
   /** Hover lift: ship draw scale when airborne over the pad */
   HOVER_SCALE: 1.14,
@@ -180,10 +180,10 @@ export const HANGAR = {
   PAD_TURN_TIME: 1.55,
   /** Southbound entry speed into open bay */
   LAND_APPROACH_SPEED: 78,
-  /** B1/B3 ambient visitor traffic */
+  /** Ambient visitor traffic on non-player bays */
   VISITOR_OCCUPY_CHANCE: 0.55,
   /**
-   * Chance a fresh B1/B3 visitor rolls the player's own pad-Mk tier (peer-sized,
+   * Chance a fresh visitor-bay ship rolls the player's own pad-Mk tier (peer-sized,
    * e.g. Standard when the player flies Standard) instead of the smaller
    * UltraLight/Light Mk1 tier. Physical pad discs are already Mk2-sized
    * (`HANGAR.PAD_R`) on every bay, so this is a spawn-pool weight, not a
@@ -236,10 +236,10 @@ export const HANGAR = {
   BOARD_REVEAL_PIP_GAP_SAME_MAX: 0.2,
   /** Quick Hangar Bay Scanner pass after all service jobs finish (before board goes green) */
   BOARD_FINAL_SCAN_SEC: 1,
-  /** After B2 captain checklist finishes, wait before rolling a new list (player owns exit). */
+  /** After player-bay captain checklist finishes, wait before rolling a new list (player owns exit). */
   PLAYER_SERVICE_REROLL_MIN: 10,
   PLAYER_SERVICE_REROLL_MAX: 60,
-  /** Side-bay sim run before first hangar frame (B1/B3); B2 stays fresh */
+  /** Visitor-bay warmup sim before first hangar frame; player bay stays fresh */
   WARMUP_SEC: 60,
   WARMUP_STEP: 0.25,
   VISITOR_HOVER_SCALE: 1.12,
@@ -248,7 +248,7 @@ export const HANGAR = {
   VISITOR_BELOW_TIME: 2.1,
   /** Brief beat before player ship rises on title Home Base entry */
   PLAYER_ELEVATOR_BELOW_TIME: 0.75,
-  /** Zoom-out after B2 pad seats at deck level (title elevator entry) */
+  /** Zoom-out after player pad seats at deck level (title elevator entry) */
   PLAYER_ELEVATOR_ZOOM_TIME: 1.1,
   VISITOR_RISE_TIME: 1.35,
   VISITOR_DOOR_TIME: 1.5,
@@ -258,7 +258,7 @@ export const HANGAR = {
 
 /**
  * Dock pad Mk disc radii (world units) — Blueprint background rings + future bay sizing.
- * Mk2 matches hangar B2 (`HANGAR.PAD_R`). Mk1 sized for UltraLight/Light fill;
+ * Mk2 matches hangar pad (`HANGAR.PAD_R`). Mk1 sized for UltraLight/Light fill;
  * Mk3 sized for Heavy (~2× Standard).
  */
 export const PAD_MK_RADIUS = {

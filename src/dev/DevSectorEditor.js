@@ -12,7 +12,7 @@ import {
   setSectorLayoutOverride,
   clearSectorLayoutOverride,
 } from '../world/SectorLayout.js';
-import { circularSpeed, period, gravityMu } from '../world/OrbitKinematics.js';
+import { circularSpeed, period, gravityMu, angularSpeed } from '../world/OrbitKinematics.js';
 import { saveToRepo, exportToClipboard, SAVE_PATHS } from './DevSave.js';
 
 /** Live draft (mutated by dev UI). */
@@ -209,7 +209,7 @@ export function migrateStaticFringeToOrbit(layout = sectorEditorDraft) {
     const orbitR = Math.hypot(x - cx, y - cy);
     const orbitAngle0 = Math.atan2(y - cy, x - cx);
     site.motion = 'orbit';
-    site.orbit = { orbitR, orbitAngle0, orbitOmega: site.orbit?.orbitOmega ?? null };
+    site.orbit = { orbitR, orbitAngle0, orbitOmega: null };
     if (site.fringeClearance == null) {
       const pos = siteWorldPosition(site, 0, layout);
       site.fringeClearance =
@@ -672,14 +672,37 @@ export const VALIDATOR_RULE_DEFS = [
       return issues;
     },
   },
+  {
+    id: 'orbit_omega_mu',
+    label: 'Orbit ω vs gravity μ',
+    hint:
+      'Each site orbitOmega must match √(μ/R³) from planet.gravityMu. Stale hand-tuned values break co-orbit with the player ship; hydrate rebakes them on save.',
+    severity: 'warning',
+    collect(layout) {
+      const warnings = [];
+      const mu = gravityMu(layout);
+      for (const site of layout.sites ?? []) {
+        const R = site.orbit?.orbitR;
+        const omega = site.orbit?.orbitOmega;
+        if (R == null || omega == null) continue;
+        const expected = angularSpeed(R, mu);
+        if (expected <= 0) continue;
+        const relErr = Math.abs(omega - expected) / expected;
+        if (relErr > 0.001) {
+          warnings.push(
+            `${site.id} orbitOmega ${omega.toExponential(4)} ≠ μ-derived ${expected.toExponential(4)} (${(relErr * 100).toFixed(1)}% off)`
+          );
+        }
+      }
+      return warnings;
+    },
+  },
 ];
 
 /**
  * @returns {{ ok: boolean, issues: string[], warnings: string[], rules: Array<{ id: string, label: string, hint: string, severity: string, ok: boolean, items: string[] }> }}
  */
 export function buildValidatorReport(layout = sectorEditorDraft) {
-  hydrateOrbitParams(layout);
-  ensureSocialOrbitInner(layout);
   const rules = VALIDATOR_RULE_DEFS.map((def) => {
     const items = def.collect(layout);
     return {
@@ -691,6 +714,8 @@ export function buildValidatorReport(layout = sectorEditorDraft) {
       items,
     };
   });
+  hydrateOrbitParams(layout);
+  ensureSocialOrbitInner(layout);
   const issues = rules
     .filter((r) => r.severity === 'error' && !r.ok)
     .flatMap((r) => r.items);
@@ -831,6 +856,7 @@ export async function bakeSectorLayout({ force = false } = {}) {
   if (!check.ok && !force) {
     return { ok: false, error: `Validator failed: ${check.issues[0]}` };
   }
+  hydrateOrbitParams(sectorEditorDraft);
   const text = formatSectorLayoutModule(sectorEditorDraft);
   const res = await saveToRepo(SAVE_PATHS.sectorLayout, text);
   if (res.ok) return res;

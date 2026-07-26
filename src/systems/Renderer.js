@@ -155,7 +155,7 @@ export class Renderer {
   }
 
   /**
-   * Draw ship hull at a world offset (used by B2 elevator shaft clip pass).
+   * Draw ship hull at a world offset (used by elevator shaft clip pass).
    * Pass an angled view for hangar / blueprint 2.5D.
    * @param {{ mode?: string, headingIndex?: number }} [view]
    */

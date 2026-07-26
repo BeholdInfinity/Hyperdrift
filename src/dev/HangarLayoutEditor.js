@@ -226,7 +226,7 @@ export const HangarLayoutEditor = {
   onPointerMove(wx, wy) {
     if (!this.drag) return false;
     if (this.drag.type === 'bay') {
-      // B2 is the symmetry anchor — outer bays only move left/right as a pair.
+      // Center bay is the symmetry anchor — outer bays only move left/right as a pair.
       if (this.drag.bayIndex === 1) return true;
       const side = Math.abs(Math.round(wx));
       this.setBaySpacing(side);

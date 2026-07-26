@@ -2975,7 +2975,7 @@ export class GameEngine {
           if (ship.velocity.y < 0) ship.velocity.y = 0;
           this.physics.integrate(ship, dt);
           ship.position.x += (this._dockPos.x - ship.position.x) * Math.min(1, dt * 4);
-          // Once nearly stopped, creep the rest of the way over B2
+          // Once nearly stopped, creep the rest of the way over the pad
           if (ship.velocity.y < 14) {
             ship.position.y += (this._dockPos.y - ship.position.y) * Math.min(1, dt * 2.4);
             ship.velocity.y = 0;
@@ -4525,7 +4525,7 @@ export class GameEngine {
 
   /**
    * Concentric pad Mk rings under the sandbox ship.
-   * Mk2 radius matches hangar B2; active group’s pad is emphasized.
+   * Mk2 radius matches hangar pad; active group’s pad is emphasized.
    * Drawn after the drafting field (`_drawBlueprintField`) so the ring
    * strokes stay crisp over the faint interior grid echo.
    */

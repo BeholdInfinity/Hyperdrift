@@ -1511,7 +1511,7 @@ export class HangarBay {
       this.bayLaneMode[i] = 'idle';
       this.doorOpen[i] = 0;
       this.padRimMode[i] = 'off';
-      // Match beginOps: unfreeze for whichever bay holds the player (not hardcoded B2)
+      // Match beginOps: unfreeze for whichever bay holds the player
       if (this.isPlayerBay(i) && this.crane) this.crane.pause = 0.2;
     };
     if (bayIndex == null) {
@@ -4734,7 +4734,7 @@ export class HangarBay {
     const near = props.filter(
       (p) => p.bay === homeBay && p.kind === 'computer'
     );
-    // Bay-scoped wing fluff: B1 west, B3 east, B2 center pockets — never south of road
+    // Bay-scoped wing fluff: west / center / east pockets — never south of road
     const wing = props.filter((p) => {
       if (p.kind === 'computer') return false;
       const ly = p.linger?.[0]?.y ?? p.y;

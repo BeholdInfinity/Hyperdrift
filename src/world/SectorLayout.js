@@ -3,7 +3,7 @@
  */
 
 import { SECTOR_LAYOUT } from './data/sectorLayout.js';
-import { positionAt, velocityAt } from './OrbitKinematics.js';
+import { positionAt, velocityAt, orbitOmegaFor } from './OrbitKinematics.js';
 import { surfacePositionAt } from './PlanetSpin.js';
 
 /** When set, dev sector editor preview uses the in-memory draft. */
@@ -130,14 +130,11 @@ export function siteInsideRing(site, layout = getSectorLayout()) {
   return !!ringAt(pos.x, pos.y, layout);
 }
 
-/** Bootstrap orbitOmega from μ when missing. */
+/** Derive orbitOmega from planet.gravityMu — single authority for gravity + kinematic orbits. */
 export function hydrateOrbitParams(layout = getSectorLayout()) {
-  const mu = layout.planet?.gravityMu ?? 1.8e12;
   for (const site of layout.sites ?? []) {
     if (!site.orbit?.orbitR) continue;
-    if (site.orbit.orbitOmega == null) {
-      site.orbit.orbitOmega = Math.sqrt(mu / (site.orbit.orbitR ** 3));
-    }
+    site.orbit.orbitOmega = orbitOmegaFor(site.orbit.orbitR, layout);
     const p = siteWorldPosition(site, 0, layout);
     site.x = p.x;
     site.y = p.y;

@@ -7,7 +7,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 ## [Unreleased]
 
 ### Changed
-- **Travel Log retention** — persisted archives auto-trim to the **25** most recent expeditions plus up to **25** locked trips outside that window (max **50** total when disjoint); enforced on dock archive, lock toggle, and save load.
+- **Unified orbital μ** — `planet.gravityMu` is now the sole authority for player gravity (`GravitySystem`) and kinematic orbits (`OrbitKinematics`, stations, warp gates). `hydrateOrbitParams()` always derives `orbitOmega = √(μ/R³)`; baked `sectorLayout.js` rebaked; sector editor warns on stale hand-tuned ω before hydrate. Co-orbit at a station radius now matches TELEMETRY **PRO** (fixes ~370 u/s Jennings mismatch vs gravity-stable circular speed).
 - **Live expedition trail** — sector map blue trail no longer drops oldest points mid-outing; full downsampled path kept until launch/dock reset (still one sample every ~600 u).
 - **Station runway orientation** — orbital stations rotate so the docking runway points **upstream** (opposite prograde); departures **co-orbit** the station (handoff matches live `vx`/`vy` so the station reads nearly still); approach-light corridor + ingress heading/speed checks use the station-local runway frame; **CONTACT REL V** uses live station-frame relative speed (not radial closing); **brake / zero-hold** in the approach shell target station co-motion (manual orbit-match + Alt brake); corridor lights extend through the mouth; dock HUD shows stn-relative slip + block reason; TELEMETRY **STN** row near Jennings shows dock-frame relative speed; **fix** `velocityAt()` now uses `orbitOmega × R` so station `vx`/`vy` matches actual track motion (was ~370 u/s slow vs position integration, blocking dock while visually co-orbit matched).
 - **Speed streaks** — saturation reference raised to **4000 u/s** (`STREAK_REFERENCE_SPEED`); ~4000 u/s now fills the viewport like ~900 u/s did when that was the practical speed cap (HUD chevrons / speed-zoom still use 900 u/s reference).
@@ -24,7 +24,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ### Planned
 
-- Home Base: B2 player-request job queue (sell, repair, buy/load, upgrade)
+- Home Base: player-request job queue (sell, repair, buy/load, upgrade)
 - Full player crane trolley control feel + on-foot weld loop for turret swap
 - Shared 2.5D interior walker (`shipInterior`) on vessel Place graphs
 - Unique silhouette polish per catalog variant

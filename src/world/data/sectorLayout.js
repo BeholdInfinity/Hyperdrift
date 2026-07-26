@@ -1,6 +1,7 @@
 /**
  * Baked sector layout v2 — Therissa Prime / Thera system (authoritative geography).
  * Dev Sector Map editor saves edits here via POST /dev/save.
+ * orbitOmega on each site is derived from planet.gravityMu at bake time.
  */
 
 export const SECTOR_LAYOUT = {
@@ -135,7 +136,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 194000,
         "orbitAngle0": 0,
-        "orbitOmega": 0.00459681724406756
+        "orbitOmega": 0.015701229357736376
       },
       "x": 194000,
       "y": 0,
@@ -157,7 +158,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 194000,
         "orbitAngle0": 3.141592653589793,
-        "orbitOmega": 0.00459681724406756
+        "orbitOmega": 0.015701229357736376
       },
       "x": -194000,
       "y": 2.3758147903458653e-11,
@@ -180,7 +181,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 543000,
         "orbitAngle0": -1.5707963267948966,
-        "orbitOmega": 0.004034357652299392
+        "orbitOmega": 0.003353022812344776
       },
       "x": 3.324916059685064e-11,
       "y": -543000,
@@ -202,7 +203,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 514000,
         "orbitAngle0": 0.5235987755982988,
-        "orbitOmega": 0.003738515498183481
+        "orbitOmega": 0.0036407560012751286
       },
       "x": 445137.0575452015,
       "y": 256999.99999999997
@@ -219,7 +220,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 539000,
         "orbitAngle0": 2.0943951023931953,
-        "orbitOmega": 0.0035269337134192437
+        "orbitOmega": 0.0033904169046744302
       },
       "x": -269499.9999999999,
       "y": 466787.6926398125
@@ -236,7 +237,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 843000,
         "orbitAngle0": 1.5707963267948966,
-        "orbitOmega": 0.0034285112552284655
+        "orbitOmega": 0.0017333844275568791
       },
       "x": 5.1618862584060935e-11,
       "y": 843000
@@ -253,7 +254,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 486000,
         "orbitAngle0": 2.6179938779914944,
-        "orbitOmega": 0.0034771421707582143
+        "orbitOmega": 0.0039598783895036065
       },
       "x": -420888.34623923723,
       "y": 242999.99999999997
@@ -270,10 +271,10 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 884000,
         "orbitAngle0": 4.1887902047863905,
-        "orbitOmega": 0.0033345827494424734
+        "orbitOmega": 0.0016142019032392334
       },
       "x": -442000.0000000004,
-      "y": -765566.4569454435
+      "y": -765566.4569454436
     },
     {
       "id": "site.station.guild.d",
@@ -287,7 +288,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 1308000,
         "orbitAngle0": 3.665191429188092,
-        "orbitOmega": 0.0031591015078339625
+        "orbitOmega": 0.000896859962162586
       },
       "x": -1132761.228150046,
       "y": -653999.9999999997
@@ -304,7 +305,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 1251000,
         "orbitAngle0": 1.0471975511965976,
-        "orbitOmega": 0.003037345963007087
+        "orbitOmega": 0.0009588491509257668
       },
       "x": 625500.0000000001,
       "y": 1083397.7801343326
@@ -322,7 +323,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 942000,
         "orbitAngle0": 5.759586531581287,
-        "orbitOmega": 0.0029232153058106644
+        "orbitOmega": 0.001467438463643603
       },
       "x": 815795.9303649409,
       "y": -471000.0000000004
@@ -339,7 +340,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 1351000,
         "orbitAngle0": 5.235987755982989,
-        "orbitOmega": 0.002816057381871483
+        "orbitOmega": 0.0008543842405324362
       },
       "x": 675500.0000000001,
       "y": -1170000.3205127765
@@ -409,7 +410,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 348500,
         "orbitAngle0": 0,
-        "orbitOmega": 0.03677453795254048
+        "orbitOmega": 0.00652126845691739
       },
       "x": 348500,
       "y": 0,
@@ -427,7 +428,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 348500,
         "orbitAngle0": 3.141592653589793,
-        "orbitOmega": 0.03677453795254048
+        "orbitOmega": 0.00652126845691739
       },
       "x": -348500,
       "y": 4.267894095028526e-11,
@@ -445,7 +446,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 585000,
         "orbitAngle0": 0,
-        "orbitOmega": 0.015
+        "orbitOmega": 0.0029984889548958266
       },
       "x": 585000,
       "y": 0,
@@ -463,7 +464,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 585000,
         "orbitAngle0": 3.141592653589793,
-        "orbitOmega": 0.015
+        "orbitOmega": 0.0029984889548958266
       },
       "x": -585000,
       "y": 7.164183775012016e-11,
@@ -481,7 +482,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 977500,
         "orbitAngle0": 0,
-        "orbitOmega": 0.007077263128741118
+        "orbitOmega": 0.0013882289709418946
       },
       "x": 977500,
       "y": 0,
@@ -499,7 +500,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 977500,
         "orbitAngle0": 3.141592653589793,
-        "orbitOmega": 0.007077263128741118
+        "orbitOmega": 0.0013882289709418946
       },
       "x": -977500,
       "y": 1.1970922461665377e-10,
@@ -517,7 +518,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 1616000,
         "orbitAngle0": 0.12246105741734142,
-        "orbitOmega": 0.0025314525309831364
+        "orbitOmega": 0.0006530917803808402
       },
       "x": 1603897.7936364282,
       "y": 197402.8053706373,
@@ -533,7 +534,7 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 1726000,
         "orbitAngle0": 2.7173982456860264,
-        "orbitOmega": 0.0023890151076162046
+        "orbitOmega": 0.0005916638912831381
       },
       "x": -1573025.6550108725,
       "y": 710398.6829081364,

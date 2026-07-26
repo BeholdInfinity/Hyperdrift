@@ -33,7 +33,7 @@ The prototype play space is a **bounded single system** — not infinite void:
 | **Station shell** | 12 orbital ports (Jennings + outlaw-country clones); social tier ↓ as orbit radius ↑ |
 | **Fringe** | Iron Crown capital wreck + instance gate stubs; soft empty edge ~7500 km |
 
-**Flight model:** player ship feels planetary gravity; belt rocks and stations use kinematic orbits. No global hard speed cap — TELEMETRY **PRO** shows circular prograde at your radius; **SYNC** (`X` hold at ≥95%) trims to a selected contact's live velocity. Posted **LIM** is regulatory (fines when caught), not a physics clamp — **local station shells** measure excess speed **relative to that station's orbit** (same frame as docking: match orbit, then bleed down for the mouth). Each station's runway points **upstream** (opposite prograde); hangar / quick-launch egress inherits station co-orbit plus **200 u/s REL V out through the mouth** on the runway axis (full manual control; **3 s egress grace** blocks dock; zero-hold cleared on handoff). Six **ring warp gates** teleport paired hops through the planet hub.
+**Flight model:** one **`planet.gravityMu`** drives player gravity (`GravitySystem`) and all circular kinematic orbits (stations, gates; future belt rocks use the same ω = √(μ/R³)). Player ship integrates thrust + gravity; circular bodies use analytic Keplerian motion from the same μ (not independent speed tables). No global hard speed cap — TELEMETRY **PRO** shows circular prograde at your radius; **SYNC** (`X` hold at ≥95%) trims to a selected contact's live velocity. Posted **LIM** is regulatory (fines when caught), not a physics clamp — **local station shells** measure excess speed **relative to that station's orbit** (same frame as docking: match orbit, then bleed down for the mouth). Each station's runway points **upstream** (opposite prograde); hangar / quick-launch egress inherits station co-orbit plus **200 u/s REL V out through the mouth** on the runway axis (full manual control; **3 s egress grace** blocks dock; zero-hold cleared on handoff). Six **ring warp gates** teleport paired hops through the planet hub.
 
 ---
 
@@ -82,11 +82,11 @@ The hangar bay is the prototype seed of **Home Base**: the place you start a new
 |-----|---------|
 | Full-frame docked bay (B1 · B2 · B3 equal pads; land on the green lane you fly into); free-look hangar camera (drag pan / scroll zoom); 2.5D industrial set dressing (prop categories: desk/shelf/storage/tool/yard/decor — `decor` wall art is higher-fi engine-drawn posters); three-column pad status boards; danger-lane floor lights | Persistent inventory / loadout across sessions; personal hangar fleet pick |
 | Live thrusters / engine / weapons (position + heading locked to pad until launch) | Mission board, shop UI, between-run meta |
-| 3×6 cargo grid (2 cols/bay: left=in, right=out), manned crane, bulkheads; forklift hub south wall | Player-request job queue for **B2 only** (see below) |
+| 3×6 cargo grid (2 cols/bay: left=in, right=out), manned crane, bulkheads; forklift hub south wall | Player-request job queue (future; any bay — see below) |
 | Place-driven crew (Jennings = 4 forklifts + 6 bay mechs + crane); checklist-driven logistics; player may self-serve pad jobs when crew absent | Full player on-foot pad / crane control feel |
 | Distinct upgrade parts from ItemCatalog; install/uninstall mutates ship hardpoint loadout; **turret swaps require a crane** | Player Ship Upgrade UI (economy / gated install) — Dev **Blueprint** sandbox is the prototype surface |
-| B2 **LAUNCH** / dock landing (lift burst, pad turntable, doors, thrust) | |
-| B1–B3 captain service checklist; pilot door lights + status tickers; B1/B3 exit + elevator; B2 rerolls; empty-bay cargo sweep; elevator shafts | |
+| Launch / dock landing on any bay (lift burst, pad turntable, doors, thrust) | |
+| B1–B3 captain service checklist; pilot door lights + status tickers; door exit + elevator; controlled-pad rerolls; empty-bay cargo sweep; elevator shafts | |
 | Jennings Station exterior + pad status lights (paint + two floating runway rows; green / red / spin-red depart / spin-yellow elevator; runway safe-speed lane = pulse-green reserved + hangar approach anim) + apron thirds + approach lights (yellow chase / green-safe / red-fast / full blink / exit reverse) + depth-flip safe ingress + green-lane auto-dock; hangar↔space ship bridge; hangar sim LOD by human distance (Quick Launch + after launch); space-view door fills land on the runway at hangar visitor cadence | Hangar **room / set-dressing editor** (designer places props, 8-dir rotate, linger/gossip; Done saves layout) — see `PROJECT.md` |
 
 Entered from the title screen (**ENTER HANGAR** → elevator raise). **QUICK LAUNCH** skips straight to space near the station.
@@ -253,7 +253,7 @@ Code: `src/ships/` — catalogs, attach rules, generator, shared `ShipRenderer`.
 | **Standard** | Miner, Generalist, Science, Hauler, Fighter, Transport | **Mk2** | 3 | Up to Mk3; 1 engine; ≤8 thrusters; turret bank + optional forward guns. Fighter = tank; **Hauler** = freight; **Transport** = seats. |
 | **Heavy** | Same labels as Standard (capital) | **Mk3** | 3 XL | Mk4–**Mk5**; **2** engines; **16** thrusters. Heavy Hauler = most cargo; Heavy Transport = most seats (Elite yacht / Mid cruise dress). No Jennings Mk3 bay yet. |
 
-Pad docking is **exclusive** by group: UltraLight + Light only on Mk1 pads; Standard only on Mk2; Heavy only on Mk3. Jennings today: B1/B3 = Mk1, B2 (player) = Mk2 (disc radius `HANGAR.PAD_R` = 38). Blueprint shows Mk1/Mk2/Mk3 reference rings under the ship (Mk2 matches hangar; Mk1/Mk3 scaled from group model sizes).
+Pad docking is **exclusive** by group: UltraLight + Light only on Mk1 pads; Standard only on Mk2; Heavy only on Mk3. Jennings today: all three bays share Mk2 pad discs (`HANGAR.PAD_R` = 38); visitor spawn pool rolls Mk1 or Mk2 by ship group. Blueprint shows Mk1/Mk2/Mk3 reference rings under the ship (Mk2 matches hangar; Mk1/Mk3 scaled from group model sizes).
 
 **Cargo vs seats:** freight spots vs rideable seats, scaled by group/class/body Mk. UltraLight seats = 0. Ferry missions future; capacity + occupancy API now.
 
@@ -354,7 +354,7 @@ Sparse NPC ships in open space (modular catalog defs). **Multi-station:** spawns
 | Region | Purpose | Status |
 |--------|---------|--------|
 | Title screen | Bokeh-blurred live Jennings Station space sim backdrop (ambient traffic, asteroids; camera bob + runway framing); *Stranger in the Galaxy* wordmark over dedicated 2.5D default ship (GALAXY nebula windows; STRANGER bronze plate windows via `src/textures/strangerBronzePlate.js` + letter-masked metal kiss); ENTER HANGAR / QUICK LAUNCH enter hangar / space immediately; SETTINGS / BLUEPRINT (industrial plate buttons); build stamp + Changelog; Dev **Title Layout** tunes camera/type/ship/menu/bokeh and bakes to disk | Done |
-| Home Base hangar (Jennings Station) | Docked bay + B2 launch/land; industrial set; danger lights; B1–B3 captain checklists | Done (B2 request queue later) |
+| Home Base hangar (Jennings Station) | Docked bay + launch/land; industrial set; danger lights; B1–B3 captain checklists | Done (player-request queue later) |
 | Jennings Station (overworld) | Industrial exterior (~4× hull); approach lights + Enter / auto edge dock | Done |
 | Settings / controls | Ship-only sandbox viewport with live bindings | Done |
 | Top-left | (reserved) | Placeholder |
@@ -405,8 +405,8 @@ Sandbox build order: narrative stub → ship interior slice → derelict slice �
 - [x] Home Base: launch from hangar into a run
 - [x] Home Base: extract / return to hangar
 - [ ] Home Base: persistent cargo / loadout between runs
-- [ ] Home Base: B2 player-request job queue (sell/unload, repair, buy/load, upgrade = cargo + weld)
-- [x] Home Base: B1–B3 captain service checklist (B2 interim reroll; B1/B3 door/elevator traffic + empty-bay sweep)
+- [ ] Home Base: player-request job queue (sell/unload, repair, buy/load, upgrade = cargo + weld)
+- [x] Home Base: B1–B3 captain service checklist (controlled-pad reroll; door/elevator traffic + empty-bay sweep on all bays)
 - [x] Home Base: fixed crew roster, bay service boards, pilot door lights/tickers, forklift hub
 - [ ] Equipment upgrades
 - [ ] Fuel and resource management
