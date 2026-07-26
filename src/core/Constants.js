@@ -207,6 +207,8 @@ export const HANGAR = {
    */
   SPACE_ARRIVAL_REQUEST_RETRY_MIN: 14,
   SPACE_ARRIVAL_REQUEST_RETRY_MAX: 28,
+  /** Cancel a door reservation with no mouth progress so the pad can retry / take elevator. */
+  INBOUND_RESERVATION_STALL_SEC: 90,
   /**
    * After final scan turns service pips green, short beat before visitor exit.
    * (Longer legacy dwell replaced — depart should follow the green board.)
@@ -457,6 +459,12 @@ export const AMBIENT = {
   /** Staging point north of furthest approach lights before final runway approach */
   CUSTOMER_STAGE_NORTH: 420 * STATION_SCALE,
   CUSTOMER_INBOUND_SPEED: 175,
+  /** Faster intercept when the player is co-orbit near Jennings (reservation spawns). */
+  CUSTOMER_INBOUND_SPEED_NEAR: 265,
+  CUSTOMER_INBOUND_MAX_AGE: 280,
+  /** Tighter ring when player/reservation traffic spawns behind the station in orbit. */
+  CUSTOMER_SPAWN_NEAR_R_MIN: 900 * STATION_SCALE,
+  CUSTOMER_SPAWN_NEAR_R_MAX: 1800 * STATION_SCALE,
   CUSTOMER_STAGE_ARRIVAL_R: 140,
   /**
    * Station holding racetrack (north of runway). South edge sits

@@ -100,6 +100,8 @@ src/
       cargoCatalog.js     Cargo/hold/service helpers
       helpers.js          rand, pick, thrusterActivity, etc.
       HangarBay.js        Core class + update() orchestrator
+      HangarPresence.js   Lightweight bay mirror for exterior space (beacons + mouth traffic)
+      BayTrafficManifest.js  Locked inbound/egress records + visitorId→classId helpers
       HangarRender.js     render* / _draw* prototype mixin
       CraneSim.js         Crane sim prototype mixin
       ForkliftAI.js       Forklift AI prototype mixin
@@ -140,7 +142,7 @@ src/
 - **Modular systems** wired by `GameEngine` — extend via new systems/entities, not monolith edits
 - **Place → Area → Feature** — top-level hosts are Places (`station` | `capitalShip` | `outpost` | `vessel`), not “the hangar” singleton. Hangars are `areaType: 'hangar'` with bay Features; shops/bars/farms/decks are stub area types. Stable string IDs; look shells inherit place → area → feature (condition, tech, theme). See `src/world/place/`.
 - **Chunk-based world** — deterministic seeds, load radius 3, unload radius 5 (`WORLD` in Constants)
-- **Hangar sim LOD (space)** — removed: exterior space no longer ticks a headless hangar. Interior is a separate `InteriorSession` loaded only in hangar mode; bay lights in space use station defaults until dock.
+- **Hangar sim LOD (space)** — removed: exterior space no longer ticks a headless hangar. Interior is a separate `InteriorSession` loaded only in hangar mode. **`HangarPresence`** + **`BayTrafficManifest`** mirror side-bay occupancy, door/elevator transitions, runway beacons, and locked visitor `shipDef` across mouth traffic without crew/pathfinding; exports on launch, merges on dock landing (skips side-bay warmStart when active). **Needs more tuning** — co-orbit inbound spawns, stall retry, and elevator cadence still feel thin in long co-orbit sessions; see Known gaps.
 - **Thruster visuals driven by modular mounts** — equipped `mainEngine` / `maneuverThruster` items only (`PlumeDraw.js`); same path for player, hangar visitors, and ambient traffic; intensity from physics thruster bag
 - **Plume flow** (`computePlumeFlow`) — leading cue/wash + crosswind lean from relative wind (`−velocity`); trailing stretch; ship-local particles on the player, world-space on visitors/ambient
 - **Modular ships** — `src/ships/`: swap groups, full section/item ID matrix (parametric), `createPlayerStarter()`, shared `ShipRenderer` (top-down + 16 angled views)
@@ -230,6 +232,7 @@ Full plan + todo list: [`WORLD_GEOGRAPHY_PLAN.md`](WORLD_GEOGRAPHY_PLAN.md) (cod
 **Open (see plan todos):** sector editor advanced (ring handles, undo); kinematic asteroid belts (same μ-derived ω); trade block / broker / outlaw IFF wiring; non-Jennings dock exterior stubs; fragment gravity; dev gravity μ slider.
 
 ### Polish / follow-ups
+- **Space hangar presence / bay mouth traffic (needs more tuning)** — first pass shipped (`HangarPresence`, retrograde reservation spawns, beacon fix, stall retry). Still open: reliable door inbound while player co-orbits Jennings; visible elevator beacon cadence vs interior hangar; spawn speed/distance/geometry; reservation retry pacing; mouth mutex vs `MAX_SHIPS`. Touch `HangarPresence.js`, `AmbientTrafficSystem.spawnBayApproach` / `_tickBayMouth`, `BayTrafficManifest.js`, `Constants.js` (`AMBIENT.*`, `HANGAR.INBOUND_RESERVATION_STALL_SEC`).
 - **Thruster cup size** — tune via Blueprint Author sliders / `visualTuning.js` (still subjective)
 - **Hardpoint / plume mounts** — author in Blueprint + Dev Mode; bake to `mountLayouts.js`
 - **Hangar visitor size polish** — peer-Mk spawn exists; verify same-group visitors ≈ player size

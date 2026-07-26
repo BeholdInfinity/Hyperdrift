@@ -45,6 +45,7 @@ import { Starfield } from '../world/Starfield.js';
 import { NebulaField } from '../world/NebulaField.js';
 import { SpeedStreaks } from '../world/SpeedStreaks.js';
 import { InteriorSession } from './InteriorSession.js';
+import { HangarPresence } from '../world/hangar/HangarPresence.js';
 import {
   hangarDefaultZoom,
   hangarElevatorZoom,
@@ -180,6 +181,8 @@ export class GameEngine {
     this.titleScreen.bindSpacer(document.getElementById('title-art-spacer'));
     /** Active station interior instance (hangar); null in exterior space/title. */
     this.interior = null;
+    /** Lightweight bay mirror while the pilot is in space (no full hangar tick). */
+    this.hangarPresence = new HangarPresence();
     this.station = new Station();
     /** Place → Area → Feature registry (Jennings default hangar) */
     this.placeRegistry = placeRegistry;
@@ -834,6 +837,10 @@ export class GameEngine {
       this.ambientTraffic.reset();
     }
 
+    if (!this.hangarPresence.active) {
+      this.hangarPresence.seedDefault(bayIndex);
+    }
+
     this.asteroidSystem.update(spawn.x, spawn.y);
     this._setDockHud(false);
 
@@ -893,6 +900,7 @@ export class GameEngine {
 
     syncHangarSidePadFromLayout(null);
     this.playerBayIndex = 1;
+    this.hangarPresence.reset();
     this.station.setBaySignals(['green', 'green', 'green']);
 
     this.ambientTraffic.reset();
@@ -1010,6 +1018,9 @@ export class GameEngine {
     }
     this.camera.rotation = 0;
     this._destroyInterior();
+    if (!landing) {
+      this.hangarPresence.reset();
+    }
     this.interior = new InteriorSession();
     this.interior.freezeExterior(this);
     this.interior.resetBackdrop();
@@ -1045,7 +1056,14 @@ export class GameEngine {
         playerBayIndex: prefer,
         placeId: placeRegistry.activePlaceId,
       });
-      hb.warmStartHeadless();
+      const presenceActive = this.hangarPresence.active;
+      if (presenceActive) {
+        this.hangarPresence.captureInboundFromAmbient(this.ambientTraffic);
+        this.hangarPresence.applyToHangar(hb);
+        this.hangarPresence.handoffInboundToHangar(hb, this.ambientTraffic, this.station);
+      } else {
+        hb.warmStartHeadless();
+      }
       if (
         !hb.claimEmptyBayForControlled(prefer, this.ship)
       ) {
@@ -1947,6 +1965,7 @@ export class GameEngine {
 
     const launchBay = this.playerBayIndex;
     if (this.interior) {
+      this.hangarPresence.exportFromHangar(this.interior.hangarBay);
       this.interior.hangarBay.clearOps(launchBay);
       this.interior.hangarBay.clearControlledPadAfterLaunch();
     }
@@ -2203,6 +2222,14 @@ export class GameEngine {
   /** Hangar bay sim when an interior instance is loaded; null in exterior space. */
   get hangarBay() {
     return this.interior?.hangarBay ?? null;
+  }
+
+  /**
+   * Hangar manifest API for exterior space: full HangarBay in hangar mode,
+   * otherwise HangarPresence (pad beacons, getSpaceArrivalRequests, acceptSpaceArrival, drainSpaceEgress).
+   */
+  get spaceHangarBridge() {
+    return this.hangarBay ?? (this.hangarPresence.active ? this.hangarPresence : null);
   }
 
   _destroyInterior() {
@@ -3361,11 +3388,16 @@ export class GameEngine {
     const asteroids = this.asteroidSystem.getActiveAsteroids();
     this._frameAsteroids = asteroids;
 
+    if (this.hangarPresence.active) {
+      this.hangarPresence.tick(deltaTime, this.gameTime || 0);
+    }
+
+    const spaceHangar = this.spaceHangarBridge;
     const zoomPreCombat = Math.max(0.001, this.camera.effectiveZoom);
     this.ambientTraffic.update(deltaTime, {
       player: this.ship,
       station: this.station,
-      hangarBay: null,
+      hangarBay: spaceHangar,
       asteroids,
       particles: this.particleSystem,
       gameTime: this.gameTime || 0,
@@ -3441,7 +3473,7 @@ export class GameEngine {
 
     this.renderer.emitThrusterParticles(this.ship, this.particleSystem);
 
-    const baySignals = ['green', 'green', 'green'];
+    const baySignals = spaceHangar?.getBaySignals?.() ?? ['green', 'green', 'green'];
     this.station.setBaySignals(baySignals);
 
     // Runway at safe speed + in a pad lane → reserve (pulse-green) + hangar arrive

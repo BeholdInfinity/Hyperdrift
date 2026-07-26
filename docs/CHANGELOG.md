@@ -6,7 +6,14 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Added
+- **Hangar presence (space bridge)** — `HangarPresence` keeps Jennings side-bay occupancy, pad beacons, and mouth-traffic requests alive in exterior space without ticking the full interior sim; snapshots on hangar launch, merges on space landing, seeds on quick launch.
+- **Bay traffic manifest** — `BayTrafficManifest.js` + locked `shipDef` tokens wire door inbound/outbound mouth traffic to the same hulls; elevator raise/lower stays interior-only (yellow spin, no mouth egress).
+
 ### Changed
+- **Space bay inbound traffic** — reservation spawns use retrograde arc + co-orbit intercept speed near Jennings; stalled mouth reservations time out and retry so pads are not stuck waiting forever (elevator events can run again).
+- **Space bay beacons** — empty side bays stay **green** while waiting for mouth inbound (runway **pulse-green** only when a ship is on approach); red only when occupied or actively departing/elevator.
+- **Hangar presence identity** — inbound ships pre-booked before ambient spawn; egress uses exported `pendingSpaceEgress`; landing skips side-bay `warmStartHeadless` when presence is active; door vs elevator transitions drive correct runway beacons (`departing` / `elevator` / red occupied / green empty).
 - **Unified orbital μ** — `planet.gravityMu` is now the sole authority for player gravity (`GravitySystem`) and kinematic orbits (`OrbitKinematics`, stations, warp gates). `hydrateOrbitParams()` always derives `orbitOmega = √(μ/R³)`; baked `sectorLayout.js` rebaked; sector editor warns on stale hand-tuned ω before hydrate. Co-orbit at a station radius now matches TELEMETRY **PRO** (fixes ~370 u/s Jennings mismatch vs gravity-stable circular speed).
 - **Live expedition trail** — sector map blue trail no longer drops oldest points mid-outing; full downsampled path kept until launch/dock reset (still one sample every ~600 u).
 - **Station runway orientation** — orbital stations rotate so the docking runway points **upstream** (opposite prograde); departures **co-orbit** the station (handoff matches live `vx`/`vy` so the station reads nearly still); approach-light corridor + ingress heading/speed checks use the station-local runway frame; **CONTACT REL V** uses live station-frame relative speed (not radial closing); **brake / zero-hold** in the approach shell target station co-motion (manual orbit-match + Alt brake); corridor lights extend through the mouth; dock HUD shows stn-relative slip + block reason; TELEMETRY **STN** row near Jennings shows dock-frame relative speed; **fix** `velocityAt()` now uses `orbitOmega × R` so station `vx`/`vy` matches actual track motion (was ~370 u/s slow vs position integration, blocking dock while visually co-orbit matched).
@@ -24,6 +31,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ### Planned
 
+- **Space hangar presence tuning (follow-up)** — door inbound reliability while co-orbit with Jennings, elevator cadence/beacon readability in exterior space, spawn intercept geometry + speeds, reservation retry pacing (first pass landed 2026-07-25; needs another pass)
 - Home Base: player-request job queue (sell, repair, buy/load, upgrade)
 - Full player crane trolley control feel + on-foot weld loop for turret swap
 - Shared 2.5D interior walker (`shipInterior`) on vessel Place graphs

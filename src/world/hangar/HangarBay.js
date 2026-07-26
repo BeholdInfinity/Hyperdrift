@@ -446,7 +446,7 @@ export class HangarBay {
     return q;
   }
 
-  acceptSpaceArrival(bayIndex, shipDef, visitorId = 'patrol') {
+  acceptSpaceArrival(bayIndex, shipDef, visitorId = 'patrol', token) {
     const bi = ((bayIndex | 0) + 3) % 3;
     if (this.isPlayerBay(bi)) return false;
     const pad = this.sidePads.find((p) => p.bayIndex === bi);
@@ -476,10 +476,12 @@ export class HangarBay {
 
     if (this.getBaySignal(bi) !== 'green') return false;
     if (pad.visitorId || pad.seq) return false;
-    equipPadVisitor(pad, visitorId);
     if (shipDef) {
+      pad.visitorId = visitorId || 'patrol';
       pad.shipDef = shipDef;
       pad.thrusters = makeVisitorThrusters(shipDef);
+    } else {
+      equipPadVisitor(pad, visitorId);
     }
     pad.wantSpaceArrival = false;
     // Seat immediately (space handoff already played the mouth cinematic)

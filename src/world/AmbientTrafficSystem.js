@@ -15,6 +15,7 @@ import { STATION, AMBIENT, SHIP, radarMaxRange } from '../core/Constants.js';
 import { generateShip, generateVisitor } from '../ships/ShipGenerator.js';
 import { SHIP_CLASSES } from '../ships/ShipClasses.js';
 import { drawVisitorShip, makeVisitorThrusters } from './HangarVisitorShips.js';
+import { visitorIdToClassId } from './hangar/BayTrafficManifest.js';
 import { corridorSpawnFactor } from './TransitCorridor.js';
 import {
   getSectorLayout,
@@ -439,6 +440,55 @@ export class AmbientTrafficSystem {
   }
 
   /**
+   * Pick spawn pose for station customers. Reservations and near-station play
+   * spawn on the retrograde arc with co-orbit intercept speed so they can
+   * actually close on a moving Jennings anchor.
+   */
+  _pickCustomerSpawnPose(station, stage, px, py, view, opts = {}) {
+    const sx = station.x;
+    const sy = station.y;
+    const frame = this._stationFrameOpts(station);
+    const prograde = Math.atan2(frame.frameVy, frame.frameVx);
+    const retrograde = prograde + Math.PI;
+    const playerNear = dist(px, py, sx, sy) <= STATION.NEAR_RADIUS;
+    const preferNear = !!(opts.reservation || playerNear);
+    const rMin = preferNear
+      ? AMBIENT.CUSTOMER_SPAWN_NEAR_R_MIN
+      : AMBIENT.CUSTOMER_SPAWN_R_MIN;
+    const rMax = preferNear
+      ? AMBIENT.CUSTOMER_SPAWN_NEAR_R_MAX
+      : AMBIENT.CUSTOMER_SPAWN_R_MAX;
+
+    let ang = retrograde + (Math.random() - 0.5) * (preferNear ? 1.35 : 2.5);
+    let r = rMin + Math.random() * Math.max(80, rMax - rMin);
+    let x = sx + Math.cos(ang) * r;
+    let y = sy + Math.sin(ang) * r;
+
+    for (let i = 0; i < 8; i++) {
+      const tooClosePlayer = dist(x, y, px, py) < AMBIENT.PLAYER_CLEARANCE;
+      const onScreen = view && this._isVisible(x, y, view);
+      if (preferNear && !tooClosePlayer) break;
+      if (!tooClosePlayer && !onScreen) break;
+      r += preferNear ? 160 + Math.random() * 120 : 280 + Math.random() * 220;
+      if (tooClosePlayer) ang = retrograde + (Math.random() - 0.5) * 1.6;
+      x = sx + Math.cos(ang) * r;
+      y = sy + Math.sin(ang) * r;
+    }
+
+    const heading = angleTo(stage.x - x, stage.y - y);
+    let spd = AMBIENT.CUSTOMER_INBOUND_SPEED * (0.85 + Math.random() * 0.25);
+    if (opts.reservation) {
+      const orb = Math.hypot(frame.frameVx, frame.frameVy);
+      spd = Math.max(AMBIENT.CUSTOMER_INBOUND_SPEED_NEAR, orb * 0.45 + 155);
+      spd *= 0.92 + Math.random() * 0.14;
+    } else if (playerNear) {
+      spd = AMBIENT.CUSTOMER_INBOUND_SPEED * 1.12;
+    }
+
+    return { x, y, heading, spd };
+  }
+
+  /**
    * Space→hangar customer: spawn far out on a ring around the station (any
    * bearing), then fly inbound to north runway staging before final approach.
    * @param {import('./Station.js').Station} station
@@ -478,44 +528,50 @@ export class AmbientTrafficSystem {
       state = 'bayApproach';
       spd = Math.min(STATION.DOCK_MAX_SPEED * 0.85, 95);
     } else {
-      // Full ring around the station — customers arrive from every direction
-      let ang = Math.random() * Math.PI * 2;
-      let r =
-        AMBIENT.CUSTOMER_SPAWN_R_MIN +
-        Math.random() * (AMBIENT.CUSTOMER_SPAWN_R_MAX - AMBIENT.CUSTOMER_SPAWN_R_MIN);
-      x = station.x + Math.cos(ang) * r;
-      y = station.y + Math.sin(ang) * r;
-      // Prefer off-screen; push further out along the same bearing if needed
-      for (let i = 0; i < 8; i++) {
-        const tooClosePlayer = dist(x, y, px, py) < AMBIENT.PLAYER_CLEARANCE;
-        const onScreen = view && this._isVisible(x, y, view);
-        if (!tooClosePlayer && !onScreen) break;
-        r += 280 + Math.random() * 220;
-        if (tooClosePlayer) ang = Math.random() * Math.PI * 2;
-        x = station.x + Math.cos(ang) * r;
-        y = station.y + Math.sin(ang) * r;
-      }
-      heading = angleTo(stage.x - x, stage.y - y);
+      const pose = this._pickCustomerSpawnPose(station, stage, px, py, view, opts);
+      x = pose.x;
+      y = pose.y;
+      heading = pose.heading;
       state = 'bayInbound';
-      spd = AMBIENT.CUSTOMER_INBOUND_SPEED * (0.85 + Math.random() * 0.25);
+      spd = pose.spd;
     }
 
-    const classId = pickWeighted([
-      { classId: 'hauler', w: 1.4 },
-      { classId: 'transport', w: 1.1 },
-      { classId: 'standardTransport', w: 0.8 },
-      { classId: 'generalist', w: 0.9 },
-    ]);
-    const role = ROLE_BEHAVIOR[classId] || ROLE_BEHAVIOR.hauler;
-    const ship = this._makeShip(classId, role, x, y, heading, _nextGroup++, false);
+    let ship;
+    if (opts.reservation?.shipDef) {
+      ship = this._makeShipFromDef(
+        opts.reservation.shipDef,
+        opts.reservation.visitorId || 'hauler',
+        x,
+        y,
+        heading,
+        _nextGroup++,
+        false
+      );
+    } else {
+      const classId = pickWeighted([
+        { classId: 'hauler', w: 1.4 },
+        { classId: 'transport', w: 1.1 },
+        { classId: 'standardTransport', w: 0.8 },
+        { classId: 'generalist', w: 0.9 },
+      ]);
+      const role = ROLE_BEHAVIOR[classId] || ROLE_BEHAVIOR.hauler;
+      ship = this._makeShip(classId, role, x, y, heading, _nextGroup++, false);
+    }
     if (!ship) return null;
+    if (opts.reservation?.token) {
+      ship.presenceToken = opts.reservation.token;
+      ship.visitorId = opts.reservation.visitorId || ship.visitorId || 'hauler';
+    }
     ship.behavior = 'freight';
     ship.state = state;
     ship.stateT = 0;
     ship.targetLane = bi;
     ship.cruiseSpd = spd;
-    ship.maxAge =
-      state === 'bayInbound' ? 140 + Math.random() * 80 : 80 + Math.random() * 40;
+    ship.maxAge = opts.reservation
+      ? AMBIENT.CUSTOMER_INBOUND_MAX_AGE + Math.random() * 60
+      : state === 'bayInbound'
+        ? 140 + Math.random() * 80
+        : 80 + Math.random() * 40;
     const frame = this._stationFrameOpts(station);
     ship.vx = frame.frameVx + Math.cos(heading) * spd;
     ship.vy = frame.frameVy + Math.sin(heading) * spd;
@@ -535,17 +591,30 @@ export class AmbientTrafficSystem {
    */
   _fulfillHangarArrivalRequests(station, hangarBay, px, py, view) {
     if (this._bayApproachCooldown > 0) return;
-    const requested = hangarBay.getSpaceArrivalRequestLanes?.() || [];
-    const open = requested.filter(
-      (i) =>
-        station.padAvailable?.(i) &&
+    const requests =
+      hangarBay.getSpaceArrivalRequests?.() ||
+      (hangarBay.getSpaceArrivalRequestLanes?.() || []).map((bayIndex) => ({
+        bayIndex,
+      }));
+    const open = requests.filter(
+      (req) =>
+        (req.token ||
+          station.padAvailable?.(req.bayIndex)) &&
         !this.ships.some(
-          (s) => this._isCustomerState(s.state) && s.targetLane === i
+          (s) => this._isCustomerState(s.state) && s.targetLane === req.bayIndex
         )
     );
     if (!open.length) return;
-    const lane = open[(Math.random() * open.length) | 0];
-    const ship = this.spawnBayApproach(station, lane, view, px, py);
+    if (this.ships.length >= AMBIENT.MAX_SHIPS) {
+      const idx = this.ships.findIndex(
+        (s) => s.state === 'leave' && s.stateT > 2 && !this._isInPresenceBubble(s.x, s.y, view)
+      );
+      if (idx >= 0) this.ships.splice(idx, 1);
+    }
+    const req = open[(Math.random() * open.length) | 0];
+    const ship = this.spawnBayApproach(station, req.bayIndex, view, px, py, {
+      reservation: req.token ? req : null,
+    });
     if (!ship) return;
     this._bayApproachCooldown =
       AMBIENT.BAY_APPROACH_SPAWN_MIN +
@@ -563,13 +632,17 @@ export class AmbientTrafficSystem {
     const spawn = station.getExitSpawn(egress.bayIndex ?? 1);
     const exitVel = station.exitVelocityWorld();
     const thrusters = makeVisitorThrusters(egress.shipDef);
+    const classId = visitorIdToClassId(egress.visitorId);
     const ship = {
       id: _nextId++,
       groupId: _nextGroup++,
-      classId: 'hauler',
+      classId,
       behavior: 'freight',
       isPolice: false,
       shipDef: egress.shipDef,
+      visitorId: egress.visitorId || 'patrol',
+      sourceBayIndex: egress.bayIndex ?? 1,
+      presenceEgress: true,
       thrusters,
       x: spawn.x,
       y: spawn.y,
@@ -1160,6 +1233,66 @@ export class AmbientTrafficSystem {
     return ship;
   }
 
+  _makeShipFromDef(shipDef, visitorId, x, y, heading, groupId, isPolice) {
+    const classId = visitorIdToClassId(visitorId);
+    const role = ROLE_BEHAVIOR[classId] || ROLE_BEHAVIOR.hauler;
+    const thrusters = makeVisitorThrusters(shipDef);
+    const speed = this._cruiseSpeed(role.behavior);
+    const frame = this._stationFrameOpts(null);
+    const vx = frame.frameVx + Math.cos(heading) * speed;
+    const vy = frame.frameVy + Math.sin(heading) * speed;
+    const layout = this._layout ?? getSectorLayout();
+    const pc = this._planetCenter(layout);
+    const orbitR = dist(x, y, pc.x, pc.y);
+    const orbitAng = Math.atan2(y - pc.y, x - pc.x);
+    const ship = {
+      id: _nextId++,
+      groupId,
+      classId,
+      behavior: role.behavior,
+      isPolice: !!isPolice,
+      shipDef,
+      visitorId: visitorId || 'hauler',
+      thrusters,
+      x,
+      y,
+      angle: heading,
+      vx,
+      vy,
+      angularVelocity: 0,
+      age: 0,
+      maxAge: this._lifetime(role.behavior),
+      pendingCull: false,
+      state: 'enter',
+      stateT: 0,
+      orbitAngle: orbitAng,
+      orbitR,
+      targetAsteroid: null,
+      scanTarget: null,
+      miningLaserFiring: false,
+      miningLaserRelAngle: 0,
+      miningLaserBeamLength: SHIP.MINING_LASER_RANGE * 0.55,
+      muzzleFlash: 0,
+      turretAngle: heading,
+      fireCooldown: 0,
+      turretRecoil: 0,
+      combatHostile: false,
+      getTurretLocalAngle: () => 0,
+      velocity: { x: vx, y: vy },
+      patrolLeg: 0,
+      patrolPhase: orbitAng,
+      patrolR: orbitR,
+      holdLeg: 0,
+      holdReverse: false,
+      cruiseSpd: speed,
+    };
+    ensureBody(ship);
+    ensureVesselSimState(ship);
+    ship.combatTeam = 'neutral';
+    clearThrusters(ship);
+    return ship;
+  }
+
   /** @returns {import('../combat/CombatTarget.js').CombatTarget[]} */
   getCombatTargets() {
     const out = [];
@@ -1392,6 +1525,25 @@ export class AmbientTrafficSystem {
       const lane = ship.targetLane ?? 1;
       const stage = this._customerStagePoint(station, lane);
       const spd = ship.cruiseSpd || AMBIENT.CUSTOMER_INBOUND_SPEED;
+
+      if (ship.presenceToken && hangarBay) {
+        const dStage = dist(ship.x, ship.y, stage.x, stage.y);
+        ship._inboundBestD = Math.min(ship._inboundBestD ?? dStage, dStage);
+        const stalled =
+          ship.stateT > 90 ||
+          (ship.stateT > 50 &&
+            dStage > AMBIENT.CUSTOMER_STAGE_ARRIVAL_R * 2.8 &&
+            dStage > ship._inboundBestD * 0.94);
+        if (stalled) {
+          hangarBay.cancelInboundReservation?.(lane, ship.presenceToken);
+          ship.pendingCull = true;
+          ship.state = 'leave';
+          ship.stateT = 0;
+          if (this._mouthBusyId === ship.id) this._mouthBusyId = null;
+          return;
+        }
+      }
+
       cruiseTo(ship, stage.x, stage.y, spd, dt, {
         arrivalR: AMBIENT.CUSTOMER_STAGE_ARRIVAL_R,
         brakeForArrival: false,
@@ -1510,7 +1662,15 @@ export class AmbientTrafficSystem {
     const underRoof =
       station.worldToLocal(ship.x, ship.y).y > station.stripeLocalY() + STATION.EXIT_NEST;
     if (underRoof || ship.stateT > 8) {
-      const ok = hangarBay?.acceptSpaceArrival?.(lane, ship.shipDef, 'hauler');
+      const ok = hangarBay?.acceptSpaceArrival?.(
+        lane,
+        ship.shipDef,
+        ship.visitorId || 'hauler',
+        ship.presenceToken
+      );
+      if (!ok && ship.presenceToken) {
+        hangarBay?.cancelInboundReservation?.(lane, ship.presenceToken);
+      }
       if (this._mouthBusyId === ship.id) this._mouthBusyId = null;
       if (ok) {
         ship.pendingCull = true;
