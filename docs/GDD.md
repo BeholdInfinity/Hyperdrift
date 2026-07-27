@@ -331,13 +331,13 @@ Five → seven parallax layers from extremely distant to very near — independe
 
 ### Nebulae
 
-Three depth layers (far / mid / near) plus chunk-placed and ambient procedural clouds. Soft aurora-like color, slow drift.
+Three depth layers (far / mid / near) plus stream-placed world nebulae (`NebulaStream` cells) and ambient procedural clouds. Soft aurora-like color, slow drift.
 
 ### Asteroids
 
-- Sparse clusters (common) and dense fields (occasional)
-- Procedural placement per chunk, deterministic seed
-- Distant chunks unloaded
+- **Ring belts** — `BeltStream` angular sectors per ring band; density from `sectorLayout.rings[]`; kinematic prograde orbit (μ-derived)
+- **Open space** — sparse/dense clusters via `OpenSpaceStream` field cells (outside ring bands; 50% reduced vs legacy baseline)
+- Live rocks materialize in the shell between `STREAM_VIEW_RADIUS` (250 km, radar max) and `STREAM_SPAWN_RADIUS` (300 km); despawn beyond `STREAM_DESPAWN_RADIUS` (360 km), never while inside radar range; session-destroyed rocks stay gone until reload
 
 ### Speed streaks
 

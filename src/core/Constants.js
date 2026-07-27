@@ -100,19 +100,26 @@ export const COMBAT = {
 };
 
 export const WORLD = {
-  CHUNK_SIZE: 2000,
-  LOAD_RADIUS: 3,
-  UNLOAD_RADIUS: 5,
   SEED: 42,
   SOFT_EDGE_RADIUS: 750000,
+  /** No spawn/despawn inside radar max range (world u; HUD km = u / 100). */
+  STREAM_VIEW_RADIUS: 25000,
+  /** Outer edge of spawn shell (materialize when viewRadius < d <= spawnRadius). */
+  STREAM_SPAWN_RADIUS: 30000,
+  /** Drop live rocks beyond this; never while d <= viewRadius. */
+  STREAM_DESPAWN_RADIUS: 36000,
+  /** Belt angular sector arc length at player radius (world u). */
+  BELT_SECTOR_ARC: 1200,
+  /** Open-space sparse field cell size (world u). */
+  OPEN_FIELD_CELL: 4000,
+  /** Decorative nebula stream cell (matches NebulaField ambient cache). */
+  NEBULA_CELL: 2800,
   /** Open-space proc fields outside ring bands (× ring.density for belts). */
   OPEN_SPACE_FIELD_MULT: 0.08,
   /** Halve random open-space asteroid fields vs pre-belt baseline. */
   OPEN_SPACE_SPAWN_HALVE: 0.5,
-  /** Target belt rocks per chunk at ring.density === 1 (scaled by overlap + density). */
-  BELT_ROCKS_AT_DENSITY_1: 10,
-  /** Max seed attempts per target belt rock (position must land in chunk at load time). */
-  BELT_SPAWN_ATTEMPTS_PER_ROCK: 12,
+  /** Target belt rocks per sector at ring.density === 1 (scaled by arc + density). */
+  BELT_ROCKS_AT_DENSITY_1: 55,
 };
 
 export const CAMERA = {

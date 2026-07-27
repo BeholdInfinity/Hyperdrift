@@ -60,8 +60,11 @@ src/
     CameraSystem.js       Offset, zoom (manual + speed-based)
     Renderer.js           Circular viewport, multi-section ship, thrusters, entities
     WeaponSystem.js       Dorsal turret + mining laser, collisions, impacts
-    AsteroidSystem.js     Chunk load/unload
-    ProceduralGeneration.js  Seeded asteroids + nebulae
+    AsteroidSystem.js     Ring-sector + open-space streaming orchestrator
+    BeltStream.js         Belt angular-sector catalogs + reconcile
+    OpenSpaceStream.js    Sparse open-space field cells
+    NebulaStream.js       Decorative nebula cells
+    StreamSpawn.js        Kinematic rock spawn helpers
     RadarSystem.js          Radar model: contacts, sweep-gated paints, piecewise pip range + SCAN plot-zoom, age fade, selection
     RadarDisplay.js         Radar ring/scope renderer (silhouettes, IFF, sweep, nose/tail, chevrons)
     ViewportTelemetry.js  Viewport speed + contact/POI/nav distance labels (collision-aware layout)
@@ -192,8 +195,12 @@ src/
 - `PAD_MK_RADIUS` — Mk1/Mk2/Mk3 pad discs (Mk2 = hangar; Blueprint background rings)
 - `CAMERA.ZOOM_MIN/MAX` — 0.1 / 2.0 (HUD label decoupled via `CameraSystem.displayZoom()`: internal `ZOOM_LABEL_ZERO`=0.1 shows as 0x, 1x=1x, 2x=2x)
 - `BLUEPRINT.ZOOM_MIN/MAX` — 1.2 / 22 (dev ship sandbox)
-- `WORLD.CHUNK_SIZE` — 2000
-- `WORLD.LOAD_RADIUS` / `UNLOAD_RADIUS` — 3 / 5
+- `WORLD.STREAM_VIEW_RADIUS` — 25000 (250 km HUD; radar max — no spawn/despawn inside)
+- `WORLD.STREAM_SPAWN_RADIUS` — 30000 (300 km HUD; outer edge of spawn shell)
+- `WORLD.STREAM_DESPAWN_RADIUS` — 36000 (360 km HUD; drop live rocks beyond this)
+- `WORLD.BELT_SECTOR_ARC` — 1200 (belt angular sector arc length)
+- `WORLD.BELT_ROCKS_AT_DENSITY_1` — 55 (target rocks per sector at density 1)
+- `WORLD.OPEN_FIELD_CELL` / `NEBULA_CELL` — 4000 / 2800
 
 ## Controls
 
@@ -228,7 +235,7 @@ src/
 
 Full plan + todo list: [`WORLD_GEOGRAPHY_PLAN.md`](WORLD_GEOGRAPHY_PLAN.md) (code audit **2026-07-25**).
 
-**Shipped:** Stage 1 foundation; Stage 2 visuals core + **map editor MVP** (drag sites, validator, bake); Stage 3 motion core (gravity, orbiting stations/gates, `worldPosition`, PRO/SYNC, corridors, Jennings ambient co-orbit v0.1.290); Stage 4 systems core (warp gates, LIM/fines stub, chart zoom); Stage 5 Place registry (Jennings-clone + planetary stubs); **`InteriorSession`** hangar instancing.
+**Shipped:** Stage 1 foundation; Stage 2 visuals core + **map editor MVP** (drag sites, validator, bake); Stage 3 motion core (gravity, orbiting stations/gates, `worldPosition`, PRO/SYNC, corridors, Jennings ambient co-orbit v0.1.290); **ring-sector asteroid streaming** (`BeltStream` / `OpenSpaceStream` / `NebulaStream`); Stage 4 systems core (warp gates, LIM/fines stub, chart zoom); Stage 5 Place registry (Jennings-clone + planetary stubs); **`InteriorSession`** hangar instancing.
 
 **Open (see plan todos):** sector editor advanced (ring handles, undo); trade block / broker / outlaw IFF wiring; fragment gravity; dev gravity μ slider.
 

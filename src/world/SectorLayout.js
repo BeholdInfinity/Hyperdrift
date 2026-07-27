@@ -50,6 +50,24 @@ export function ringAt(x, y, layout = getSectorLayout()) {
   return null;
 }
 
+/** Ring whose annulus contains the point, or whose inner/outer edge is within margin. */
+export function nearRingAt(x, y, margin = 0, layout = getSectorLayout()) {
+  const r = radiusAt(x, y, layout);
+  const { planet, rings } = layout;
+  if (r < (planet?.radius ?? 0)) return null;
+  let best = null;
+  let bestDist = Infinity;
+  for (const ring of rings ?? []) {
+    if (r >= ring.innerR && r <= ring.outerR) return ring;
+    const edgeDist = r < ring.innerR ? ring.innerR - r : r - ring.outerR;
+    if (edgeDist <= margin && edgeDist < bestDist) {
+      bestDist = edgeDist;
+      best = ring;
+    }
+  }
+  return best;
+}
+
 export function distToNearestRing(x, y, layout = getSectorLayout()) {
   const r = radiusAt(x, y, layout);
   const { planet, rings } = layout;

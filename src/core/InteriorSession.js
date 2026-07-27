@@ -27,7 +27,7 @@ export class InteriorSession {
     this.backdropSession = 0;
   }
 
-  /** Snapshot exterior orbit and drop space chunk/traffic load before interior runs. */
+  /** Snapshot exterior orbit and pause asteroid streaming / traffic before interior runs. */
   freezeExterior(engine) {
     this.enteredGameTime = engine.gameTime || 0;
     syncStationToPlace(

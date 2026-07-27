@@ -1,6 +1,7 @@
 import { GameEngine } from './core/GameEngine.js';
+import { ringAt, getSectorLayout } from './world/SectorLayout.js';
 import { Settings } from './core/Settings.js';
-import { RADAR, PIPS } from './core/Constants.js';
+import { RADAR, PIPS, WORLD } from './core/Constants.js';
 import { DevTools } from './dev/DevTools.js';
 import {
   sectorEditorDraft,
@@ -214,6 +215,22 @@ function setDevStatus(msg) {
   if (d) d.textContent = DevTools.status;
 }
 
+function formatStreamCell(px, py) {
+  const layout = getSectorLayout();
+  const ring = ringAt(px, py, layout);
+  if (ring) {
+    const pcx = layout.planet?.center?.x ?? 0;
+    const pcy = layout.planet?.center?.y ?? 0;
+    const theta = Math.atan2(py - pcy, px - pcx);
+    const midR = (ring.innerR + ring.outerR) * 0.5;
+    const dTheta = WORLD.BELT_SECTOR_ARC / Math.max(midR, 1);
+    const sector = Math.floor((theta + Math.PI) / dTheta);
+    return `${ring.id} s${sector}`;
+  }
+  const cell = WORLD.OPEN_FIELD_CELL;
+  return `open ${Math.floor(px / cell)},${Math.floor(py / cell)}`;
+}
+
 function syncDevInspect() {
   const el = document.getElementById('dev-inspect');
   if (!el || !Settings.isDevMode()) return;
@@ -221,7 +238,7 @@ function syncDevInspect() {
   const spd = ship?.velocity?.length?.() ?? 0;
   const px = ship?.position?.x ?? ship?.x ?? 0;
   const py = ship?.position?.y ?? ship?.y ?? 0;
-  const chunk = ship ? `${Math.floor(px / 2000)},${Math.floor(py / 2000)}` : '—';
+  const stream = ship ? formatStreamCell(px, py) : '—';
   const playerBay =
     engine.mode === 'hangar'
       ? `B${(engine.playerBayIndex ?? engine.hangarBay?.getPlayerBayIndex?.() ?? 1) + 1}`
@@ -242,7 +259,7 @@ function syncDevInspect() {
     `sim ${formatSimSpeed(engine.getSimSpeed())}`,
     `spd ${spd.toFixed(0)}`,
     `yaw ${(((ship?.angle ?? 0) * 180) / Math.PI).toFixed(0)}°`,
-    `chunk ${chunk}`,
+    `stream ${stream}`,
     DevTools.dirty.tuning || DevTools.dirty.mounts || DevTools.dirty.hangar
       ? `dirty ${[DevTools.dirty.tuning && 'tune', DevTools.dirty.mounts && 'mnt', DevTools.dirty.hangar && 'hgr'].filter(Boolean).join(',')}`
       : 'dirty —',

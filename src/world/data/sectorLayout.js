@@ -1,7 +1,6 @@
 /**
  * Baked sector layout v2 — Therissa Prime / Thera system (authoritative geography).
  * Dev Sector Map editor saves edits here via POST /dev/save.
- * orbitOmega on each site is derived from planet.gravityMu at bake time.
  */
 
 export const SECTOR_LAYOUT = {
@@ -92,7 +91,7 @@ export const SECTOR_LAYOUT = {
     "guild": 711500,
     "poor": 1251000,
     "derelict": 942000,
-    "pirate": 1351000
+    "pirate": 1473000
   },
   "trafficCorridors": {
     "halfWidth": 30000,
@@ -274,7 +273,7 @@ export const SECTOR_LAYOUT = {
         "orbitOmega": 0.0016142019032392334
       },
       "x": -442000.0000000004,
-      "y": -765566.4569454436
+      "y": -765566.4569454435
     },
     {
       "id": "site.station.guild.d",
@@ -338,12 +337,12 @@ export const SECTOR_LAYOUT = {
       "trafficPolicy": "none",
       "patrolDensity": 0,
       "orbit": {
-        "orbitR": 1351000,
+        "orbitR": 1473000,
         "orbitAngle0": 5.235987755982989,
-        "orbitOmega": 0.0008543842405324362
+        "orbitOmega": 0.0007504679199169247
       },
-      "x": 675500.0000000001,
-      "y": -1170000.3205127765
+      "x": 736500.0000000001,
+      "y": -1275655.419774478
     },
     {
       "id": "site.planet.farm",
@@ -516,13 +515,13 @@ export const SECTOR_LAYOUT = {
       "motion": "orbit",
       "trafficPolicy": "standard",
       "orbit": {
-        "orbitR": 1616000,
+        "orbitR": 1726000,
         "orbitAngle0": 0.12246105741734142,
-        "orbitOmega": 0.0006530917803808402
+        "orbitOmega": 0.0005916638912831381
       },
-      "x": 1603897.7936364282,
-      "y": 197402.8053706373,
-      "fringeClearance": 390500.00000000023
+      "x": 1713074.0048369276,
+      "y": 210839.8775183911,
+      "fringeClearance": 500500.00000000023
     },
     {
       "id": "site.warp.instance.alpha",

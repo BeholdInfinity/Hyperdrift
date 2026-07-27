@@ -18,8 +18,8 @@ todos:
     content: "Stage 3 (core) — Gravity, OrbitKinematics, orbiting stations/warp gates, worldPosition HUD, PRO/SYNC, transit corridors, Jennings ambient co-orbit"
     status: completed
   - id: stage-3-kinematic-belts
-    content: "Stage 3 — Kinematic asteroid belts + chunk positions from seed + simTime (not static spawn xy)"
-    status: pending
+    content: "Stage 3 — Kinematic asteroid belts + ring-sector streaming (BeltStream / OpenSpaceStream / NebulaStream)"
+    status: completed
   - id: stage-3-fragment-gravity
     content: Stage 3 — Ship breakup fragments inherit gravity (not drag-only drift)
     status: pending
@@ -310,7 +310,7 @@ flowchart LR
   SS --> POI[PoiSystem.register sites]
   SS --> ST[Station.js position]
   SS --> PR[PlaceRegistry world bindings]
-  SL --> PG[ProceduralGeneration exclusion + orbits]
+  SL --> AST[AsteroidSystem + BeltStream / OpenSpaceStream]
   SL --> GS[GravitySystem]
   GS --> PHY[PhysicsSystem player + fragments]
   SL --> SMP[SectorMapPanel draw]
@@ -337,11 +337,11 @@ New module: [`src/world/SectorBootstrap.js`](src/world/SectorBootstrap.js)
 
 ## Proc gen and traffic adjustments
 
-**Asteroids** ([`ProceduralGeneration.js`](src/systems/ProceduralGeneration.js)):
-- Keep ring-weighted composition via [`SectorLayout.js`](src/world/SectorLayout.js)
-- Add site **exclusion zones** (no asteroids within N units of stations/gates)
-- `isInsidePlayableSector()` expands to ~750k u radius; outside = empty chunks (soft edge)
-- **Stage 3:** spawn **orbital params** from seed; position derived from `simTime` + **Planet Center** (see below)
+**Asteroids** ([`AsteroidSystem.js`](src/systems/AsteroidSystem.js) + [`BeltStream.js`](src/systems/BeltStream.js) / [`OpenSpaceStream.js`](src/systems/OpenSpaceStream.js)):
+- Ring-weighted composition via [`SectorLayout.js`](src/world/SectorLayout.js)
+- Site **exclusion zones** (no asteroids within N units of stations/gates)
+- `isInsidePlayableSector()` expands to ~750k u radius; outside = no proc spawn (soft edge)
+- **Shipped:** ring-sector streaming — belt angular sectors + open-space field cells; live position from `orbitR` / `orbitAngle0` + `simTime`; retention-radius materialize/despawn
 
 **Ambient traffic** ([`AmbientTrafficSystem.js`](src/world/AmbientTrafficSystem.js)):
 - Retarget density rings from `STATION.SCALE`-relative to **layout-relative** (near each station's **live** orbit position, not world origin)
@@ -395,7 +395,7 @@ spawnWeight *= lerp(1.0, corridorTrafficMult, corridorFactor)  // e.g. corridorT
 | Entity | Method | Why |
 |--------|--------|-----|
 | **Player ship** | Real gravity via `GravitySystem` | Coasting paths bend; thrusters/brakes still dominate |
-| **Ring belt asteroids** | **Kinematic orbit** | Stable belts, cheap, chunk-safe |
+| **Ring belt asteroids** | **Kinematic orbit** | Stable belts, cheap, stream-safe |
 | **Stations + non-deep POIs** | **Kinematic orbit** (same math) | Jennings, all 12 stations, `warp_ring` gates move on authored orbits; HUD tracks live |
 | **Deep fringe POIs** | **Static** `x, y` | Capitals, instance gates — fixed in outer fringe |
 | **Planetary sites** | **Surface-fixed** on rotating planet disc | Co-rotate with 30 h spin; world xy from `surfaceAngle` + `gameTime` |
@@ -515,12 +515,13 @@ flowchart TB
   SL[sectorLayout planet.gravityMu]
   SL --> GS[GravitySystem]
   SL --> OK[OrbitKinematics.js]
-  SL --> PG[ProceduralGeneration]
+  SL --> ASTsys[AsteroidSystem streams]
   GS --> Player[Player ship]
   GS --> Frag[Fragments]
   OK --> Belt[Asteroid belts]
   OK --> ST[Stations + warp_ring POIs]
   OK --> POI[PoiSystem.worldPosition]
+  ASTsys --> Belt
   POI --> HUD[POI rim / Sector map / DEST / NavRoute]
 ```
 
@@ -630,10 +631,10 @@ Shared via [`OrbitKinematics.js`](src/world/OrbitKinematics.js). Same params for
 
 - Each frame: `θ = orbitAngle0 + orbitOmega × simTime`; `position = center + orbitR × (cos θ, sin θ)`; tangent speed **`√(μ/orbitR)`**
 
-**Ring belt asteroids** — refactor [`Asteroid`](src/entities/Asteroid.js) + [`ProceduralGeneration.js`](src/systems/ProceduralGeneration.js):
-- Params seeded from `(chunkSeed, asteroidSeed)`; `orbitR` clamped to ring annulus; `orbitOmega` from μ
-- Chunk streaming: spawn rocks whose **current** orbital position intersects loaded chunks at `simTime`
-- Collisions: belt rocks stay kinematic; destroyed → gravity fragments
+**Ring belt asteroids** — [`Asteroid`](src/entities/Asteroid.js) + [`BeltStream.js`](src/systems/BeltStream.js):
+- Deterministic sector catalogs (`ringId`, sector index, rock index); `orbitR` in ring annulus; `orbitOmega` from μ
+- **Ring-sector streaming:** materialize when live orbital position is within `STREAM_RETENTION_RADIUS`; despawn beyond retention
+- Collisions: belt rocks stay kinematic; destroyed → session-gone (fragments → gravity still open)
 
 **Stations + non-deep POIs** — authored in layout, bootstrapped into [`PoiSystem`](src/world/PoiSystem.js):
 - Each station gets unique **`orbitR`, `orbitAngle0`** in open space; **`orbitOmega = √(μ/orbitR³)`** (same as belts)
@@ -700,7 +701,7 @@ Draw order inside [`GameEngine._renderPlayWorld`](src/core/GameEngine.js) / [`Re
 flowchart BT
   SF[Starfield + ambient nebula backdrop]
   RG[Planet ring annuli — world space, centered on Planet Center]
-  NB[World nebulae chunk layer]
+  NB[World nebulae — NebulaStream]
   SS[Speed streaks]
   ST[Station / ambient under layer]
   AST[Asteroids — playable layer]
@@ -871,7 +872,7 @@ flowchart LR
 - **TELEMETRY `PRO`** + **Orbit SYNC** (live contact velocity)
 - [`TransitCorridor.js`](src/world/TransitCorridor.js) + ambient spawn weight in corridor bands
 - Ambient traffic retargeted to **live** station positions; `patrolDensity` from `socialTier`
-- Asteroid chunk streaming by orbital position at `t`; fragments → gravity
+- Ring-sector asteroid streaming (`BeltStream` / `OpenSpaceStream`); fragments → gravity (open)
 - Dev: gravity μ slider; co-orbital acceptance test
 - Docs: [`GDD.md`](docs/GDD.md) co-orbit + SYNC + **Thera system** geography
 
@@ -923,11 +924,11 @@ flowchart LR
 |------|------------|
 | Saved nav/POI coords break | Persistence v4 + one-time reset banner |
 | Sector map unreadable at ~7,500 km scale | Multi-tier zoom; default to local/system view |
-| Chunk load at large coordinates | Already float-safe; verify `CHUNK_SIZE` 2000 still performant |
+| Stream retention at large coordinates | Float-safe; `STREAM_RETENTION_RADIUS` (~12k u) + viewport cull in renderer |
 | Only Jennings has hangar sim | Other stations = exterior + dock prompt stub until Place kits land |
 | 5 min flights feel long early game | Ring warp gates shorten ring transits; stations clustered in shell but respect min sep |
 | Gravity makes docking frustrating | Tune μ low; optional 0.5× in Precision; influence fade outside rings |
-| Orbital asteroids desync on chunk reload | Position from seed + simTime, not stored xy |
+| Orbital asteroids desync on stream reload | Position from seed + simTime + sector template; not stored xy |
 | Moving POI confuses nav arrival | NavRoute POI-ref stops resolve live; speed-scaled capture radius accounts for target motion |
 | Planetary site bearing drifts | 30 h spin moves surface sites; all HUD uses `worldPosition(poi, gameTime)` for planetary + orbital POIs |
 | Player slingshots unintentionally | Thrust-limited accel + gravity; optional soft cap only if playtest runaway; dock approach still speed-limited |
@@ -951,7 +952,7 @@ flowchart LR
 | **Exterior space** | **Never loads or ticks** hangar/interior. No `_hangarLive` headless sim during flight. `ambientTraffic` gets `hangarBay: null` in space/title. |
 | **Entry snapshot** | Record `_hangarEnteredGameTime` + frozen Jennings orbit frame on interior enter. |
 | **Exit catch-up** | On launch **thrust** phase: advance station + POI positions to current `gameTime`; spawn ship with station-frame velocity. |
-| **Peephole backdrop** | Cosmetic static plate per hangar visit — **not** live chunk loader, `_spaceCam` drift, or `asteroidSystem` in hangar. |
+| **Peephole backdrop** | Cosmetic static plate per hangar visit — **not** live asteroid stream, `_spaceCam` drift, or `asteroidSystem` in hangar. |
 | **Interior crew** | `tickVesselInteriorCrew` only when `interiorActive` — not during spaceflight or frozen exterior. |
 | **Gravity in hangar** | `ship.affectedByGravity = false` on pad; restored on space handoff. |
 
@@ -965,7 +966,7 @@ flowchart LR
 | Nebula ambient cache | Per-camera-cell plate; drop invisible scaled nebula pass in hangar peepholes. |
 | Asteroid list reuse + cull | `_activeList` cache; viewport cull in renderer. |
 | Radar / POI off render path | `radarSystem.update()` on sim tick; sector map static layer cache. |
-| Space sim freeze in hangar | Unload asteroid chunks; reset ambient traffic; no `syncStationAnchor` per interior frame. |
+| Space sim freeze in hangar | Pause asteroid streaming; reset ambient traffic; no `syncStationAnchor` per interior frame. |
 
 ### Bug fixes discovered during perf work (re-apply with geography)
 
