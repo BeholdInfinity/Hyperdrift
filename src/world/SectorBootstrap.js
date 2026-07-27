@@ -60,8 +60,16 @@ export function syncStationAnchor(station, gameTime = 0) {
 /** Map place id → sector site id (`place.jennings` → `site.jennings`). */
 export function placeIdToSiteId(placeId) {
   if (!placeId) return 'site.jennings';
+  if (placeId === 'place.derelict-home') return 'site.station.derelict';
   if (placeId.startsWith('place.')) return `site.${placeId.slice(6)}`;
   return placeId;
+}
+
+/** Resolve Place id for a sector site (matches PlaceRegistry.registerLayoutPlaces). */
+export function sitePlaceId(site) {
+  if (!site) return 'place.jennings';
+  if (site.placeId) return site.placeId;
+  return `place.${String(site.id).replace(/^site\./, '')}`;
 }
 
 /** Move the overworld station anchor to a dock place (falls back to Jennings). */

@@ -224,7 +224,7 @@ export class RadarSystem {
    * }} ctx
    */
   update(dt, ctx) {
-    const { ship, station, ambientTraffic, camera } = ctx;
+    const { ship, station, stationName, ambientTraffic, camera } = ctx;
     this._time += dt;
     if (!ship) {
       this.contacts = [];
@@ -285,7 +285,7 @@ export class RadarSystem {
         angle: Math.atan2(station.vy ?? 0, station.vx ?? 0) + Math.PI / 2,
         type: 'station',
         iff: 'blue',
-        name: 'Jennings Station',
+        name: stationName || 'Station',
         priority: 0,
       });
     }

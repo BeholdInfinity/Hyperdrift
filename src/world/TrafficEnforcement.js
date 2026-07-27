@@ -38,7 +38,9 @@ export class TrafficEnforcement {
     const defaults = layout.trafficDefaults || {};
 
     if (enforcement === 'sensor_auto') {
-      this._cite('site.jennings', over, layout, defaults);
+      const sensorSite = this._nearestPatrolSite(x, y, t, layout) ||
+        listSites('station', layout).find((s) => s.id === 'site.jennings');
+      if (sensorSite) this._cite(sensorSite.id, over, layout, defaults);
       return;
     }
 

@@ -959,7 +959,7 @@ export class Station {
       this._drawBayMouthFrame(ctx);
       this._drawApproachLights(ctx, time);
       this._drawHullBeacons(ctx, time);
-      this._drawLabel(ctx);
+      this._drawLabel(ctx, opts.stationLabel, opts.stationSubtitle);
     } else if (layer === 'under') {
       // Full station minus roof/tape — ship rides on apron under those occluders
       this._drawHull(ctx);
@@ -968,7 +968,7 @@ export class Station {
       this._drawBayMouthFloor(ctx);
       this._drawApproachLights(ctx, time);
       this._drawHullBeacons(ctx, time);
-      this._drawLabel(ctx);
+      this._drawLabel(ctx, opts.stationLabel, opts.stationSubtitle);
     } else if (layer === 'over') {
       // Occluders only: hangar roof + caution tape / jambs
       this._drawHangarRoof(ctx);
@@ -1487,16 +1487,20 @@ export class Station {
     }
   }
 
-  _drawLabel(ctx) {
+  _drawLabel(ctx, label, subtitle) {
     const gap = STATION.LABEL_GAP;
     const fontMain = Math.max(11, 11 * (STATION.SCALE * 0.55));
     const fontSub = Math.max(8, 8 * (STATION.SCALE * 0.55));
+    const main = String(label || 'STATION').toUpperCase();
+    const sub = subtitle ? String(subtitle).toUpperCase() : '';
     ctx.fillStyle = 'rgba(100, 180, 255, 0.55)';
     ctx.font = `${fontMain}px sans-serif`;
     ctx.textAlign = 'center';
-    ctx.fillText('JENNINGS STATION', 0, STATION.RADIUS + gap);
-    ctx.font = `${fontSub}px sans-serif`;
-    ctx.fillStyle = 'rgba(200, 214, 229, 0.4)';
-    ctx.fillText('HOME BASE', 0, STATION.RADIUS + gap * 1.65);
+    ctx.fillText(main, 0, STATION.RADIUS + gap);
+    if (sub) {
+      ctx.font = `${fontSub}px sans-serif`;
+      ctx.fillStyle = 'rgba(200, 214, 229, 0.4)';
+      ctx.fillText(sub, 0, STATION.RADIUS + gap * 1.65);
+    }
   }
 }

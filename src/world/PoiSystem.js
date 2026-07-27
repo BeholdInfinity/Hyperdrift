@@ -7,6 +7,7 @@
 
 import { POI, IFF } from '../core/Constants.js';
 import { siteWorldPosition, getSiteById } from './SectorLayout.js';
+import { sitePlaceId } from './SectorBootstrap.js';
 
 let _nextId = 1;
 
@@ -30,6 +31,7 @@ export class PoiSystem {
     this._siteById.clear();
     for (const site of layout.sites ?? []) {
       const pos = siteWorldPosition(site, 0, layout);
+      const charted = site.kind === 'station';
       const poi = this.register(
         {
           x: pos.x,
@@ -37,17 +39,17 @@ export class PoiSystem {
           name: site.name,
           defaultName: site.name,
           iff: site.iff ?? 'blue',
-          discovered: site.id === 'site.jennings',
-          onRing: site.id === 'site.jennings',
-          onMap: site.id === 'site.jennings',
+          discovered: charted,
+          onRing: charted,
+          onMap: charted,
           siteId: site.id,
           kind: site.kind,
           motion: site.motion,
           orbit: site.orbit ? { ...site.orbit } : undefined,
           surfaceAngle: site.surfaceAngle,
-          placeId: site.placeId,
+          placeId: sitePlaceId(site),
         },
-        site.id === 'site.jennings' ? POI.SOURCE.PROXIMITY : POI.SOURCE.MANUAL,
+        charted ? POI.SOURCE.PROXIMITY : POI.SOURCE.MANUAL,
         site.id,
       );
       this._siteById.set(site.id, poi);

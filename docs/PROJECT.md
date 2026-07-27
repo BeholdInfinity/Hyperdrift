@@ -169,6 +169,7 @@ src/
 | Home Base hangar (Jennings Station; B1–B3; launch + land sequences) | Place-hydrated kit; random player bay; free-look pan; modular visitors; Dev Bay Options + **Place** composer; 2.5D elevator; title elevator raise; **ships draw in angled 2.5D** |
 | Place → Area → Feature registry (stations / capital / outpost / vessel) | Groundwork (v0.1.232); hangar first; other rooms stubbed; vessel interior contract + Dev tests |
 | Jennings Station overworld exterior + dock prompt (4× scale via `STATION.SCALE`) | Done |
+| All 12 Thera orbital stations in overworld + dockable Jennings-clone interiors (`StationField`) | Done |
 | Ambient space traffic (modular; police pack near station; thruster `NpcPilot`; police hex + racetrack hold) | Done (v0.1.275) |
 | Settings controls sandbox (ship-only viewport) | Done |
 | Blueprint (player Upgrade UI + Dev Author) | Done — always available; Dev Mode adds mount drag / tuning Save |
@@ -229,7 +230,7 @@ Full plan + todo list: [`WORLD_GEOGRAPHY_PLAN.md`](WORLD_GEOGRAPHY_PLAN.md) (cod
 
 **Shipped:** Stage 1 foundation; Stage 2 visuals core + **map editor MVP** (drag sites, validator, bake); Stage 3 motion core (gravity, orbiting stations/gates, `worldPosition`, PRO/SYNC, corridors, Jennings ambient co-orbit v0.1.290); Stage 4 systems core (warp gates, LIM/fines stub, chart zoom); Stage 5 Place registry (Jennings-clone + planetary stubs); **`InteriorSession`** hangar instancing.
 
-**Open (see plan todos):** sector editor advanced (ring handles, undo); kinematic asteroid belts (same μ-derived ω); trade block / broker / outlaw IFF wiring; non-Jennings dock exterior stubs; fragment gravity; dev gravity μ slider.
+**Open (see plan todos):** sector editor advanced (ring handles, undo); trade block / broker / outlaw IFF wiring; fragment gravity; dev gravity μ slider.
 
 ### Polish / follow-ups
 - **Space hangar presence / bay mouth traffic (needs more tuning)** — first pass shipped (`HangarPresence`, retrograde reservation spawns, beacon fix, stall retry). Still open: reliable door inbound while player co-orbits Jennings; visible elevator beacon cadence vs interior hangar; spawn speed/distance/geometry; reservation retry pacing; mouth mutex vs `MAX_SHIPS`. Touch `HangarPresence.js`, `AmbientTrafficSystem.spawnBayApproach` / `_tickBayMouth`, `BayTrafficManifest.js`, `Constants.js` (`AMBIENT.*`, `HANGAR.INBOUND_RESERVATION_STALL_SEC`).

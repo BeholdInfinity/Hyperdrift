@@ -23,6 +23,7 @@ import { SectorMap, trailDistance } from '../world/SectorMap.js';
 import { TravelLog } from '../world/TravelLog.js';
 import { loadNavProfile, saveNavProfile } from '../world/NavPersistence.js';
 import { bootstrapSectorWorld, syncStationAnchor, syncStationToPlace } from '../world/SectorBootstrap.js';
+import { StationField, DEFAULT_BAY_SIGNALS } from '../world/StationField.js';
 import { finiteGameTime } from '../world/OrbitKinematics.js';
 import { WarpGateSystem } from '../world/WarpGateSystem.js';
 import { TrafficRecord } from '../world/TrafficRecord.js';
@@ -55,7 +56,6 @@ import {
   syncHangarSidePadFromLayout,
 } from '../world/HangarBay.js';
 import { makeVisitorThrusters } from '../world/HangarVisitorShips.js';
-import { Station } from '../world/Station.js';
 import { AmbientTrafficSystem } from '../world/AmbientTrafficSystem.js';
 import {
   cruiseTo,
@@ -183,7 +183,9 @@ export class GameEngine {
     this.interior = null;
     /** Lightweight bay mirror while the pilot is in space (no full hangar tick). */
     this.hangarPresence = new HangarPresence();
-    this.station = new Station();
+    this.stationField = new StationField();
+    this.stationField.bootstrap();
+    this.station = this.stationField.getJenningsStation();
     /** Place → Area → Feature registry (Jennings default hangar) */
     this.placeRegistry = placeRegistry;
     bootstrapSectorWorld({ poiSystem: this.poiSystem, station: this.station, placeRegistry: this.placeRegistry });
@@ -294,6 +296,7 @@ export class GameEngine {
     this._buildMeta =
       document.getElementById('build-meta') || document.getElementById('build-stamp');
     this._hangarHud = document.getElementById('hangar-hud');
+    this._hangarPlaceTitle = document.getElementById('hangar-place-title');
     this._overlay = document.getElementById('overlay');
     this._controlsHud = document.getElementById('controls-hud');
     this._blueprintHud = document.getElementById('blueprint-hud');
@@ -407,11 +410,52 @@ export class GameEngine {
     };
   }
 
-  /** Advance Jennings anchor + POI to current gameTime (orbital motion). */
+  /** Advance all station orbits; pick active dock target + Place. */
   _syncStationWorldFrame() {
     const t = finiteGameTime(this.gameTime);
-    syncStationAnchor(this.station, t);
+    this.stationField.syncAll(t);
+
+    if (this.mode === 'playing' && this.ship) {
+      this.station = this.stationField.resolveDockTarget(
+        this.ship,
+        this._lastDockPlaceId
+      );
+      const entry = this.stationField.getEntryForStation(this.station);
+      if (entry?.placeId) placeRegistry.setActive(entry.placeId);
+    } else {
+      this.station = this.stationField.getJenningsStation();
+    }
+
+    if (this.station) {
+      STATION.WORLD_X = this.station.x;
+      STATION.WORLD_Y = this.station.y;
+      STATION.WORLD_VX = this.station.vx ?? 0;
+      STATION.WORLD_VY = this.station.vy ?? 0;
+    }
+
     this.poiSystem.syncPositions(t);
+  }
+
+  /** Overworld station name plate + hangar HUD banner from active Place. */
+  _stationLabelOpts(station) {
+    const entry = this.stationField?.getEntryForStation(station);
+    const place = entry ? placeRegistry.get(entry.placeId) : null;
+    const label = place?.label || entry?.site?.name || 'Station';
+    let subtitle = '';
+    const tier = entry?.site?.socialTier;
+    if (tier === 'home') subtitle = 'Home Base';
+    else if (tier === 'pirate') subtitle = 'Outlaw Port';
+    else if (tier === 'derelict') subtitle = 'Derelict Yard';
+    else if (tier === 'military') subtitle = 'Military';
+    else if (tier) subtitle = tier.charAt(0).toUpperCase() + tier.slice(1);
+    return { stationLabel: label, stationSubtitle: subtitle };
+  }
+
+  _syncHangarPlaceTitle() {
+    if (!this._hangarPlaceTitle) return;
+    const place = placeRegistry.getActive();
+    const name = (place?.label || 'Station').toUpperCase();
+    this._hangarPlaceTitle.textContent = `${name}: HANGAR BAY · SHIP MAINTENANCE`;
   }
 
   /** Station co-moving frame for brake / zero-hold while in the approach shell. */
@@ -736,10 +780,11 @@ export class GameEngine {
    * @returns {{ spawn: { x: number, y: number, angle: number }, exitVel: { vx: number, vy: number } }}
    */
   _commitSpaceEgressHandoff(ship, bayIndex = this.playerBayIndex ?? 1) {
-    syncStationAnchor(this.station, finiteGameTime(this.gameTime));
+    const placeId = this._lastDockPlaceId || placeRegistry.activePlaceId || 'place.jennings';
+    syncStationToPlace(this.station, placeId, finiteGameTime(this.gameTime));
     let spawn = this.station.getExitSpawn(bayIndex);
     if (!Number.isFinite(spawn.x) || !Number.isFinite(spawn.y)) {
-      syncStationAnchor(this.station, 0);
+      syncStationToPlace(this.station, placeId, 0);
       spawn = this.station.getExitSpawn(bayIndex);
     }
     if (!Number.isFinite(spawn.x) || !Number.isFinite(spawn.y)) {
@@ -837,11 +882,15 @@ export class GameEngine {
       this.ambientTraffic.reset();
     }
 
-    if (!this.hangarPresence.active) {
+    if (
+      !this.hangarPresence.active &&
+      (this._lastDockPlaceId === 'place.jennings' ||
+        placeRegistry.activePlaceId === 'place.jennings')
+    ) {
       this.hangarPresence.seedDefault(bayIndex);
     }
 
-    this.asteroidSystem.update(spawn.x, spawn.y);
+    this.asteroidSystem.update(spawn.x, spawn.y, this.gameTime || 0);
     this._setDockHud(false);
 
     if (fromHangar) {
@@ -911,7 +960,7 @@ export class GameEngine {
     this._applyTitleCamera(this.gameTime || 0);
     this._spaceCam.x = this.camera.position.x;
     this._spaceCam.y = this.camera.position.y;
-    this.asteroidSystem.update(this.camera.position.x, this.camera.position.y);
+    this.asteroidSystem.update(this.camera.position.x, this.camera.position.y, this.gameTime || 0);
 
     // Seed a freighter on the runway so the title vignette always has motion
     const view = {
@@ -980,6 +1029,9 @@ export class GameEngine {
 
   _beginPlayBody() {
     this._clearPlaySession();
+    placeRegistry.setActive('place.jennings');
+    this._lastDockPlaceId = 'place.jennings';
+    this.station = this.stationField.getJenningsStation();
     // Pick exit bay first — spawn lane + departing pad light must match
     this.playerBayIndex = (Math.random() * 3) | 0;
     this.ship = new Ship(0, 0);
@@ -1013,6 +1065,10 @@ export class GameEngine {
     entryTurret = null,
     targetBay = null,
   } = {}) {
+    if (!landing && fromMenu) {
+      placeRegistry.setActive('place.jennings');
+      this.station = this.stationField.getJenningsStation();
+    }
     if (landing && this._expeditionActive) {
       this._archiveExpeditionOnSettle = true;
     }
@@ -1056,8 +1112,10 @@ export class GameEngine {
         playerBayIndex: prefer,
         placeId: placeRegistry.activePlaceId,
       });
+      const atJennings = placeRegistry.activePlaceId === 'place.jennings';
+      if (!atJennings) this.hangarPresence.reset();
       const presenceActive = this.hangarPresence.active;
-      if (presenceActive) {
+      if (presenceActive && atJennings) {
         this.hangarPresence.captureInboundFromAmbient(this.ambientTraffic);
         this.hangarPresence.applyToHangar(hb);
         this.hangarPresence.handoffInboundToHangar(hb, this.ambientTraffic, this.station);
@@ -1115,6 +1173,7 @@ export class GameEngine {
     this.input.paused = false;
 
     if (this._hangarHud) this._hangarHud.classList.remove('hidden');
+    this._syncHangarPlaceTitle();
     if (this._buildStamp) this._buildStamp.classList.add('hidden');
     this._setDockHud(false);
     this._positionLaunchBtn();
@@ -1472,6 +1531,7 @@ export class GameEngine {
         placeId: place.id,
       });
       this.interior.hangarBay.warmStartHeadless();
+      this._syncHangarPlaceTitle();
     }
     DevTools.status = `Place: ${place.label}`;
     return true;
@@ -1837,6 +1897,11 @@ export class GameEngine {
     const edge = this.station.ingressEdgeWorld(this.ship);
     const lane = this.station.laneIndexFromWorld(edge.x, edge.y);
     if (!this.station.padAvailable(lane, this.ship)) return;
+    const dockEntry = this.stationField.getEntryForStation(this.station);
+    if (dockEntry?.placeId) {
+      placeRegistry.setActive(dockEntry.placeId);
+      this._recordLastDock(dockEntry.placeId, lane);
+    }
     const entryAngle =
       this.station.worldHeadingToHangar(this.ship.angle) ?? this.ship.angle;
     const entryTurret =
@@ -1974,7 +2039,8 @@ export class GameEngine {
     if (this.interior?.spaceFrozen) {
       this.interior.catchUpExterior(this);
     } else {
-      syncStationAnchor(this.station, t);
+      const placeId = placeRegistry.activePlaceId || this._lastDockPlaceId || 'place.jennings';
+      syncStationToPlace(this.station, placeId, t);
       this.poiSystem.syncPositions(t);
     }
 
@@ -2153,7 +2219,7 @@ export class GameEngine {
     this._spaceCam.x = this.camera.position.x;
     this._spaceCam.y = this.camera.position.y;
 
-    this.asteroidSystem.update(this.camera.position.x, this.camera.position.y);
+    this.asteroidSystem.update(this.camera.position.x, this.camera.position.y, this.gameTime || 0);
     const asteroids = this.asteroidSystem.getActiveAsteroids();
     this._frameAsteroids = asteroids;
     this._frameAsteroids = asteroids;
@@ -3256,7 +3322,7 @@ export class GameEngine {
       processPoiBookModalInput(this);
     }
 
-    this.asteroidSystem.update(this.ship.position.x, this.ship.position.y);
+    this.asteroidSystem.update(this.ship.position.x, this.ship.position.y, this.gameTime || 0);
 
     // Caps Lock LED edge sets the desire; the MODES switch can also flip it.
     const capsLED = this.input.capsLockDesired;
@@ -3516,6 +3582,7 @@ export class GameEngine {
       this.radarSystem.update(deltaTime, {
         ship: this.ship,
         station: this.station,
+        stationName: placeRegistry.getActive()?.label || 'Station',
         ambientTraffic: this.ambientTraffic,
         asteroids,
         camera: this.camera,
@@ -3638,6 +3705,7 @@ export class GameEngine {
     }
     const anyOccluded = ambientOccluded.length > 0;
 
+    const titleLabels = this._stationLabelOpts(this.station);
     this.renderer.renderWorldLayer((ctx) => {
       this.station.render(ctx, {
         time: this.gameTime,
@@ -3645,6 +3713,7 @@ export class GameEngine {
         speed: 0,
         baySignals,
         layer: anyOccluded ? 'under' : 'all',
+        ...titleLabels,
       });
     }, this.camera);
 
@@ -3673,6 +3742,7 @@ export class GameEngine {
           speed: 0,
           baySignals,
           layer: 'over',
+          ...titleLabels,
         });
       }, this.camera);
     }
@@ -3688,6 +3758,7 @@ export class GameEngine {
         speed: 0,
         baySignals,
         layer: 'bayBeacons',
+        ...titleLabels,
       });
     }, this.camera);
 
@@ -3887,10 +3958,32 @@ export class GameEngine {
     this.speedStreaks.render(this.renderer.ctx);
     this.renderer.ctx.restore();
 
-    const baySignals = this.station.baySignals;
+    const activeStation = this.station;
+    const camPos = this.camera.position;
+    const zoom = this.camera.effectiveZoom || 1;
+    const viewR =
+      (this.renderer.viewportRadius + 200) / Math.max(zoom, 0.05);
+
+    // Background stations (green pads, no player occlusion)
+    for (const { station } of this.stationField.listEntries()) {
+      if (station === activeStation) continue;
+      if (!this.stationField.isNearCamera(station, camPos, viewR)) continue;
+      this.renderer.renderWorldLayer((ctx) => {
+        station.render(ctx, {
+          time: this.gameTime,
+          ship: null,
+          baySignals: DEFAULT_BAY_SIGNALS,
+          layer: 'all',
+          ...this._stationLabelOpts(station),
+        });
+      }, this.camera);
+    }
+
+    const baySignals = activeStation?.baySignals ?? DEFAULT_BAY_SIGNALS;
     const playerOccluded =
       !!this.ship &&
-      this.station.shouldOccludeShip(this.ship, {
+      !!activeStation &&
+      activeStation.shouldOccludeShip(this.ship, {
         egressGrace: this._inExitGrace(),
       });
     const ambientOccluded = [];
@@ -3903,19 +3996,23 @@ export class GameEngine {
         shipDef: a.shipDef,
         id: a.id,
       };
-      if (this.station.shouldOccludeShip(pose)) ambientOccluded.push(a);
+      if (activeStation?.shouldOccludeShip(pose)) ambientOccluded.push(a);
       else ambientClear.push(a);
     }
     const anyOccluded = playerOccluded || ambientOccluded.length > 0;
 
-    this.renderer.renderWorldLayer((ctx) => {
-      this.station.render(ctx, {
-        time: this.gameTime,
-        ship: this.ship,
-        baySignals,
-        layer: anyOccluded ? 'under' : 'all',
-      });
-    }, this.camera);
+    const activeLabels = activeStation ? this._stationLabelOpts(activeStation) : {};
+    if (activeStation) {
+      this.renderer.renderWorldLayer((ctx) => {
+        activeStation.render(ctx, {
+          time: this.gameTime,
+          ship: this.ship,
+          baySignals,
+          layer: anyOccluded ? 'under' : 'all',
+          ...activeLabels,
+        });
+      }, this.camera);
+    }
 
     this.renderer.renderAsteroids(
       this._frameAsteroids || this.asteroidSystem.getActiveAsteroids(),
@@ -3938,13 +4035,14 @@ export class GameEngine {
       { layer: 'under', shipLocalUnder: playerOccluded, hulls: exhaustHulls }
     );
 
-    if (anyOccluded) {
+    if (anyOccluded && activeStation) {
       this.renderer.renderWorldLayer((ctx) => {
-        this.station.render(ctx, {
+        activeStation.render(ctx, {
           time: this.gameTime,
           ship: this.ship,
           baySignals,
           layer: 'over',
+          ...activeLabels,
         });
       }, this.camera);
     }
@@ -3962,14 +4060,17 @@ export class GameEngine {
     }, this.camera);
 
     // Floating bay beacons above all ships (lane-centered runway overhead lights)
-    this.renderer.renderWorldLayer((ctx) => {
-      this.station.render(ctx, {
-        time: this.gameTime,
-        ship: this.ship,
-        baySignals,
-        layer: 'bayBeacons',
-      });
-    }, this.camera);
+    if (activeStation) {
+      this.renderer.renderWorldLayer((ctx) => {
+        activeStation.render(ctx, {
+          time: this.gameTime,
+          ship: this.ship,
+          baySignals,
+          layer: 'bayBeacons',
+          ...activeLabels,
+        });
+      }, this.camera);
+    }
 
     this.renderer.renderProjectiles(
       this.entityManager.getByType('projectile'),

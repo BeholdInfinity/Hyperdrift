@@ -62,3 +62,19 @@ export function velocityAt(orbit, gameTime, layout = getSectorLayout()) {
     heading: Math.atan2(Math.cos(theta), -Math.sin(theta)),
   };
 }
+
+/**
+ * Build a circular orbit that places a body at world (x, y) at gameTime.
+ * @returns {{ orbitR: number, orbitAngle0: number }}
+ */
+export function orbitFromWorldAt(x, y, gameTime = 0, layout = getSectorLayout()) {
+  const cx = layout.planet?.center?.x ?? 0;
+  const cy = layout.planet?.center?.y ?? 0;
+  const dx = x - cx;
+  const dy = y - cy;
+  const R = Math.hypot(dx, dy);
+  const thetaNow = Math.atan2(dy, dx);
+  const omega = orbitOmegaFor(R, layout);
+  const t = finiteGameTime(gameTime);
+  return { orbitR: R, orbitAngle0: thetaNow - omega * t };
+}

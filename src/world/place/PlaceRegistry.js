@@ -12,6 +12,7 @@ import {
   orderedBays,
 } from './HangarArea.js';
 import { createVesselInteriorPlace } from './VesselInterior.js';
+import { sitePlaceId } from '../SectorBootstrap.js';
 
 function deepClone(o) {
   return JSON.parse(JSON.stringify(o));
@@ -263,7 +264,7 @@ export function registerLayoutPlaces(registry, layout) {
   if (!registry?.places || !layout?.sites) return;
   for (const site of layout.sites) {
     if (site.kind === 'station') {
-      const placeId = site.placeId || `place.${site.id.replace(/^site\./, '')}`;
+      const placeId = sitePlaceId(site);
       if (registry.places.has(placeId)) continue;
       if (placeId === 'place.jennings' || placeId === 'place.derelict-home') continue;
       registry.places.set(
@@ -272,7 +273,7 @@ export function registerLayoutPlaces(registry, layout) {
       );
     }
     if (site.kind === 'planetary') {
-      const placeId = site.placeId || `place.${site.id.replace(/^site\./, '')}`;
+      const placeId = sitePlaceId(site);
       if (registry.places.has(placeId)) continue;
       registry.places.set(placeId, createPlanetaryOutpostPlace(placeId, site.name));
     }

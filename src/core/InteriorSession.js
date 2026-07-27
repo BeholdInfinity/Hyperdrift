@@ -7,7 +7,8 @@ import { EntityManager } from '../entities/EntityManager.js';
 import { ParticleSystem } from '../entities/Particle.js';
 import { WeaponSystem } from '../systems/WeaponSystem.js';
 import { HangarBay } from '../world/HangarBay.js';
-import { syncStationAnchor } from '../world/SectorBootstrap.js';
+import { syncStationToPlace } from '../world/SectorBootstrap.js';
+import { placeRegistry } from '../world/place/PlaceRegistry.js';
 import { STATION } from './Constants.js';
 
 export class InteriorSession {
@@ -29,7 +30,11 @@ export class InteriorSession {
   /** Snapshot exterior orbit and drop space chunk/traffic load before interior runs. */
   freezeExterior(engine) {
     this.enteredGameTime = engine.gameTime || 0;
-    syncStationAnchor(engine.station, this.enteredGameTime);
+    syncStationToPlace(
+      engine.station,
+      placeRegistry.activePlaceId || engine._lastDockPlaceId || 'place.jennings',
+      this.enteredGameTime
+    );
     this.frozenAnchor = {
       x: engine.station.x,
       y: engine.station.y,
@@ -79,7 +84,11 @@ export class InteriorSession {
   catchUpExterior(engine) {
     if (!this.spaceFrozen) return;
     const t = engine.gameTime || 0;
-    syncStationAnchor(engine.station, t);
+    syncStationToPlace(
+      engine.station,
+      placeRegistry.activePlaceId || engine._lastDockPlaceId || 'place.jennings',
+      t
+    );
     engine.poiSystem.syncPositions(t);
     this.spaceFrozen = false;
     this.frozenAnchor = null;

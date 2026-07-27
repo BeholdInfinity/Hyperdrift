@@ -105,6 +105,14 @@ export const WORLD = {
   UNLOAD_RADIUS: 5,
   SEED: 42,
   SOFT_EDGE_RADIUS: 750000,
+  /** Open-space proc fields outside ring bands (× ring.density for belts). */
+  OPEN_SPACE_FIELD_MULT: 0.08,
+  /** Halve random open-space asteroid fields vs pre-belt baseline. */
+  OPEN_SPACE_SPAWN_HALVE: 0.5,
+  /** Target belt rocks per chunk at ring.density === 1 (scaled by overlap + density). */
+  BELT_ROCKS_AT_DENSITY_1: 10,
+  /** Max seed attempts per target belt rock (position must land in chunk at load time). */
+  BELT_SPAWN_ATTEMPTS_PER_ROCK: 12,
 };
 
 export const CAMERA = {
