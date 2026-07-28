@@ -449,6 +449,16 @@ html, body {
   color: rgba(255, 200, 140, 0.9);
 }
 
+.dev-rb-swatch {
+  display: inline-block;
+  width: 2rem;
+  height: 1.1rem;
+  margin: 0.35rem 0.5rem 0 0;
+  border: 1px solid rgba(120, 160, 190, 0.45);
+  border-radius: 2px;
+  vertical-align: middle;
+}
+
 .dev-bay-panel.hidden {
   display: none;
 }

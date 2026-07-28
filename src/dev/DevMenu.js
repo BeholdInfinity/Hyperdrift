@@ -48,6 +48,7 @@ export const DEV_LAUNCHERS = {
     { id: 'inspect', label: 'Inspect', panelId: 'dev-panel-inspect' },
     { id: 'overlays', label: 'Overlays', panelId: 'dev-panel-overlays' },
     { id: 'radar', label: 'Radar', panelId: 'dev-panel-radar' },
+    { id: 'ringBands', label: 'Ring Bands', panelId: 'dev-panel-ring-bands' },
     { id: 'mapEditor', label: 'Map Editor', action: 'openSectorEditor' },
   ],
   sectorEditor: [{ id: 'sim', label: 'Sim', panelId: 'dev-panel-sim' }],

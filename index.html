@@ -152,6 +152,37 @@
         <button type="button" class="hangar-dev-btn" id="dev-gen-save">Save generator default</button>
         <span id="dev-scan-readout" class="dev-drawer-status">tier — · — km</span>
       </div>
+      <div id="dev-panel-ring-bands" class="dev-bay-panel hidden">
+        <div class="dev-bay-panel-head">
+          <span>RING BANDS</span>
+          <button type="button" class="dev-bay-close dev-panel-close" data-panel="dev-panel-ring-bands" title="Close">×</button>
+        </div>
+        <p class="dev-title-hint">Overworld flight only · band layout matches sector map</p>
+        <label class="dev-check"><input type="checkbox" id="dev-rb-enabled" /> Enabled</label>
+        <label class="dev-check"><input type="checkbox" id="dev-rb-base" checked /> Background fill</label>
+        <label class="dev-check"><input type="checkbox" id="dev-rb-bands" checked /> Band layer</label>
+        <span class="dev-drawer-label">BACKGROUND FILL</span>
+        <label class="dev-title-slider">Edge feather <input type="range" id="dev-rb-base-edge" min="0" max="50" step="1" /><span data-for="dev-rb-base-edge">20%</span></label>
+        <label class="dev-title-slider">α min (edges) <input type="range" id="dev-rb-base-alpha-min" min="0" max="100" step="1" /><span data-for="dev-rb-base-alpha-min">0%</span></label>
+        <label class="dev-title-slider">α max (center) <input type="range" id="dev-rb-base-alpha-max" min="0" max="100" step="1" /><span data-for="dev-rb-base-alpha-max">100%</span></label>
+        <label class="dev-check">R <input type="number" id="dev-rb-br" min="0" max="255" value="32" class="dev-num-input" /></label>
+        <label class="dev-check">G <input type="number" id="dev-rb-bg" min="0" max="255" value="34" class="dev-num-input" /></label>
+        <label class="dev-check">B <input type="number" id="dev-rb-bb" min="0" max="255" value="38" class="dev-num-input" /></label>
+        <span id="dev-rb-swatch-base" class="dev-rb-swatch" title="Background preview"></span>
+        <span class="dev-drawer-label">BAND LAYER</span>
+        <label class="dev-title-slider">Edge feather <input type="range" id="dev-rb-band-edge" min="0" max="50" step="1" /><span data-for="dev-rb-band-edge">20%</span></label>
+        <label class="dev-title-slider">α min <input type="range" id="dev-rb-band-alpha-min" min="0" max="100" step="1" /><span data-for="dev-rb-band-alpha-min">8%</span></label>
+        <label class="dev-title-slider">α max <input type="range" id="dev-rb-band-alpha-max" min="0" max="100" step="1" /><span data-for="dev-rb-band-alpha-max">85%</span></label>
+        <label class="dev-title-slider">Primary mix <input type="range" id="dev-rb-primary-mix" min="0" max="100" step="1" /><span data-for="dev-rb-primary-mix">65%</span></label>
+        <span class="dev-drawer-label">PRIMARY COLOR</span>
+        <label class="dev-check">R <input type="number" id="dev-rb-pr" min="0" max="255" value="145" class="dev-num-input" /></label>
+        <label class="dev-check">G <input type="number" id="dev-rb-pg" min="0" max="255" value="118" class="dev-num-input" /></label>
+        <label class="dev-check">B <input type="number" id="dev-rb-pb" min="0" max="255" value="95" class="dev-num-input" /></label>
+        <span id="dev-rb-swatch-primary" class="dev-rb-swatch" title="Primary preview"></span>
+        <button type="button" class="hangar-dev-btn" id="dev-rb-save">Save</button>
+        <button type="button" class="hangar-dev-btn" id="dev-rb-reset">Reset defaults</button>
+        <span id="dev-rb-status" class="dev-drawer-status"></span>
+      </div>
       <div id="dev-panel-hangar" class="dev-bay-panel hidden">
         <div class="dev-bay-panel-head">
           <span>HANGAR</span>

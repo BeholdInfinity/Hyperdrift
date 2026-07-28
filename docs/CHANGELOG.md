@@ -7,6 +7,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 ## [Unreleased]
 
 ### Added
+- **Dev Ring Bands panel** — space overworld dev submenu: independent **background fill** and **band layer** controls (edge feather, α min/max, colors); **Save** persists tuning to `localStorage` (auto-loads on panel open); **Reset** clears saved tuning.
+
+### Changed
+- **Ring backdrop (overworld)** — layered annulus fill: opaque dark-gray base (`RENDER.RING_BACKDROP_BASE`) plus shared sector-map band infill; each layer has its own edge feather and α min/max. Gated by `RENDER.RING_BACKDROP` (default off). Band layer α now scales directly per strip (fixes α max cliff from broken `destination-in` post-pass).
+
+### Added
 - **Dev sector map jump** — right-click the LIVE sector map (Dev Mode) for **JUMP HERE** on empty map or POI/pin context menu; teleports the ship to that spot with prograde circular-orbit velocity (μ-derived, clockwise on the map). Belt/open-space rocks materialize within the full spawn radius on arrival (not only the outer shell).
 - **Outer belt streaming** — `isInsidePlayableSector` now treats all three ring annuli as playable (outer ice band sits beyond the 750k soft fringe edge and was skipping proc gen entirely).
 - **Layout bounds hydrate** — sector editor bake / bootstrap recomputes `spacing.softEdgeRadius` from ring + fringe geometry (proc-gen soft edge tracks resized rings).
@@ -19,7 +25,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 ### Changed
 - **Dev menu (two-tier)** — **DEV** button opens a compact launcher; sub-menus (Sim, Inspect, Overlays, Radar, Vessel, Hangar, Title Layout, etc.) open as draggable popups scoped to **Title / Hangar / Space** only. **Vessel** (interior + hull-scar dev tools) is **Hangar-only**. **Sector Map Editor** keeps the **DEV** button visible (launcher collapsed on entry) with **Sim** speed only. Sim toolbar: slow (÷2), pause, play (resume or reset 1×), fast (×2), editable multiplier field. Closing the dev menu hides popups but restores them on reopen. Hidden in Blueprint and Settings controls (those modes keep their own side docks). Sector layout editing removed from the flight dev drawer — use **Map Editor** launcher or title **SECTOR MAP** button.
 - **Ring-sector asteroid streaming** — replaced chunk grid with `BeltStream` (angular sectors per ring band), `OpenSpaceStream` (field cells outside rings), and `NebulaStream` (decorative cells). Live rocks materialize by player distance + live orbital position; destroyed proc rocks stay gone for the session. Removed `ProceduralGeneration.js` and `CHUNK_SIZE` / `LOAD_RADIUS` / `UNLOAD_RADIUS`.
-- **Belt approach streaming** — belt rocks materialize within retention of the annulus (not only when the ship is inside it); fixed sector orbits stop pop-in near the player; ring backdrop strokes hidden in flight view.
+- **Belt approach streaming** — belt rocks materialize within retention of the annulus (not only when the ship is inside it); fixed sector orbits stop pop-in near the player.
 - **Stream retention / belt density** — spawn shell 250–300 km (radar max → 300 km); despawn beyond 360 km; no spawn/despawn inside Mk5 radar range; finer belt sectors with radial slot stratification.
 - **Docs** — `GDD.md` and `WORLD_GEOGRAPHY_PLAN.md` updated for streaming (no chunk-grid proc gen).
 - **Kinematic asteroid belts** — ring-band sectors spawn a density-scaled rock count from `sectorLayout.rings[]` (composition + `density`); each rock gets μ-derived circular orbit (`orbitR`, `orbitAngle0`) and live prograde velocity. Open-space random fields cut **50%** (spawn chance + cluster size).

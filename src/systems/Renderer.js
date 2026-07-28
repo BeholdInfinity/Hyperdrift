@@ -6,7 +6,7 @@ import { topDownView } from '../ships/ShipViews.js';
 export class Renderer {
   constructor(canvas) {
     this.canvas = canvas;
-    this.ctx = canvas.getContext('2d');
+    this.ctx = canvas.getContext('2d', { alpha: true });
     this.width = 0;
     this.height = 0;
     this.centerX = 0;

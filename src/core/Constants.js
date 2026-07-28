@@ -513,6 +513,12 @@ export const AMBIENT = {
 
 export const RENDER = {
   CIRCLE_MARGIN: 0.08,
+  /** Sector-map belt infill in flight viewport (above starfield, below entities). */
+  RING_BACKDROP: false,
+  /** Radial feather at belt inner/outer edges in flight viewport (fraction of annulus width). */
+  RING_BACKDROP_EDGE_FEATHER_FRAC: 0.2,
+  /** Opaque dark-gray base under overworld belt band infill. */
+  RING_BACKDROP_BASE: { r: 32, g: 34, b: 38 },
 };
 
 /**

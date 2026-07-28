@@ -3,6 +3,7 @@ import { ringAt, getSectorLayout } from './world/SectorLayout.js';
 import { Settings } from './core/Settings.js';
 import { RADAR, PIPS, WORLD } from './core/Constants.js';
 import { DevTools } from './dev/DevTools.js';
+import { syncRingBandsPanelContent, wireRingBandsDevPanel } from './dev/DevRingBands.js';
 import {
   contextForMode,
   isDevDrawerVisible,
@@ -1490,6 +1491,7 @@ setDevMenuSyncUi(() => {
   syncTitleLayoutPanelContent();
   syncPlacePanelContent();
   syncBayOptionsPanelContent();
+  syncRingBandsPanelContent();
 });
 
 setDevMenuActionHandler((action) => {
@@ -1874,6 +1876,7 @@ const DEV_POPUP_IDS = [
   'dev-panel-traffic',
   'dev-panel-overlays',
   'dev-panel-radar',
+  'dev-panel-ring-bands',
   'dev-panel-vessel',
   'dev-panel-hangar',
   'dev-title-panel',
@@ -1883,6 +1886,7 @@ const DEV_POPUP_IDS = [
 ];
 registerDevPopups(DEV_POPUP_IDS);
 restoreDevPanelPositions();
+wireRingBandsDevPanel();
 
 document.querySelectorAll('.dev-panel-close').forEach((btn) => {
   btn.addEventListener('click', () => {

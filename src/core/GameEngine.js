@@ -4038,7 +4038,7 @@ export class GameEngine {
   _renderPlayWorldLayers() {
 
     this.renderer.renderWorldLayer((ctx) => {
-      drawRingBackdrop(ctx, this.camera);
+      drawRingBackdrop(ctx, this.camera, this.renderer.viewportRadius);
     }, this.camera);
 
     this.renderer.ctx.save();
