@@ -78,3 +78,10 @@ export function orbitFromWorldAt(x, y, gameTime = 0, layout = getSectorLayout())
   const t = finiteGameTime(gameTime);
   return { orbitR: R, orbitAngle0: thetaNow - omega * t };
 }
+
+/** Prograde circular-orbit velocity for a body at world (x, y) at gameTime. */
+export function circularOrbitVelocityAtWorld(x, y, gameTime = 0, layout = getSectorLayout()) {
+  const orbit = orbitFromWorldAt(x, y, gameTime, layout);
+  if (orbit.orbitR <= 0) return { vx: 0, vy: 0, speed: 0, heading: 0 };
+  return velocityAt(orbit, gameTime, layout);
+}

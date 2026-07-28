@@ -24,7 +24,7 @@ import { TravelLog } from '../world/TravelLog.js';
 import { loadNavProfile, saveNavProfile } from '../world/NavPersistence.js';
 import { bootstrapSectorWorld, syncStationAnchor, syncStationToPlace } from '../world/SectorBootstrap.js';
 import { StationField, DEFAULT_BAY_SIGNALS } from '../world/StationField.js';
-import { finiteGameTime } from '../world/OrbitKinematics.js';
+import { finiteGameTime, circularOrbitVelocityAtWorld } from '../world/OrbitKinematics.js';
 import { WarpGateSystem } from '../world/WarpGateSystem.js';
 import { TrafficRecord } from '../world/TrafficRecord.js';
 import { TrafficEnforcement } from '../world/TrafficEnforcement.js';
@@ -197,6 +197,8 @@ export class GameEngine {
     /** Stub: player entered vessel interior graph (walker TBD) */
     this.interiorActive = false;
     this.interiorPlaceId = null;
+    /** Instance gate flight — Thera gravity off until return to overworld. */
+    this.deepInstanceActive = false;
 
     this.ship = null;
     this._sandboxShip = null;
@@ -509,6 +511,40 @@ export class GameEngine {
 
   addNavRouteStopWorld(x, y) {
     return this.addNavRouteStop({ kind: 'world', x, y });
+  }
+
+  /** Dev-only: jump ship to world position on a prograde circular orbit. */
+  devJumpToOrbit(worldX, worldY) {
+    if (!Settings.isDevMode() || this.mode !== 'playing' || !this.ship) return false;
+    const t = finiteGameTime(this.gameTime);
+    const vel = circularOrbitVelocityAtWorld(worldX, worldY, t);
+    const ship = this.ship;
+    ship.position.set(worldX, worldY);
+    ship.velocity.set(vel.vx, vel.vy);
+    ship.angle = vel.heading;
+    ship.turretAngle = vel.heading;
+    ship.angularVelocity = 0;
+    ship.exitBurn = false;
+    this._approachHoldAI = null;
+    this.input.cancelZeroHold();
+    this.deepInstanceActive = false;
+    ship.affectedByGravity = true;
+    this.camera.position.set(worldX, worldY);
+    this.asteroidSystem.update(worldX, worldY, t, { materializeInView: true });
+    this.sectorMapView.recenter(ship, this);
+    return true;
+  }
+
+  /** Enter a warp-instance flight volume — Thera gravity off until exit. */
+  enterDeepInstance() {
+    this.deepInstanceActive = true;
+    if (this.ship) this.ship.affectedByGravity = false;
+  }
+
+  /** Return to Thera overworld flight — restore planetary gravity. */
+  exitDeepInstance() {
+    this.deepInstanceActive = false;
+    if (this.ship) this.ship.affectedByGravity = true;
   }
 
   _flashNavArrivalStatus() {
@@ -838,6 +874,7 @@ export class GameEngine {
     ship.visualScale = 1;
     ship.affectedByGravity = true;
     ship.exitBurn = false;
+    this.deepInstanceActive = false;
     this._clearShipThrusters(ship);
     this.playerBayIndex = bayIndex | 0;
     this.ship = ship;

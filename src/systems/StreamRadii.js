@@ -24,6 +24,12 @@ export function inSpawnShell(dist, viewRadius, spawnRadius) {
   return dist > viewRadius && dist <= spawnRadius;
 }
 
+/** Whether a catalog rock should materialize (teleport fills the view too). */
+export function inMaterializeRange(dist, viewRadius, spawnRadius, includeView = false) {
+  if (includeView) return dist <= spawnRadius;
+  return inSpawnShell(dist, viewRadius, spawnRadius);
+}
+
 /** Live rocks stay until beyond despawn; never removed while inside view. */
 export function shouldKeepLiveRock(dist, viewRadius, despawnRadius) {
   if (dist <= viewRadius) return true;

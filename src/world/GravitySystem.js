@@ -1,5 +1,7 @@
 /**
  * Planetary gravity toward Planet Center (Thera).
+ * Full inverse-square falloff everywhere in the overworld.
+ * Deep instance flights set entity.affectedByGravity = false.
  */
 
 import { getSectorLayout } from './SectorLayout.js';
@@ -14,7 +16,6 @@ export function gravityAccelAt(x, y, layout = getSectorLayout()) {
   if (r < 1) return { ax: 0, ay: 0, r: 0 };
 
   const surfaceR = layout.planet?.surfaceBlockRadius ?? layout.planet?.radius ?? 35000;
-  const influence = layout.planet?.influenceRadius ?? 700000;
   const mu = gravityMu(layout);
 
   if (r < surfaceR) {
@@ -22,11 +23,7 @@ export function gravityAccelAt(x, y, layout = getSectorLayout()) {
     return { ax: (dx / r) * push, ay: (dy / r) * push, r };
   }
 
-  let strength = mu / (r * r);
-  if (r > influence) {
-    const fade = Math.max(0, 1 - (r - influence) / (influence * 0.35));
-    strength *= fade * fade;
-  }
+  const strength = mu / (r * r);
   return { ax: (dx / r) * strength, ay: (dy / r) * strength, r };
 }
 

@@ -86,7 +86,7 @@ export class AsteroidSystem {
     this._markDirty();
   }
 
-  _streamCtx(playerX, playerY, gameTime) {
+  _streamCtx(playerX, playerY, gameTime, opts = {}) {
     return {
       playerX,
       playerY,
@@ -96,10 +96,11 @@ export class AsteroidSystem {
       despawnRadius: this._despawnRadius(),
       destroyedIds: this.destroyedRockIds,
       system: this,
+      materializeInView: !!opts.materializeInView,
     };
   }
 
-  update(playerX, playerY, gameTime = 0) {
+  update(playerX, playerY, gameTime = 0, opts = {}) {
     this._gameTime = gameTime;
     const layout = getSectorLayout();
     const playable = isInsidePlayableSector(playerX, playerY, layout);
@@ -113,7 +114,7 @@ export class AsteroidSystem {
       return;
     }
 
-    const ctx = this._streamCtx(playerX, playerY, gameTime);
+    const ctx = this._streamCtx(playerX, playerY, gameTime, opts);
     this.beltStream.reconcile(ctx);
     this.openStream.reconcile(ctx);
     this.nebulaStream.reconcile(

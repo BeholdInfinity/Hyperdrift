@@ -9,7 +9,7 @@ import {
   getSectorLayout,
 } from '../world/SectorLayout.js';
 import { spawnKinematicAsteroid } from './StreamSpawn.js';
-import { distWorld, inSpawnShell, shouldDropLiveRock, shouldKeepLiveRock } from './StreamRadii.js';
+import { distWorld, inMaterializeRange, shouldDropLiveRock, shouldKeepLiveRock } from './StreamRadii.js';
 
 function dist(ax, ay, bx, by) {
   return distWorld(ax, ay, bx, by);
@@ -140,8 +140,17 @@ export class OpenSpaceStream {
    * @param {object} ctx
    */
   reconcile(ctx) {
-    const { playerX, playerY, gameTime, viewRadius, spawnRadius, despawnRadius, destroyedIds, system } =
-      ctx;
+    const {
+      playerX,
+      playerY,
+      gameTime,
+      viewRadius,
+      spawnRadius,
+      despawnRadius,
+      destroyedIds,
+      system,
+      materializeInView = false,
+    } = ctx;
     const layout = getSectorLayout();
     const stats = { inRing: false, catalogLen: 0, spawned: 0, live: 0 };
 
@@ -177,7 +186,7 @@ export class OpenSpaceStream {
         }
 
         const rockDist = dist(spec.x, spec.y, playerX, playerY);
-        if (!inSpawnShell(rockDist, viewRadius, spawnRadius)) continue;
+        if (!inMaterializeRange(rockDist, viewRadius, spawnRadius, materializeInView)) continue;
 
         keep.add(id);
         if (asteroid) {

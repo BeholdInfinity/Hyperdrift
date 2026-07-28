@@ -434,11 +434,11 @@ export function buildNavTelemetry(engine) {
 
   const layout = getSectorLayout();
   const shipR = radiusAt(ship.position.x, ship.position.y, layout);
-  const influence = layout.planet?.influenceRadius ?? 700000;
+  const surface = layout.planet?.surfaceBlockRadius ?? layout.planet?.radius ?? 35000;
   let prograde = null;
   let postedLimit = null;
   let stnRel = null;
-  if (shipR > (layout.planet?.radius ?? 35000) && shipR < influence * 1.05) {
+  if (ship.affectedByGravity && shipR > surface) {
     prograde = Math.round(circularSpeed(shipR, gravityMu(layout)));
     postedLimit = Math.round(postedSpeedLimitAt(ship.position.x, ship.position.y, engine.gameTime || 0).limit);
   }

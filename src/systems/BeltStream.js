@@ -10,7 +10,7 @@ import {
 } from '../world/SectorLayout.js';
 import { orbitFromWorldAt, positionAt } from '../world/OrbitKinematics.js';
 import { spawnBeltAsteroid } from './StreamSpawn.js';
-import { distWorld, inSpawnShell, shouldDropLiveRock, shouldKeepLiveRock } from './StreamRadii.js';
+import { distWorld, inMaterializeRange, shouldDropLiveRock, shouldKeepLiveRock } from './StreamRadii.js';
 
 function ringSalt(ringId) {
   let h = 0;
@@ -132,8 +132,17 @@ export class BeltStream {
    * @param {import('./AsteroidSystem.js').AsteroidSystem} ctx.system
    */
   reconcile(ctx) {
-    const { playerX, playerY, gameTime, viewRadius, spawnRadius, despawnRadius, destroyedIds, system } =
-      ctx;
+    const {
+      playerX,
+      playerY,
+      gameTime,
+      viewRadius,
+      spawnRadius,
+      despawnRadius,
+      destroyedIds,
+      system,
+      materializeInView = false,
+    } = ctx;
     const layout = getSectorLayout();
     const ring = nearRingAt(playerX, playerY, despawnRadius, layout);
     const stats = {
@@ -197,7 +206,7 @@ export class BeltStream {
           continue;
         }
 
-        if (!inSpawnShell(rockDist, viewRadius, spawnRadius)) {
+        if (!inMaterializeRange(rockDist, viewRadius, spawnRadius, materializeInView)) {
           stats.skipDist++;
           continue;
         }

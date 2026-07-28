@@ -40,6 +40,32 @@ export function radiusAt(x, y, layout = getSectorLayout()) {
   return Math.hypot(x - cx, y - cy);
 }
 
+/** Outermost authored ring band edge (world u from Planet Center). */
+export function maxRingOuterR(layout = getSectorLayout()) {
+  let max = 0;
+  for (const ring of layout.rings ?? []) {
+    max = Math.max(max, ring.outerR ?? 0);
+  }
+  return max;
+}
+
+/** Furthest major site orbit / static position from Planet Center. */
+export function maxSystemRadius(layout = getSectorLayout()) {
+  const cx = layout.planet?.center?.x ?? 0;
+  const cy = layout.planet?.center?.y ?? 0;
+  let max = maxRingOuterR(layout);
+  for (const site of layout.sites ?? []) {
+    if (site.orbit?.orbitR != null) {
+      max = Math.max(max, site.orbit.orbitR);
+      continue;
+    }
+    const x = site.x ?? 0;
+    const y = site.y ?? 0;
+    max = Math.max(max, Math.hypot(x - cx, y - cy));
+  }
+  return max;
+}
+
 export function ringAt(x, y, layout = getSectorLayout()) {
   const r = radiusAt(x, y, layout);
   const { planet, rings } = layout;
@@ -129,9 +155,12 @@ export function ringDensityMultiplier(x, y, layout = getSectorLayout()) {
 
 export function isInsidePlayableSector(x, y, layout = getSectorLayout()) {
   const r = radiusAt(x, y, layout);
-  const soft = layout.spacing?.softEdgeRadius ?? 750000;
   const inner = (layout.planet?.radius ?? 35000) * 0.95;
-  return r >= inner && r <= soft;
+  if (r < inner) return false;
+  // Ring annuli are always playable even beyond spacing.softEdgeRadius (outer belt > 750k).
+  if (ringAt(x, y, layout)) return true;
+  const soft = layout.spacing?.softEdgeRadius ?? 750000;
+  return r <= soft;
 }
 
 export function isNearAuthoredSite(x, y, layout = getSectorLayout()) {
@@ -163,6 +192,22 @@ export function hydrateOrbitParams(layout = getSectorLayout()) {
       site.x = p.x;
       site.y = p.y;
     }
+  }
+  hydrateLayoutBounds(layout);
+}
+
+/**
+ * Recompute spacing.softEdgeRadius from ring/site geometry.
+ * Called on sector editor bake and runtime bootstrap.
+ */
+export function hydrateLayoutBounds(layout = getSectorLayout()) {
+  if (!layout.spacing) layout.spacing = {};
+  const outerRing = maxRingOuterR(layout);
+  const fringeClear = layout.spacing.minFringeFromRing ?? 270000;
+  const systemOuter = Math.max(maxSystemRadius(layout), outerRing + fringeClear);
+  layout.spacing.softEdgeRadius = Math.ceil(Math.max(outerRing + fringeClear, systemOuter));
+  if (layout.planet?.influenceRadius != null) {
+    delete layout.planet.influenceRadius;
   }
 }
 

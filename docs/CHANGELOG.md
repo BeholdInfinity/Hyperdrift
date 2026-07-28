@@ -7,7 +7,10 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 ## [Unreleased]
 
 ### Added
-- **Multi-station overworld** — `StationField` holds all 12 Thera orbital ports; each renders in space (viewport-culled) with default green pad signals; active dock target follows the approach shell you enter.
+- **Dev sector map jump** — right-click the LIVE sector map (Dev Mode) for **JUMP HERE** on empty map or POI/pin context menu; teleports the ship to that spot with prograde circular-orbit velocity (μ-derived, clockwise on the map). Belt/open-space rocks materialize within the full spawn radius on arrival (not only the outer shell).
+- **Outer belt streaming** — `isInsidePlayableSector` now treats all three ring annuli as playable (outer ice band sits beyond the 750k soft fringe edge and was skipping proc gen entirely).
+- **Layout bounds hydrate** — sector editor bake / bootstrap recomputes `spacing.softEdgeRadius` from ring + fringe geometry (proc-gen soft edge tracks resized rings).
+- **Thera gravity always on in overworld** — removed `planet.influenceRadius` fade; full μ/r² through the fringe. TELEMETRY **L/P** shows whenever Thera gravity applies (`affectedByGravity`). Deep instance gates call `enterDeepInstance()` / `exitDeepInstance()` to disable gravity only there.
 - **All stations charted** — every orbital port starts in the POI Book and Sector Map (R/M toggles still apply per entry).
 - **Dock at any port** — landing syncs `placeRegistry` to that station’s Place (Jennings-clone hangar or `place.derelict-home` for Broken Spur); egress / interior freeze use the docked place; hangar HUD banner and overworld name plates follow the active Place label.
 - **Hangar presence (space bridge)** — `HangarPresence` keeps Jennings side-bay occupancy, pad beacons, and mouth-traffic requests alive in exterior space without ticking the full interior sim; snapshots on hangar launch, merges on space landing, seeds on quick launch.

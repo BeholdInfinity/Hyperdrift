@@ -21,6 +21,7 @@ import {
   tripDurationMs,
 } from '../world/TravelLogTable.js';
 import { drawSectorMapTelemetry } from './TelemetryCorner.js';
+import { Settings } from '../core/Settings.js';
 
 const FONT = "'Barlow Condensed', 'Segoe UI', sans-serif";
 const TXT = 'rgba(200, 224, 246, 0.9)';
@@ -790,6 +791,17 @@ export function drawPoiPinContextMenu(ctx, clampBox, engine, panels, menu, poiId
       },
     },
   ];
+  if (Settings.isDevMode() && menuTag === 'sectorMap') {
+    items.push({
+      label: 'JUMP HERE',
+      color: 'rgba(255, 200, 120, 0.95)',
+      action: (e) => {
+        const pos = e.poiSystem.worldPosition(poi, e.gameTime || 0);
+        e.devJumpToOrbit(pos.x, pos.y);
+        e.sectorMapView.sectorMapMenu = null;
+      },
+    });
+  }
   if (userPin) {
     items.push(
       {
@@ -858,7 +870,9 @@ function drawSectorMapContextMenu(ctx, mapBox, engine, panels, menu) {
   }
   const w = 108;
   const rowH = 20;
-  const h = rowH * 2;
+  const devJump = Settings.isDevMode();
+  const rowCount = devJump ? 3 : 2;
+  const h = rowH * rowCount;
   let x = menu.x;
   let y = menu.y;
   x = Math.max(mapBox.x, Math.min(x, mapBox.x + mapBox.w - w));
@@ -905,6 +919,30 @@ function drawSectorMapContextMenu(ctx, mapBox, engine, panels, menu) {
     },
     { sectorMapMenu: true },
   );
+  if (devJump) {
+    ctx.strokeStyle = 'rgba(120, 200, 255, 0.18)';
+    ctx.beginPath();
+    ctx.moveTo(x + 4, y + rowH * 2);
+    ctx.lineTo(x + w - 4, y + rowH * 2);
+    ctx.stroke();
+    panels._text(ctx, 'JUMP HERE', x + w / 2, y + rowH * 2 + 14, {
+      size: 10,
+      align: 'center',
+      weight: 700,
+      color: 'rgba(255, 200, 120, 0.95)',
+    });
+    panels._region(
+      x,
+      y + rowH * 2,
+      w,
+      rowH,
+      (e) => {
+        e.devJumpToOrbit(menu.worldX, menu.worldY);
+        e.sectorMapView.sectorMapMenu = null;
+      },
+      { sectorMapMenu: true },
+    );
+  }
 }
 
 export function sectorMapRightClick(engine, sx, sy) {

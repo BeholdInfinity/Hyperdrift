@@ -5,6 +5,7 @@
 import { SECTOR_LAYOUT } from '../world/data/sectorLayout.js';
 import {
   hydrateOrbitParams,
+  maxRingOuterR,
   siteWorldPosition,
   listSites,
   siteInsideRing,
@@ -185,13 +186,7 @@ export function warpGateOrbitR(ring, layout = sectorEditorDraft) {
   return Math.max(minR, innerR - offset);
 }
 
-export function maxRingOuterR(layout = sectorEditorDraft) {
-  let max = 0;
-  for (const ring of layout.rings ?? []) {
-    max = Math.max(max, ring.outerR ?? 0);
-  }
-  return max;
-}
+export { maxRingOuterR };
 
 export function isFringeSite(site) {
   return site?.kind === 'landmark' || site?.kind === 'warp_instance';

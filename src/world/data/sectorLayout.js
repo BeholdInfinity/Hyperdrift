@@ -23,7 +23,6 @@ export const SECTOR_LAYOUT = {
       "cloud": "rgba(220,230,240,0.15)"
     },
     "gravityMu": 1800000000000,
-    "influenceRadius": 700000,
     "surfaceBlockRadius": 60000,
     "rotationPeriodHours": 30,
     "rotationAngle0": 0
@@ -33,7 +32,7 @@ export const SECTOR_LAYOUT = {
       "id": "inner_ore",
       "innerR": 349500,
       "outerR": 456500,
-      "density": 1.1,
+      "density": 2,
       "composition": {
         "iron": 0.45,
         "silicate": 0.35,
@@ -48,7 +47,7 @@ export const SECTOR_LAYOUT = {
       "id": "mid_mixed",
       "innerR": 586000,
       "outerR": 800000,
-      "density": 0.85,
+      "density": 2.5,
       "composition": {
         "iron": 0.2,
         "silicate": 0.25,
@@ -63,7 +62,7 @@ export const SECTOR_LAYOUT = {
       "id": "outer_ice",
       "innerR": 978500,
       "outerR": 1225500,
-      "density": 0.7,
+      "density": 3,
       "composition": {
         "iron": 0.08,
         "silicate": 0.12,
