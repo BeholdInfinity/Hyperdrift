@@ -228,8 +228,10 @@ export class GameEngine {
      */
     this.scanView = 'ship';
     this.gameTime = 0;
-    /** Dev sim clock scale: 0=pause, 0.5=slow, 1=normal, 2=fast, 4=fast2x */
+    /** Dev sim clock scale: 0=pause; otherwise multiplier vs real time. */
     this.simSpeed = 1;
+    /** Configured multiplier (dev UI; kept while paused). */
+    this.simSpeedTarget = 1;
     this._titleHeading = Math.random() * Math.PI * 2;
     this._titleFade = 0;
     this._titleHasDrawn = false;
@@ -639,6 +641,7 @@ export class GameEngine {
     const n = Number(speed);
     if (!Number.isFinite(n) || n < 0) return this.simSpeed;
     this.simSpeed = n;
+    if (n > 0) this.simSpeedTarget = n;
     return this.simSpeed;
   }
 
@@ -646,9 +649,52 @@ export class GameEngine {
     return this.simSpeed;
   }
 
+  getSimSpeedTarget() {
+    return this.simSpeedTarget;
+  }
+
+  /** Set multiplier; applies immediately unless sim is paused. */
+  setSimSpeedTarget(speed) {
+    const n = Number(speed);
+    if (!Number.isFinite(n) || n < 0) return this.simSpeedTarget;
+    this.simSpeedTarget = n;
+    if (this.simSpeed > 0) this.simSpeed = n;
+    return this.simSpeedTarget;
+  }
+
+  pauseSim() {
+    if (this.simSpeed > 0) this.simSpeedTarget = this.simSpeed;
+    this.simSpeed = 0;
+    return this.simSpeed;
+  }
+
+  /** Paused → resume at target; running → reset target and speed to 1×. */
+  playSim() {
+    if (this.simSpeed <= 0) {
+      const resume = this.simSpeedTarget > 0 ? this.simSpeedTarget : 1;
+      this.simSpeedTarget = resume;
+      this.simSpeed = resume;
+    } else {
+      this.simSpeedTarget = 1;
+      this.simSpeed = 1;
+    }
+    return this.simSpeed;
+  }
+
+  /** Multiply configured speed (÷2 slow, ×2 fast). Applies when not paused. */
+  nudgeSimSpeed(factor) {
+    const base = this.simSpeed > 0 ? this.simSpeed : this.simSpeedTarget;
+    const next = Math.max(0.0625, Math.min(256, base * factor));
+    this.setSimSpeedTarget(next);
+    return this.simSpeedTarget;
+  }
+
   /** Reset sim clock unless Dev Mode is keeping a custom speed. */
   _resetSimSpeedUnlessDev() {
-    if (!Settings.isDevMode()) this.simSpeed = 1;
+    if (!Settings.isDevMode()) {
+      this.simSpeed = 1;
+      this.simSpeedTarget = 1;
+    }
   }
 
   _mouseWorld() {
@@ -958,6 +1004,7 @@ export class GameEngine {
     this.running = true;
     this.paused = false;
     this.simSpeed = 1;
+    this.simSpeedTarget = 1;
     this._titleHasDrawn = false;
     this._hangarSeq = null;
     this._setTitleFade(0);
@@ -982,6 +1029,7 @@ export class GameEngine {
     this._hangarSeq = null;
     HangarLayoutEditor.exit();
     this.simSpeed = 1;
+    this.simSpeedTarget = 1;
     this.paused = false;
 
     syncHangarSidePadFromLayout(null);
@@ -1366,6 +1414,7 @@ export class GameEngine {
    */
   beginSectorEditor(returnTo = 'title') {
     if (!Settings.isDevMode()) return false;
+    if (this.mode === 'sectorEditor') return true;
     this._sectorEditorReturn =
       returnTo === 'hangar' ? 'hangar' : returnTo === 'playing' ? 'playing' : 'title';
 
@@ -1556,6 +1605,12 @@ export class GameEngine {
   scarPlayerHull() {
     if (!this.ship) return;
     applyHullScar(this.ship);
+  }
+
+  /** Dev: full exterior hull restore (works in hangar and space). */
+  restoreExteriorHull() {
+    if (!this.ship) return;
+    applyHullHeal(this.ship, 1, 'exterior');
   }
 
   /** Switch active Place preset and rebuild hangar if live. */

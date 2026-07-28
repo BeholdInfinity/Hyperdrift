@@ -666,28 +666,103 @@ html, body {
   cursor: pointer;
 }
 
-.dev-drawer-body {
+.dev-drawer.open .dev-menu-root {
+  display: flex;
+}
+
+.dev-menu-root {
   pointer-events: auto;
-  width: min(260px, 42vw);
-  padding: 10px;
+  width: min(148px, 36vw);
+  padding: 8px;
   background: rgba(10, 14, 20, 0.94);
   border: 1px solid rgba(90, 130, 180, 0.45);
   display: none;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
 }
 
-.dev-drawer.open .dev-drawer-body {
-  display: flex;
+.dev-menu-root.hidden {
+  display: none;
 }
 
-.dev-drawer-section {
+.dev-menu-launchers {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.dev-drawer-section.hidden {
+.dev-menu-launcher {
+  width: 100%;
+  text-align: left;
+  padding: 5px 8px;
+  font-size: 0.58rem;
+  letter-spacing: 1px;
+}
+
+.dev-sim-toolbar {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 0;
+}
+
+.dev-sim-icon {
+  min-width: 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  font-size: 0.75rem;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dev-sim-toolbar .dev-sim-speed-field {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 4px;
+  gap: 1px;
+  cursor: text;
+}
+
+.dev-sim-speed-input {
+  width: 3.2em;
+  padding: 3px 4px;
+  font-size: 0.58rem;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-align: right;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(100, 140, 180, 0.45);
+  color: rgba(200, 230, 255, 0.95);
+  cursor: text;
+}
+
+.dev-sim-speed-input:focus {
+  outline: none;
+  border-color: #ff9a50;
+  color: #ffe0c8;
+}
+
+.dev-sim-speed-suffix {
+  font-size: 0.58rem;
+  font-weight: 600;
+  color: rgba(160, 200, 240, 0.85);
+  user-select: none;
+}
+
+.dev-panel-suspended {
+  /* visibility handled via .hidden */
+}
+
+.dev-drawer-body {
+  display: none;
+}
+
+.dev-drawer-section {
   display: none;
 }
 

@@ -96,78 +96,82 @@
     <div id="dev-drawer" class="dev-drawer hidden">
       <div class="dev-drawer-stack">
         <button type="button" id="dev-drawer-toggle" class="dev-drawer-toggle" title="Toggle Dev drawer (` )">DEV</button>
-        <div class="dev-drawer-body" id="dev-drawer-body">
-          <div class="dev-drawer-section" data-dev-modes="hangar playing controls blueprint">
-            <span class="dev-drawer-label">SIM</span>
-            <div class="hangar-sim-speed" role="group" aria-label="Simulation speed">
-              <button type="button" class="hangar-sim-btn" data-sim-speed="0.5">SLOW</button>
-              <button type="button" class="hangar-sim-btn" data-sim-speed="0">PAUSE</button>
-              <button type="button" class="hangar-sim-btn active" data-sim-speed="1">PLAY</button>
-              <button type="button" class="hangar-sim-btn" data-sim-speed="2">FAST</button>
-              <button type="button" class="hangar-sim-btn" data-sim-speed="4">FAST2X</button>
-              <span id="dev-sim-speed-readout" class="hangar-sim-speed-readout">1×</span>
-            </div>
-          </div>
-          <div class="dev-drawer-section" data-dev-modes="hangar playing controls blueprint">
-            <span class="dev-drawer-label">INSPECT</span>
-            <pre id="dev-inspect" class="dev-inspect">—</pre>
-          </div>
-          <div class="dev-drawer-section" data-dev-modes="title playing">
-            <span class="dev-drawer-label">AI TRAFFIC</span>
-            <pre id="dev-traffic" class="dev-inspect dev-traffic">—</pre>
-          </div>
-          <div class="dev-drawer-section" data-dev-modes="playing controls blueprint hangar">
-            <span class="dev-drawer-label">OVERLAYS</span>
-            <label class="dev-check"><input type="checkbox" id="dev-ov-mounts" /> Mounts</label>
-            <label class="dev-check"><input type="checkbox" id="dev-ov-vel" /> Velocity</label>
-            <label class="dev-check"><input type="checkbox" id="dev-ov-axes" /> Axes</label>
-          </div>
-          <div class="dev-drawer-section" data-dev-modes="playing">
-            <span class="dev-drawer-label">RADAR</span>
-            <label class="dev-check"><input type="checkbox" id="dev-scan-asteroids" checked /> Asteroid blips</label>
-            <label class="dev-check">Mk <input type="number" id="dev-scan-mk" min="0" max="5" value="5" class="dev-num-input" /></label>
-            <label class="dev-check">Range <input type="range" id="dev-scan-range" min="0.25" max="3" step="0.05" value="1" /></label>
-            <label class="dev-check">Generator <input type="range" id="dev-gen-pips" min="1" max="12" step="1" value="6" /></label>
-            <button type="button" class="hangar-dev-btn" id="dev-gen-save">Save generator default</button>
-            <span id="dev-scan-readout" class="dev-drawer-status">tier — · — km</span>
-          </div>
-          <div class="dev-drawer-section" data-dev-modes="playing sectorEditor title">
-            <span class="dev-drawer-label">SECTOR MAP</span>
-            <button type="button" class="hangar-dev-btn" id="dev-sector-edit-toggle">Open map editor</button>
-            <label class="dev-check">Site
-              <select id="dev-sector-site-select" class="dev-place-select"></select>
-            </label>
-            <label class="dev-check">Planet R <input type="range" id="dev-sector-planet-r" min="20000" max="60000" step="500" value="35000" /></label>
-            <label class="dev-check"><input type="checkbox" id="dev-sector-traffic-preview" checked /> Traffic shells</label>
-            <label class="dev-check"><input type="checkbox" id="dev-sector-tier-bands" /> Tier bands</label>
-            <button type="button" class="hangar-dev-btn" id="dev-sector-validate">Validate</button>
-            <button type="button" class="hangar-dev-btn" id="dev-sector-randomize">Randomize look</button>
-            <button type="button" class="hangar-dev-btn" id="dev-sector-reset">Reset draft</button>
-            <button type="button" class="hangar-dev-btn" id="dev-sector-save">Save layout</button>
-            <button type="button" class="hangar-dev-btn hidden" id="dev-sector-save-anyway">Save anyway</button>
-            <pre id="dev-sector-validator" class="dev-inspect dev-sector-validator">—</pre>
-          </div>
-          <div class="dev-drawer-section" data-dev-modes="title">
-            <span class="dev-drawer-label">TITLE</span>
-            <button type="button" class="hangar-dev-btn" id="dev-title-layout-btn">Title Layout</button>
-          </div>
-          <div class="dev-drawer-section" data-dev-modes="hangar">
-            <span class="dev-drawer-label">HANGAR</span>
-            <button type="button" class="hangar-dev-btn" id="dev-hangar-edit-btn">Edit layout</button>
-            <button type="button" class="hangar-dev-btn" id="dev-bay-options-btn">Bay Options</button>
-            <button type="button" class="hangar-dev-btn" id="dev-place-btn">Place</button>
-          </div>
-          <div class="dev-drawer-section" data-dev-modes="hangar playing">
-            <span class="dev-drawer-label">VESSEL</span>
-            <button type="button" class="hangar-dev-btn" id="dev-enter-interior">Enter interior</button>
-            <button type="button" class="hangar-dev-btn" id="dev-exit-interior">Exit interior</button>
-            <button type="button" class="hangar-dev-btn" id="dev-scar-hull" title="Drop interior heal ceiling">Scar hull</button>
-            <button type="button" class="hangar-dev-btn" id="dev-heal-hull-bench" title="Trigger hull-bench binding">Hull bench</button>
-            <button type="button" class="hangar-dev-btn" id="dev-exterior-hull" title="Full exterior restore">Exterior 100%</button>
-            <label class="dev-check">Crew <input type="number" id="dev-crew-count" min="0" max="12" value="0" class="dev-num-input" /></label>
-          </div>
+        <div id="dev-menu-root" class="dev-menu-root hidden">
+          <div id="dev-menu-launchers" class="dev-menu-launchers"></div>
           <p id="dev-drawer-status" class="dev-drawer-status"></p>
         </div>
+      </div>
+      <div id="dev-panel-sim" class="dev-bay-panel hidden">
+        <div class="dev-bay-panel-head">
+          <span>SIM</span>
+          <button type="button" class="dev-bay-close dev-panel-close" data-panel="dev-panel-sim" title="Close">×</button>
+        </div>
+        <div class="dev-sim-toolbar" role="group" aria-label="Simulation speed">
+          <button type="button" class="hangar-sim-btn dev-sim-icon" data-sim-action="slow" title="Slow down (÷2 each click)">−</button>
+          <button type="button" class="hangar-sim-btn dev-sim-icon" data-sim-action="pause" title="Pause">⏸</button>
+          <button type="button" class="hangar-sim-btn dev-sim-icon active" data-sim-action="play" title="Play (resume if paused, else reset to 1×)">▶</button>
+          <button type="button" class="hangar-sim-btn dev-sim-icon" data-sim-action="fast" title="Speed up (×2 each click)">+</button>
+          <label class="dev-sim-speed-field" title="Set speed multiplier">
+            <input type="text" class="dev-sim-speed-input" inputmode="decimal" value="1" aria-label="Speed multiplier" />
+            <span class="dev-sim-speed-suffix">×</span>
+          </label>
+        </div>
+      </div>
+      <div id="dev-panel-inspect" class="dev-bay-panel hidden">
+        <div class="dev-bay-panel-head">
+          <span>INSPECT</span>
+          <button type="button" class="dev-bay-close dev-panel-close" data-panel="dev-panel-inspect" title="Close">×</button>
+        </div>
+        <pre id="dev-inspect" class="dev-inspect">—</pre>
+      </div>
+      <div id="dev-panel-traffic" class="dev-bay-panel hidden">
+        <div class="dev-bay-panel-head">
+          <span>AI TRAFFIC</span>
+          <button type="button" class="dev-bay-close dev-panel-close" data-panel="dev-panel-traffic" title="Close">×</button>
+        </div>
+        <pre id="dev-traffic" class="dev-inspect dev-traffic">—</pre>
+      </div>
+      <div id="dev-panel-overlays" class="dev-bay-panel hidden">
+        <div class="dev-bay-panel-head">
+          <span>OVERLAYS</span>
+          <button type="button" class="dev-bay-close dev-panel-close" data-panel="dev-panel-overlays" title="Close">×</button>
+        </div>
+        <label class="dev-check"><input type="checkbox" id="dev-ov-mounts" /> Mounts</label>
+        <label class="dev-check"><input type="checkbox" id="dev-ov-vel" /> Velocity</label>
+        <label class="dev-check"><input type="checkbox" id="dev-ov-axes" /> Axes</label>
+      </div>
+      <div id="dev-panel-radar" class="dev-bay-panel hidden">
+        <div class="dev-bay-panel-head">
+          <span>RADAR</span>
+          <button type="button" class="dev-bay-close dev-panel-close" data-panel="dev-panel-radar" title="Close">×</button>
+        </div>
+        <label class="dev-check"><input type="checkbox" id="dev-scan-asteroids" checked /> Asteroid blips</label>
+        <label class="dev-check">Mk <input type="number" id="dev-scan-mk" min="0" max="5" value="5" class="dev-num-input" /></label>
+        <label class="dev-check">Range <input type="range" id="dev-scan-range" min="0.25" max="3" step="0.05" value="1" /></label>
+        <label class="dev-check">Generator <input type="range" id="dev-gen-pips" min="1" max="12" step="1" value="6" /></label>
+        <button type="button" class="hangar-dev-btn" id="dev-gen-save">Save generator default</button>
+        <span id="dev-scan-readout" class="dev-drawer-status">tier — · — km</span>
+      </div>
+      <div id="dev-panel-hangar" class="dev-bay-panel hidden">
+        <div class="dev-bay-panel-head">
+          <span>HANGAR</span>
+          <button type="button" class="dev-bay-close dev-panel-close" data-panel="dev-panel-hangar" title="Close">×</button>
+        </div>
+        <button type="button" class="hangar-dev-btn" id="dev-hangar-edit-btn">Edit layout</button>
+        <button type="button" class="hangar-dev-btn" id="dev-bay-options-btn">Bay Options</button>
+        <button type="button" class="hangar-dev-btn" id="dev-place-btn">Place</button>
+      </div>
+      <div id="dev-panel-vessel" class="dev-bay-panel hidden">
+        <div class="dev-bay-panel-head">
+          <span>VESSEL</span>
+          <button type="button" class="dev-bay-close dev-panel-close" data-panel="dev-panel-vessel" title="Close">×</button>
+        </div>
+        <button type="button" class="hangar-dev-btn" id="dev-enter-interior">Enter interior</button>
+        <button type="button" class="hangar-dev-btn" id="dev-exit-interior">Exit interior</button>
+        <button type="button" class="hangar-dev-btn" id="dev-scar-hull" title="Drop interior heal ceiling">Scar hull</button>
+        <button type="button" class="hangar-dev-btn" id="dev-heal-hull-bench" title="Trigger hull-bench binding">Hull bench</button>
+        <button type="button" class="hangar-dev-btn" id="dev-exterior-hull" title="Full exterior restore">Exterior 100%</button>
+        <label class="dev-check">Crew <input type="number" id="dev-crew-count" min="0" max="12" value="0" class="dev-num-input" /></label>
       </div>
       <div id="dev-place-panel" class="dev-bay-panel hidden">
         <div class="dev-bay-panel-head">

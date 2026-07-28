@@ -133,7 +133,7 @@ Each hardpoint holds up to **4** items in a 2×2 slot grid. Freight is drawn as 
 
 **Controlled pad** — whichever bay the pilot seat’s ship is on (space land = the green lane you flew into; title elevator assigns a pad). Interim: uses the **same captain checklist** as other occupied bays (need meters + red floors + multi-unit requests). Completing the list does **not** launch the ship — the player still owns exit timing. After a short post-service dwell, the controlled bay waits **10–60s** then re-rolls a new checklist. Real player-request queue (sell / repair / buy / upgrade) remains future Home Base work. Hangar camera defaults on the controlled ship and supports **click-drag pan** + scroll zoom. Dev Mode: select any pad ship to put the pilot seat there (including launch).
 
-**Dev Bay Options** (Dev Mode drawer → Bay Options): multi-select **B1/B2/B3**, then apply **Service** (reroll checklist), **Door** / **Elev** (full ingress/egress scenes), **Pad** (360° spin + danger), **Empty/Occupy**, **On/Off** (bay offline for sim), or **Reset** (default warm state; player bay restores the player ship).
+**Dev Bay Options** (Dev Mode → Hangar popup → Bay Options): multi-select **B1/B2/B3**, then apply **Service** (reroll checklist), **Door** / **Elev** (full ingress/egress scenes), **Pad** (360° spin + danger), **Empty/Occupy**, **On/Off** (bay offline for sim), or **Reset** (default warm state; player bay restores the player ship).
 
 | Player action (examples) | What it will trigger on the player bay (future) |
 |--------------------------|-------------------------|
@@ -366,7 +366,7 @@ The title screen is the player's **resume surface**. The game **save point** is 
 
 | Region | Purpose | Status |
 |--------|---------|--------|
-| Title screen | Bokeh-blurred live space sim backdrop + *Stranger in the Galaxy* wordmark over 2.5D showcase ship (GALAXY nebula windows; STRANGER bronze plate windows via `src/textures/strangerBronzePlate.js` + letter-masked metal kiss); ENTER HANGAR / QUICK LAUNCH enter hangar / space immediately; SETTINGS / BLUEPRINT (industrial plate buttons); build stamp + Changelog; Dev **Title Layout** tunes camera/type/ship/menu/bokeh and bakes to disk. **Planned:** backdrop = last docked port; ship = last piloted hull (see above) | Done (personalization planned) |
+| Title screen | Bokeh-blurred live space sim backdrop + *Stranger in the Galaxy* wordmark over 2.5D showcase ship (GALAXY nebula windows; STRANGER bronze plate windows via `src/textures/strangerBronzePlate.js` + letter-masked metal kiss); ENTER HANGAR / QUICK LAUNCH enter hangar / space immediately; SETTINGS / BLUEPRINT (industrial plate buttons); build stamp + Changelog; Dev **` key** launcher → **Title Layout** popup tunes camera/type/ship/menu/bokeh and bakes to disk. **Planned:** backdrop = last docked port; ship = last piloted hull (see above) | Done (personalization planned) |
 | Home Base hangar (Jennings Station) | Docked bay + launch/land; industrial set; danger lights; B1–B3 captain checklists | Done (player-request queue later) |
 | Jennings Station (overworld) | Industrial exterior (~4× hull); approach lights + Enter / auto edge dock | Done |
 | Settings / controls | Ship-only sandbox viewport with live bindings | Done |

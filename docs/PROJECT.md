@@ -89,7 +89,7 @@ src/
     data/visualTuning.js, data/mountLayouts.js   Dev bake targets
     index.js              Modular ship public API
   dev/
-    DevTools.js, DevSave.js, DevOverlay.js, DevPanelDrag.js, BlueprintAuthoring.js, HangarLayoutEditor.js, DevSectorEditor.js
+    DevTools.js, DevSave.js, DevOverlay.js, DevPanelDrag.js, DevMenu.js, DevSimSpeed.js, BlueprintAuthoring.js, HangarLayoutEditor.js, DevSectorEditor.js
   world/
     hangar-layout.js      Flavor props / linger / gossip (Dev bake target)
     place/                Place → Area → Feature registry (stations, ships, outposts, vessels)
@@ -401,7 +401,7 @@ Cosmetic / lower priority:
 
 ## Dev Mode + Blueprint + Hangar editor
 
-**Dev Mode** (Settings toggle, default on): floating **DEV** drawer (` key), **scoped by game mode** — title: **Title Layout** only (camera / wordmark / ship / buttons / DoF blur·bokeh; Save → `src/ui/title-layout.js`); hangar: sim / inspect / overlays / edit layout / Bay Options / Place / vessel; flight: sim / inspect / overlays / vessel; blueprint & controls: sim / inspect / overlays (+ Blueprint Author in BP HUD). Bake via `POST /dev/save` (allowlisted paths) or clipboard Export.
+**Dev Mode** (Settings toggle, default on): floating **DEV** button (` key) opens a **compact launcher**; each entry opens a **draggable sub-menu popup** scoped to context — **Title:** Title Layout, Sim, Inspect, AI Traffic; **Hangar:** Sim, Inspect, Overlays, Hangar (edit / Bay Options / Place), Vessel; **Space:** Sim, Inspect, Overlays, Radar, Map Editor entry; **Sector Map Editor:** DEV button stays visible (collapsed on entry), **Sim** speed only. **Vessel** is hangar-only (Mk2+ interior + hull-scar dev shortcuts). Sim toolbar: **−** (÷2), pause, play (resume or reset 1×), **+** (×2), editable multiplier field. Popups cascade below the launcher (spill to column 2 when needed); positions persist in `localStorage`. Closing the dev menu hides popups without clearing open state. **Hidden** in Blueprint and Settings controls — those modes use their own side docks (`bp-author-card`, `#sector-editor-hud`). Bake via `POST /dev/save` (allowlisted paths) or clipboard Export. See `src/dev/DevMenu.js`.
 
 **Data files (machine-editable):**
 - `src/ships/data/visualTuning.js` — cup / plume / generic engine class scale

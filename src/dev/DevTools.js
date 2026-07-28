@@ -72,12 +72,47 @@ export const DevTools = {
   /** Hangar editor selection */
   hangarSel: null,
   drawerOpen: false,
-  /** Bay Options side panel open */
-  bayPanelOpen: false,
-  /** Place composer side panel open */
-  placePanelOpen: false,
-  /** Title Layout side panel open */
-  titlePanelOpen: false,
+  drawerSuspended: false,
+  /** @type {import('./DevMenu.js').DevContext|null} */
+  devContext: null,
+  /** @type {Record<string, boolean>} */
+  panelOpen: {
+    'dev-panel-sim': false,
+    'dev-panel-inspect': false,
+    'dev-panel-traffic': false,
+    'dev-panel-overlays': false,
+    'dev-panel-radar': false,
+    'dev-panel-vessel': false,
+    'dev-panel-hangar': false,
+    'dev-title-panel': false,
+    'dev-bay-panel': false,
+    'dev-place-panel': false,
+    'hangar-edit-panel': false,
+  },
+  /** @deprecated use panelOpen['dev-bay-panel'] */
+  get bayPanelOpen() {
+    return !!this.panelOpen['dev-bay-panel'];
+  },
+  set bayPanelOpen(v) {
+    this.panelOpen['dev-bay-panel'] = !!v;
+  },
+  /** @deprecated use panelOpen['dev-place-panel'] */
+  get placePanelOpen() {
+    return !!this.panelOpen['dev-place-panel'];
+  },
+  set placePanelOpen(v) {
+    this.panelOpen['dev-place-panel'] = !!v;
+  },
+  /** @deprecated use panelOpen['dev-title-panel'] */
+  get titlePanelOpen() {
+    return !!this.panelOpen['dev-title-panel'];
+  },
+  set titlePanelOpen(v) {
+    this.panelOpen['dev-title-panel'] = !!v;
+  },
+  syncLegacyPanelFlags() {
+    /* getters/setters above keep legacy fields in sync */
+  },
   /** Selected bay indices for Bay Options actions */
   baySel: [true, true, true],
   status: '',

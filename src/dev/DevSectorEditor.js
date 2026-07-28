@@ -289,7 +289,7 @@ export function setSectorEditorActive(active, engine = null) {
 }
 
 export function syncPlanetRadiusSlider() {
-  const el = document.getElementById('dev-sector-planet-r');
+  const el = document.getElementById('sme-planet-r');
   if (!el) return;
   el.min = '20000';
   el.max = '60000';

@@ -7,6 +7,9 @@ const STORAGE_KEY = 'hyperdrift.devPanelPos';
 /** @type {Map<string, HTMLElement>} */
 const panels = new Map();
 
+const CASCADE_GAP = 6;
+const COLUMN_GAP = 8;
+
 function clampPanel(panel, left, top) {
   const w = panel.offsetWidth || 200;
   const h = panel.offsetHeight || 120;
@@ -85,6 +88,63 @@ export function restoreDevPanelPositions() {
     const panel = panels.get(id) || document.getElementById(id);
     if (panel) applyPosition(panel, pos);
   }
+}
+
+/** @param {string} panelId */
+export function hasStoredPosition(panelId) {
+  const data = readStored()[panelId];
+  return !!(data && Number.isFinite(data.left) && Number.isFinite(data.top));
+}
+
+/**
+ * Stack panels below anchor, spilling to new columns when viewport overflows.
+ * @param {DOMRect|{ left: number, top: number, right?: number, bottom?: number, width?: number, height?: number }} anchor
+ * @param {HTMLElement[]} popupEls
+ */
+export function layoutCascadePopups(anchor, popupEls) {
+  if (!popupEls.length) return;
+
+  let col = 0;
+  let y = anchor.bottom + CASCADE_GAP;
+  let colLeft = anchor.left;
+  let colWidth = Math.max(anchor.width || 140, 140);
+
+  for (const panel of popupEls) {
+    if (!panel?.id || hasStoredPosition(panel.id)) continue;
+
+    panel.classList.add('dev-panel-floating');
+    const w = panel.offsetWidth || 200;
+    const h = panel.offsetHeight || 120;
+
+    if (y + h > window.innerHeight - 8 && col === 0) {
+      col += 1;
+      colLeft = anchor.left + colWidth + COLUMN_GAP;
+      y = anchor.top;
+    } else if (y + h > window.innerHeight - 8) {
+      col += 1;
+      colLeft += colWidth + COLUMN_GAP;
+      y = anchor.top;
+    }
+
+    const { left, top } = clampPanel(panel, colLeft, y);
+    panel.style.left = `${left}px`;
+    panel.style.top = `${top}px`;
+    panel.style.right = 'auto';
+    panel.style.bottom = 'auto';
+    panel.style.margin = '0';
+
+    y = top + h + CASCADE_GAP;
+    colWidth = Math.max(colWidth, w);
+  }
+}
+
+/**
+ * @param {HTMLElement} panel
+ */
+export function registerDevPanel(panel) {
+  if (!panel?.id) return;
+  panels.set(panel.id, panel);
+  enableDevPanelDrag(panel);
 }
 
 /**
