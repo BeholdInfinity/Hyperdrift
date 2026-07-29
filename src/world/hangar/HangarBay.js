@@ -928,10 +928,7 @@ export class HangarBay {
     this.bayLaneMode[bayIndex] = laneMode;
     // Arrival flashes rim; departure / elevator / pad motion hold rim on
     this.padRimMode[bayIndex] = laneMode === 'incoming' ? 'flash' : 'on';
-    // Player launch/land freezes the crane; visitor ops do not
-    if (this.isPlayerBay(bayIndex) && this.crane) this.crane.pause = 99;
-    // Divert after freeze so a bay-touching cancel cannot clear the ops pause
-    this._divertCraneFromBay(bayIndex, { keepOpsFreeze: this.isPlayerBay(bayIndex) });
+    this._divertCraneFromBay(bayIndex);
     this._evacBayCrew(bayIndex);
   }
 
@@ -1513,8 +1510,6 @@ export class HangarBay {
       this.bayLaneMode[i] = 'idle';
       this.doorOpen[i] = 0;
       this.padRimMode[i] = 'off';
-      // Match beginOps: unfreeze for whichever bay holds the player
-      if (this.isPlayerBay(i) && this.crane) this.crane.pause = 0.2;
     };
     if (bayIndex == null) {
       for (const i of [...this._opsBays]) clearOne(i);

@@ -6,6 +6,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Fixed
+- **Crane during player bay ops** — player arrival and departure no longer freeze the gantry; the crane keeps working other bays and only diverts away from the active pad (same as visitor ops).
+
 ### Added
 - **Dev Ring Bands panel** — space overworld dev submenu: independent **background fill** and **band layer** controls (edge feather, α min/max, colors); **Save** persists tuning to `localStorage` (auto-loads on panel open); **Reset** clears saved tuning.
 
