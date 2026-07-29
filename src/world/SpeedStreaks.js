@@ -8,8 +8,19 @@ export class SpeedStreaks {
    * Screen-space streaks (not scaled by camera zoom) so they fill the
    * circular viewport and stay visible at any zoom level.
    */
-  update(shipVelocity, shipSpeed, referenceCruiseSpeed, deltaTime, viewportRadius) {
+  update(shipVelocity, shipSpeed, referenceCruiseSpeed, deltaTime, viewportRadius, opts = {}) {
+    const layerCfg = opts.layerCfg;
+    if (layerCfg && !layerCfg.enabled) {
+      this.streaks = [];
+      return;
+    }
+
     const speedRatio = shipSpeed / referenceCruiseSpeed;
+    const spawnRateMult = layerCfg?.spawnRateMult ?? 1;
+    const maxStreaks = layerCfg?.maxStreaks ?? this.maxStreaks;
+    const lengthMult = layerCfg?.lengthMult ?? 1;
+    const widthMult = layerCfg?.widthMult ?? 1;
+    const brightMult = layerCfg?.brightness ?? layerCfg?.alphaMult ?? 1;
 
     if (speedRatio < 0.05 || shipSpeed < 10) {
       this.streaks = [];
@@ -21,8 +32,8 @@ export class SpeedStreaks {
     // Screen px/sec — scales with perceived speed, not world units under zoom
     const streakSpeed = (140 + speedRatio * 420) * (0.85 + Math.random() * 0.3);
 
-    const spawnRate = speedRatio * 70;
-    if (Math.random() < spawnRate * deltaTime && this.streaks.length < this.maxStreaks) {
+    const spawnRate = speedRatio * 70 * spawnRateMult;
+    if (Math.random() < spawnRate * deltaTime && this.streaks.length < maxStreaks) {
       const spawnDist = viewportRadius * (0.08 + Math.random() * 0.92);
       const spawnAngle = Math.random() * Math.PI * 2;
 
@@ -31,12 +42,12 @@ export class SpeedStreaks {
         y: Math.sin(spawnAngle) * spawnDist,
         vx: Math.cos(streakAngle) * streakSpeed,
         vy: Math.sin(streakAngle) * streakSpeed,
-        length: (10 + speedRatio * 36) * (0.65 + Math.random() * 0.45),
-        width: 0.9 + speedRatio * 1.1,
+        length: (10 + speedRatio * 36) * (0.65 + Math.random() * 0.45) * lengthMult,
+        width: (0.9 + speedRatio * 1.1) * widthMult,
         life: 0.35 + Math.random() * 0.4,
         maxLife: 0.55,
         angle: streakAngle,
-        alpha: 0.12 + speedRatio * 0.28,
+        alpha: (0.12 + speedRatio * 0.28) * brightMult,
       });
     }
 
@@ -52,7 +63,10 @@ export class SpeedStreaks {
     }
   }
 
-  render(ctx) {
+  render(ctx, opts = {}) {
+    const layerCfg = opts.layerCfg;
+    if (layerCfg && !layerCfg.enabled) return;
+
     for (const streak of this.streaks) {
       const lifeRatio = streak.life / streak.maxLife;
       const alpha = streak.alpha * lifeRatio;

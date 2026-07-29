@@ -83,6 +83,7 @@ export const DevTools = {
     'dev-panel-overlays': false,
     'dev-panel-radar': false,
     'dev-panel-ring-bands': false,
+    'dev-panel-depth': false,
     'dev-panel-vessel': false,
     'dev-panel-hangar': false,
     'dev-title-panel': false,

@@ -428,6 +428,60 @@ html, body {
   padding-right: 2px;
 }
 
+.dev-depth-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: auto;
+  max-height: min(48vh, 420px);
+  padding-right: 2px;
+  margin-bottom: 6px;
+}
+
+.dev-depth-panel {
+  max-width: min(92vw, 22rem);
+}
+
+.dev-depth-layer-row {
+  border: 1px solid rgba(90, 120, 150, 0.25);
+  border-radius: 4px;
+  padding: 4px 6px;
+  background: rgba(8, 14, 22, 0.55);
+}
+
+.dev-depth-layer-head {
+  display: grid;
+  grid-template-columns: auto 2.6rem 1fr auto;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.58rem;
+}
+
+.dev-depth-layer-label {
+  color: rgba(210, 225, 240, 0.92);
+}
+
+.dev-depth-type-badge {
+  font-size: 0.5rem;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(140, 180, 210, 0.75);
+}
+
+.dev-depth-layer-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 1px solid rgba(70, 95, 120, 0.2);
+}
+
+.dev-depth-input {
+  width: 2.4rem;
+  padding: 1px 2px;
+}
+
 .dev-title-slider {
   display: grid;
   grid-template-columns: 4.2rem 1fr 2.4rem;

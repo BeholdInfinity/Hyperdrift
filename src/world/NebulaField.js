@@ -6,6 +6,8 @@
  * alpha dither into a “woven tapestry” on GPU/canvas.
  */
 
+import { getDepthCompositorConfig } from './DepthCompositorConfig.js';
+
 const PLATE_SCALE = 0.4;
 const SPRITE_SIZE = 96;
 const HUE_BUCKET = 12;
@@ -33,6 +35,38 @@ export class NebulaField {
    * Shared ambient backdrop paint (caller: ctx already centered / clipped).
    * Used by title, hangar windows/doors, and flight.
    */
+  invalidateAmbientCache() {
+    this._ambientCacheKey = '';
+  }
+
+  /**
+   * Paint one ambient nebula depth layer (screen parallax, no plate cache).
+   */
+  paintAmbientLayer(ctx, layerIndex, cameraX, cameraY, time, coverRadius, zoom = 1, opts = {}) {
+    const globals = opts.globals || getDepthCompositorConfig().globals;
+    const layerCfg = opts.layerCfg;
+    if (layerCfg && !layerCfg.enabled) return;
+
+    const base = this.depthLayers[layerIndex];
+    if (!base) return;
+
+    const parallaxScale = globals.parallaxScale ?? 1;
+    const brightMult = layerCfg?.brightness ?? layerCfg?.alphaMult ?? base.alphaMult;
+    const layer = {
+      parallax: (layerCfg?.parallax ?? base.parallax) * parallaxScale,
+      alphaMult: brightMult,
+      driftMult: layerCfg?.driftMult ?? base.driftMult,
+      sizeMult: layerCfg?.sizeMult ?? base.sizeMult,
+    };
+
+    const pseudoNebulae = this._generateAmbientNebulae(cameraX, cameraY, coverRadius, zoom);
+    const depth = layerIndex + 1;
+    for (const nebula of pseudoNebulae) {
+      if (nebula.depth !== depth) continue;
+      this._renderNebula(ctx, nebula, cameraX, cameraY, time, layer, coverRadius);
+    }
+  }
+
   paintAmbient(ctx, cameraX, cameraY, time, coverRadius, zoom = 1) {
     const glowPad = Math.min(this._maxGlowPx * 0.25, Math.max(160, coverRadius * 0.25));
     const worldSide = coverRadius * 2 + glowPad * 2;
@@ -110,9 +144,21 @@ export class NebulaField {
     }
   }
 
-  renderWorldNebulae(ctx, nebulae, time) {
+  renderWorldNebulae(ctx, nebulae, time, opts = {}) {
+    const layerCfg = opts.layerCfg;
+    if (layerCfg && !layerCfg.enabled) return;
+
+    const streamDepth = layerCfg?.streamDepth;
+    if (streamDepth == null) return;
+
+    const brightMult = layerCfg?.brightness ?? layerCfg?.alphaMult ?? layer.alphaMult;
+    const sizeMult = layerCfg?.sizeMult ?? 1;
+
     for (const nebula of nebulae) {
-      const layer = this.depthLayers[(nebula.depth || 2) - 1] || this.depthLayers[1];
+      if ((nebula.depth || 2) !== streamDepth) continue;
+
+      const nd = streamDepth - 1;
+      const layer = this.depthLayers[nd] || this.depthLayers[1];
       const drift = Math.sin(time * 0.08 + nebula.phase) * 25 * layer.driftMult;
       const cx = nebula.x + nebula.driftX * time * layer.driftMult + drift;
       const cy = nebula.y + nebula.driftY * time * layer.driftMult;
@@ -121,9 +167,9 @@ export class NebulaField {
         const bx = cx + blob.offsetX;
         const by = cy + blob.offsetY;
         const pulse = 0.85 + 0.15 * Math.sin(time * 0.12 + blob.hueOffset);
-        const size = blob.size * layer.sizeMult * pulse;
+        const size = blob.size * layer.sizeMult * sizeMult * pulse;
         const hue = nebula.hue + blob.hueOffset;
-        const alpha = nebula.alpha * layer.alphaMult;
+        const alpha = nebula.alpha * brightMult;
         this._fillBlob(ctx, bx, by, size, hue, alpha);
       }
     }

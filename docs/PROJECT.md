@@ -89,13 +89,16 @@ src/
     data/visualTuning.js, data/mountLayouts.js   Dev bake targets
     index.js              Modular ship public API
   dev/
-    DevTools.js, DevSave.js, DevOverlay.js, DevPanelDrag.js, DevMenu.js, DevSimSpeed.js, BlueprintAuthoring.js, HangarLayoutEditor.js, DevSectorEditor.js
+    DevTools.js, DevSave.js, DevOverlay.js, DevPanelDrag.js, DevMenu.js, DevSimSpeed.js, DevDepth.js, BlueprintAuthoring.js, HangarLayoutEditor.js, DevSectorEditor.js
   world/
     hangar-layout.js      Flavor props / linger / gossip (Dev bake target)
     place/                Place → Area → Feature registry (stations, ships, outposts, vessels)
+    DepthCompositor.js    Signed-depth ambience stack (stars, nebula, streaks, dust)
+    DepthCompositorConfig.js  Runtime layer registry + localStorage tuning
+    DustLayer.js          Optional screen-parallax dust grains
     Starfield.js          7 parallax star layers (screen-fixed size, tiled when zoomed out)
     NebulaField.js        3 depth layers + ambient procedural nebulae
-    SpeedStreaks.js       Velocity-opposed foreground streaks (screen-space)
+    SpeedStreaks.js       Velocity-opposed streaks (screen-space, depth-compositor driven)
     HangarBay.js          Thin barrel → hangar/ (import path unchanged)
     hangar/               Hangar sim modules (split from monolith HangarBay)
       constants.js        BAY, ROW_Y, tuning, zoom exports
@@ -401,7 +404,7 @@ Cosmetic / lower priority:
 
 ## Dev Mode + Blueprint + Hangar editor
 
-**Dev Mode** (Settings toggle, default on): floating **DEV** button (` key) opens a **compact launcher**; each entry opens a **draggable sub-menu popup** scoped to context — **Title:** Title Layout, Sim, Inspect, AI Traffic; **Hangar:** Sim, Inspect, Overlays, Hangar (edit / Bay Options / Place), Vessel; **Space:** Sim, Inspect, Overlays, Radar, Map Editor entry; **Sector Map Editor:** DEV button stays visible (collapsed on entry), **Sim** speed only. **Vessel** is hangar-only (Mk2+ interior + hull-scar dev shortcuts). Sim toolbar: **−** (÷2), pause, play (resume or reset 1×), **+** (×2), editable multiplier field. Popups cascade below the launcher (spill to column 2 when needed); positions persist in `localStorage`. Closing the dev menu hides popups without clearing open state. **Hidden** in Blueprint and Settings controls — those modes use their own side docks (`bp-author-card`, `#sector-editor-hud`). Bake via `POST /dev/save` (allowlisted paths) or clipboard Export. See `src/dev/DevMenu.js`.
+**Dev Mode** (Settings toggle, default on): floating **DEV** button (` key) opens a **compact launcher**; each entry opens a **draggable sub-menu popup** scoped to context — **Title:** Title Layout, **Depth**, Sim, Inspect, AI Traffic; **Hangar:** Sim, Inspect, Overlays, Hangar (edit / Bay Options / Place), Vessel; **Space:** Sim, Inspect, Overlays, Radar, **Depth**, Ring Bands, Map Editor entry; **Sector Map Editor:** DEV button stays visible (collapsed on entry), **Sim** speed only. **Vessel** is hangar-only (Mk2+ interior + hull-scar dev shortcuts). Sim toolbar: **−** (÷2), pause, play (resume or reset 1×), **+** (×2), editable multiplier field. Popups cascade below the launcher (spill to column 2 when needed); positions persist in `localStorage`. Closing the dev menu hides popups without clearing open state. **Hidden** in Blueprint and Settings controls — those modes use their own side docks (`bp-author-card`, `#sector-editor-hud`). Bake via `POST /dev/save` (allowlisted paths) or clipboard Export. See `src/dev/DevMenu.js`.
 
 **Data files (machine-editable):**
 - `src/ships/data/visualTuning.js` — cup / plume / generic engine class scale

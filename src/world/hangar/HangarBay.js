@@ -5213,10 +5213,9 @@ export class HangarBay {
   }
 
   _paintHangarSpacefield(ctx, space, cover) {
-    const { starfield, nebulaField, spaceX, spaceY, time, backdropSession = 0 } = space;
+    const { depthCompositor, spaceX, spaceY, time, backdropSession = 0 } = space;
     const zoom = 0.55;
     const side = Math.ceil(cover * 2.2);
-    // One bake per hangar visit — cosmetic coords, not live flight/chunk sim.
     const cacheKey = `hangar-static|${backdropSession}|${side}`;
 
     if (!this._spacefieldPlate) {
@@ -5235,8 +5234,15 @@ export class HangarBay {
       pctx.setTransform(1, 0, 0, 1, 0, 0);
       pctx.clearRect(0, 0, side, side);
       pctx.translate(side / 2, side / 2);
-      nebulaField.paintAmbient(pctx, spaceX, spaceY, time, cover, zoom);
-      starfield.render(pctx, spaceX, spaceY, cover, time, zoom);
+      if (depthCompositor) {
+        depthCompositor.paintHangarPlate(pctx, {
+          cameraX: spaceX,
+          cameraY: spaceY,
+          time,
+          coverRadius: cover,
+          zoom,
+        });
+      }
       plate.key = cacheKey;
     }
 

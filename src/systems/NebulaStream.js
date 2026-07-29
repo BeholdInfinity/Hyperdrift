@@ -1,6 +1,7 @@
 import { WORLD } from '../core/Constants.js';
 import { SeededRandom, hashCoords } from '../utils/SeededRandom.js';
 import { isInsidePlayableSector, getSectorLayout } from '../world/SectorLayout.js';
+import { getDepthCompositorConfig } from '../world/DepthCompositorConfig.js';
 
 function cellCoord(v, cellSize) {
   return Math.floor(v / cellSize);
@@ -75,7 +76,9 @@ export class NebulaStream {
 
     const rng = new SeededRandom(hashCoords(cellX, cellY, WORLD.SEED ^ 0xdeb0));
     const nebulae = [];
-    if (rng.next() < 0.35) {
+    const spawnMult = getDepthCompositorConfig().streamSpawnRateMult ?? 1;
+    const spawnGate = Math.min(1, 0.35 * spawnMult);
+    if (rng.next() < spawnGate) {
       const depth = 1 + rng.int(0, 2);
       nebulae.push(buildNebula(cellX, cellY, rng, depth));
     }

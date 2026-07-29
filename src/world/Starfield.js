@@ -1,3 +1,5 @@
+import { getDepthCompositorConfig } from './DepthCompositorConfig.js';
+
 export class Starfield {
   constructor() {
     // Far → near. Dense field of small stars; size/brightness barely change with depth.
@@ -31,7 +33,29 @@ export class Starfield {
   }
 
   render(ctx, cameraX, cameraY, viewportRadius, time, zoom = 1, opts = {}) {
-    const lite = !!opts.lite;
+    for (let i = 0; i < this.layers.length; i++) {
+      this.renderLayer(ctx, i, cameraX, cameraY, viewportRadius, time, zoom, opts);
+    }
+  }
+
+  renderLayer(ctx, layerIdx, cameraX, cameraY, viewportRadius, time, zoom = 1, opts = {}) {
+    const globals = opts.globals || getDepthCompositorConfig().globals;
+    const layerCfg = opts.layerCfg;
+    if (layerCfg && !layerCfg.enabled) return;
+
+    const baseConfig = this.layers[layerIdx];
+    if (!baseConfig) return;
+
+    const parallaxScale = globals.parallaxScale ?? 1;
+    const parallax = (layerCfg?.parallax ?? baseConfig.parallax) * parallaxScale;
+    const twinkleAmt = layerCfg?.twinkle ?? baseConfig.twinkle;
+    const color = layerCfg?.color ?? baseConfig.color;
+    const cfgBrightness = layerCfg?.brightness ?? baseConfig.brightness;
+    const brightnessScale =
+      baseConfig.brightness > 0 ? cfgBrightness / baseConfig.brightness : cfgBrightness;
+    const lite = !!opts.lite || !!globals.forceStarLite;
+    const skipTwinkle = globals.starTwinkle === false;
+
     const z = Math.max(zoom, 0.01);
     const margin = lite ? 120 : 160;
     const cover = viewportRadius + margin;
@@ -54,6 +78,8 @@ export class Starfield {
           : z < 0.65
             ? 1
             : 0;
+    if (layerIdx < farCut) return;
+
     const dens = lite
       ? z >= 0.75
         ? 0.7
@@ -62,57 +88,53 @@ export class Starfield {
         ? 1
         : Math.max(0.08, Math.pow(z / 0.75, 1.4));
 
-    for (let layerIdx = farCut; layerIdx < this.layers.length; layerIdx++) {
-      const config = this.layers[layerIdx];
-      /** Alpha bucket → [x,y,r,...] screen coords for fillRect batching. */
-      const buckets = new Map();
+    const buckets = new Map();
 
-      for (const star of this.stars) {
-        if (star.layer !== layerIdx) continue;
-        if (dens < 1) {
-          const layerKeep = 0.2 + 0.8 * (star.layer / (this.layers.length - 1));
-          if (star.hash > dens * layerKeep) continue;
-        }
-
-        const px = star.x - cameraX * config.parallax;
-        const py = star.y - cameraY * config.parallax;
-        const baseX = ((px % this.tileSize) + this.tileSize) % this.tileSize - halfTile;
-        const baseY = ((py % this.tileSize) + this.tileSize) % this.tileSize - halfTile;
-
-        let alpha;
-        if (lite) {
-          alpha = clamp(star.brightness, 0, 1);
-        } else {
-          const wave = Math.sin(time * star.twinkleSpeed + star.twinklePhase);
-          const blink = Math.pow(Math.max(0, wave), 16);
-          alpha = clamp(star.brightness * (1 - config.twinkle * blink), 0, 1);
-        }
-        const alphaKey = lite ? Math.round(alpha * 8) / 8 : Math.round(alpha * 10) / 10;
-        const r = star.size;
-        const diam = r * 2;
-
-        for (let ox = -tilesOut; ox <= tilesOut; ox++) {
-          for (let oy = -tilesOut; oy <= tilesOut; oy++) {
-            const drawX = (baseX + ox * this.tileSize) * z;
-            const drawY = (baseY + oy * this.tileSize) * z;
-            if (drawX * drawX + drawY * drawY > coverSq) continue;
-
-            let batch = buckets.get(alphaKey);
-            if (!batch) {
-              batch = [];
-              buckets.set(alphaKey, batch);
-            }
-            batch.push(drawX - r, drawY - r, diam, diam);
-          }
-        }
+    for (const star of this.stars) {
+      if (star.layer !== layerIdx) continue;
+      if (dens < 1) {
+        const layerKeep = 0.2 + 0.8 * (star.layer / (this.layers.length - 1));
+        if (star.hash > dens * layerKeep) continue;
       }
 
-      ctx.fillStyle = config.color;
-      for (const [alphaKey, rects] of buckets) {
-        ctx.globalAlpha = alphaKey;
-        for (let i = 0; i < rects.length; i += 4) {
-          ctx.fillRect(rects[i], rects[i + 1], rects[i + 2], rects[i + 3]);
+      const px = star.x - cameraX * parallax;
+      const py = star.y - cameraY * parallax;
+      const baseX = ((px % this.tileSize) + this.tileSize) % this.tileSize - halfTile;
+      const baseY = ((py % this.tileSize) + this.tileSize) % this.tileSize - halfTile;
+
+      let alpha;
+      if (lite || skipTwinkle) {
+        alpha = clamp(star.brightness * brightnessScale, 0, 1);
+      } else {
+        const wave = Math.sin(time * star.twinkleSpeed + star.twinklePhase);
+        const blink = Math.pow(Math.max(0, wave), 16);
+        alpha = clamp(star.brightness * brightnessScale * (1 - twinkleAmt * blink), 0, 1);
+      }
+      const alphaKey = lite ? Math.round(alpha * 8) / 8 : Math.round(alpha * 10) / 10;
+      const r = star.size;
+      const diam = r * 2;
+
+      for (let ox = -tilesOut; ox <= tilesOut; ox++) {
+        for (let oy = -tilesOut; oy <= tilesOut; oy++) {
+          const drawX = (baseX + ox * this.tileSize) * z;
+          const drawY = (baseY + oy * this.tileSize) * z;
+          if (drawX * drawX + drawY * drawY > coverSq) continue;
+
+          let batch = buckets.get(alphaKey);
+          if (!batch) {
+            batch = [];
+            buckets.set(alphaKey, batch);
+          }
+          batch.push(drawX - r, drawY - r, diam, diam);
         }
+      }
+    }
+
+    ctx.fillStyle = color;
+    for (const [alphaKey, rects] of buckets) {
+      ctx.globalAlpha = alphaKey;
+      for (let i = 0; i < rects.length; i += 4) {
+        ctx.fillRect(rects[i], rects[i + 1], rects[i + 2], rects[i + 3]);
       }
     }
     ctx.globalAlpha = 1;

@@ -45,6 +45,8 @@ import { PhysicsSystem } from '../systems/PhysicsSystem.js';
 import { Starfield } from '../world/Starfield.js';
 import { NebulaField } from '../world/NebulaField.js';
 import { SpeedStreaks } from '../world/SpeedStreaks.js';
+import { DustLayer } from '../world/DustLayer.js';
+import { DepthCompositor } from '../world/DepthCompositor.js';
 import { InteriorSession } from './InteriorSession.js';
 import { HangarPresence } from '../world/hangar/HangarPresence.js';
 import {
@@ -177,6 +179,8 @@ export class GameEngine {
     this.starfield = new Starfield();
     this.nebulaField = new NebulaField();
     this.speedStreaks = new SpeedStreaks();
+    this.dustLayer = new DustLayer();
+    this._initDepthCompositor();
     this.titleScreen = new TitleScreen();
     this.titleScreen.bindSpacer(document.getElementById('title-art-spacer'));
     /** Active station interior instance (hangar); null in exterior space/title. */
@@ -1177,6 +1181,7 @@ export class GameEngine {
     this.interior.particleSystem.clear();
     this.precisionActive = false;
     this.speedStreaks = new SpeedStreaks();
+    this._initDepthCompositor();
     this._exitBurn = false;
     this._exitBurnFailsafe = 0;
     this._approachHoldAI = null;
@@ -1688,6 +1693,7 @@ export class GameEngine {
     this.ship = null;
     this.precisionActive = false;
     this.speedStreaks = new SpeedStreaks();
+    this._initDepthCompositor();
     this._exitBurn = false;
     this._exitBurnFailsafe = 0;
     this._approachHoldAI = null;
@@ -2311,6 +2317,12 @@ export class GameEngine {
     this._spaceCam.x = this.camera.position.x;
     this._spaceCam.y = this.camera.position.y;
 
+    this.depthCompositor.update(deltaTime, {
+      shipVelocity: { x: 0, y: 0 },
+      shipSpeed: 0,
+      viewportRadius: this.renderer.viewportRadius,
+    });
+
     this.asteroidSystem.update(this.camera.position.x, this.camera.position.y, this.gameTime || 0);
     const asteroids = this.asteroidSystem.getActiveAsteroids();
     this._frameAsteroids = asteroids;
@@ -2399,6 +2411,30 @@ export class GameEngine {
   /** @returns {InteriorSession|null} */
   _activeInterior() {
     return this.interior;
+  }
+
+  _initDepthCompositor() {
+    this.depthCompositor = new DepthCompositor(
+      this.starfield,
+      this.nebulaField,
+      this.speedStreaks,
+      this.dustLayer,
+      () => this.asteroidSystem.getNebulae()
+    );
+  }
+
+  _depthPaintParams(fullscreen = false) {
+    return {
+      cameraX: this.camera.position.x,
+      cameraY: this.camera.position.y,
+      time: this.gameTime,
+      coverRadius: fullscreen
+        ? this._coverRadius()
+        : this.renderer.viewportRadius + 200,
+      zoom: this.camera.effectiveZoom,
+      renderer: this.renderer,
+      camera: this.camera,
+    };
   }
 
   _coverRadius() {
@@ -3621,12 +3657,13 @@ export class GameEngine {
     const speedAfter = this.ship.velocity.length();
     const shipVx = this.ship.velocity.x;
     const shipVy = this.ship.velocity.y;
-    this.speedStreaks.update(
-      { x: this.ship.velocity.x, y: this.ship.velocity.y },
-      speedAfter,
-      PHYSICS.STREAK_REFERENCE_SPEED,
+    this.depthCompositor.update(
       deltaTime,
-      this.renderer.viewportRadius
+      {
+        shipVelocity: { x: shipVx, y: shipVy },
+        shipSpeed: speedAfter,
+        viewportRadius: this.renderer.viewportRadius,
+      }
     );
 
     this.renderer.emitThrusterParticles(this.ship, this.particleSystem);
@@ -3737,46 +3774,11 @@ export class GameEngine {
     }
   }
 
-  _renderBackground({ fullscreen = false, includeWorldNebulae = true } = {}) {
-    const cameraPos = this.camera.position;
-    const time = this.gameTime;
-    const zoom = this.camera.effectiveZoom;
-    const coverRadius = fullscreen
-      ? this._coverRadius()
-      : this.renderer.viewportRadius + 200;
-
-    this.renderer.ctx.save();
-    this.renderer.ctx.translate(
-      this.renderer.centerX + this.camera.offset.x,
-      this.renderer.centerY + this.camera.offset.y
-    );
-    if (this.camera.rotation) this.renderer.ctx.rotate(this.camera.rotation);
-
-    this.nebulaField.paintAmbient(
+  _renderBackground({ fullscreen = false } = {}) {
+    this.depthCompositor.paintBelowPlayable(
       this.renderer.ctx,
-      cameraPos.x,
-      cameraPos.y,
-      time,
-      coverRadius,
-      zoom
+      this._depthPaintParams(fullscreen)
     );
-
-    this.starfield.render(
-      this.renderer.ctx,
-      cameraPos.x,
-      cameraPos.y,
-      coverRadius,
-      time,
-      zoom
-    );
-
-    this.renderer.ctx.restore();
-
-    if (includeWorldNebulae) {
-      this.renderer.renderWorldLayer((ctx) => {
-        this.nebulaField.renderWorldNebulae(ctx, this.asteroidSystem.getNebulae(), time);
-      }, this.camera);
-    }
   }
 
   /** Fullscreen Jennings space vignette used by the title screen. */
@@ -3871,7 +3873,7 @@ export class GameEngine {
 
     const paintSharp = () => {
       this.renderer.beginFrame();
-      this._renderBackground({ fullscreen: true, includeWorldNebulae: true });
+      this._renderBackground({ fullscreen: true });
       this._renderTitleWorld();
     };
 
@@ -4024,13 +4026,13 @@ export class GameEngine {
 
   /** Full-window space view after the HUD breakup — wreck + traffic, no cockpit chrome. */
   _renderDeathView() {
-    this._renderBackground({ fullscreen: true, includeWorldNebulae: true });
+    this._renderBackground({ fullscreen: true });
     this._renderPlayWorldLayers();
   }
 
   /** The normal flight world drawn inside the viewport circle (PORT view). */
   _renderPlayWorld() {
-    this._renderBackground({ fullscreen: false, includeWorldNebulae: true });
+    this._renderBackground({ fullscreen: false });
     this._renderPlayWorldLayers();
   }
 
@@ -4041,14 +4043,10 @@ export class GameEngine {
       drawRingBackdrop(ctx, this.camera, this.renderer.viewportRadius);
     }, this.camera);
 
-    this.renderer.ctx.save();
-    this.renderer.ctx.translate(
-      this.renderer.centerX + this.camera.offset.x,
-      this.renderer.centerY + this.camera.offset.y
+    this.depthCompositor.paintAtPlayable(
+      this.renderer.ctx,
+      this._depthPaintParams(false)
     );
-    if (this.camera.rotation) this.renderer.ctx.rotate(this.camera.rotation);
-    this.speedStreaks.render(this.renderer.ctx);
-    this.renderer.ctx.restore();
 
     const activeStation = this.station;
     const camPos = this.camera.position;
@@ -4174,6 +4172,11 @@ export class GameEngine {
       this.camera,
       this.ship,
       { layer: 'over', shipLocalUnder: playerOccluded, hulls: exhaustHulls }
+    );
+
+    this.depthCompositor.paintAbovePlayable(
+      this.renderer.ctx,
+      this._depthPaintParams(false)
     );
 
     if (Settings.isDevMode() && this.ship) {
@@ -4845,8 +4848,7 @@ export class GameEngine {
 
     const bd = this.interior?.backdrop || { x: 0, y: -68000 };
     const space = {
-      starfield: this.starfield,
-      nebulaField: this.nebulaField,
+      depthCompositor: this.depthCompositor,
       spaceX: bd.x,
       spaceY: bd.y,
       time: this.gameTime,
