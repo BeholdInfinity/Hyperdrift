@@ -40,6 +40,34 @@ When the user says **commit and push** (or equivalent: commit + push, ship it, e
 3. **If docs look current** — proceed straight to commit, then push.
 4. After they confirm (docs yes/no, or docs already current), commit then push.
 
+When the user says **commit** (with or without push) — before staging, run `git status` and **always include unstaged dev tuning / manual bakes** in that commit unless they explicitly say to exclude them. Do not leave these sitting unstaged because the session task was unrelated.
+
+**Dev-bake / manual-tuning paths** (Save via dev panels → `/dev/save`, or hand-edited):
+
+- `src/world/data/sectorLayout.js` — sector map editor
+- `src/world/data/ringBackdrop.js` — Ring Bands
+- `src/world/data/depthCompositor.js` — Depth compositor
+- `src/ui/title-layout.js` — Title Layout
+- `src/world/hangar-layout.js` — hangar layout editor
+- `src/ships/data/visualTuning.js`, `src/ships/data/mountLayouts.js` — Blueprint Author
+- `src/core/Constants.js` — when changed via dev Save (e.g. generator default)
+
+If those files changed, stage them and add a brief `CHANGELOG.md` note when the bake is user-visible.
+
+**Do not commit:** `.cursor/debug-*.log` or other local debug artifacts unless explicitly requested.
+
+## Dev menu Save buttons (game defaults)
+
+**Policy:** Any dev submenu **Save** that adjusts gameplay/world/visual defaults must **bake to the repo** via `saveToRepo()` (`src/dev/DevSave.js` + `dev-server.py` allowlist), **not** `localStorage`. Everyone who clones the repo gets the same defaults.
+
+- Use `src/dev/DevConfigBake.js` helpers for Ring/Depth; follow `DevSectorEditor.bakeSectorLayout` / `DevTools.saveTitleLayout` patterns for new panels.
+- Add new bake targets to **both** `DevSave.js` `ALLOWED` / `SAVE_PATHS` and `dev-server.py` `SAVE_ALLOWLIST`.
+- Runtime modules load authoritative bakes from `src/world/data/*.js` or existing bake files at import time.
+- **Reset** restores in-memory code defaults; **Save** writes the repo file (requires dev server running).
+- **Exception:** `DevPanelDrag` pop-up positions stay in `localStorage` (editor UX only, not game content).
+
+When the user asks for a new dev panel with variable edits + **Save**, implement repo bake from the start — do not offer browser-only persistence.
+
 ## Code conventions
 
 - Vanilla JS modules under `src/` — no frameworks or bundler

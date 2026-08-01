@@ -1,8 +1,9 @@
 /**
- * Runtime overworld ring backdrop tuning — defaults from RENDER, live-adjustable in dev menu.
+ * Runtime overworld ring backdrop tuning — authoritative bake in data/ringBackdrop.js.
  */
 
 import { RENDER } from '../core/Constants.js';
+import { RING_BACKDROP } from './data/ringBackdrop.js';
 
 /** @typedef {{ r: number, g: number, b: number }} Rgb */
 
@@ -129,7 +130,7 @@ function clampByte(n) {
   return Math.max(0, Math.min(255, v));
 }
 
-const STORAGE_KEY = 'hyperdrift.ringBackdrop.v1';
+const LEGACY_STORAGE_KEY = 'hyperdrift.ringBackdrop.v1';
 
 /** @returns {typeof ringBackdropConfig} */
 export function snapshotRingBackdropConfig() {
@@ -143,21 +144,12 @@ export function applyRingBackdropSnapshot(snap) {
   return true;
 }
 
-export function saveRingBackdropToStorage() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshotRingBackdropConfig()));
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: err?.message || 'localStorage save failed' };
-  }
-}
-
+/** @deprecated legacy browser-only save — migrated to repo bake on boot */
 export function loadRingBackdropFromStorage() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
     if (!raw) return { ok: false, missing: true };
-    const snap = JSON.parse(raw);
-    applyRingBackdropSnapshot(snap);
+    applyRingBackdropSnapshot(JSON.parse(raw));
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err?.message || 'localStorage load failed' };
@@ -166,9 +158,11 @@ export function loadRingBackdropFromStorage() {
 
 export function clearRingBackdropStorage() {
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err?.message || 'localStorage clear failed' };
   }
 }
+
+applyRingBackdropSnapshot(RING_BACKDROP);

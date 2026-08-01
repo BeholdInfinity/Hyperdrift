@@ -3,6 +3,7 @@
  */
 
 import { DevTools } from './DevTools.js';
+import { bakeDepthCompositorToRepo } from './DevConfigBake.js';
 import {
   getDepthCompositorConfig,
   patchDepthLayer,
@@ -10,8 +11,6 @@ import {
   addDustLayer,
   removeDustLayer,
   resetDepthCompositorConfig,
-  saveDepthCompositorToStorage,
-  loadDepthCompositorFromStorage,
   clearDepthCompositorStorage,
   migrateStreamLayers,
   normalizeLayerBrightness,
@@ -251,11 +250,6 @@ function applyGlobalsFromPanel() {
 }
 
 export function wireDepthDevPanel() {
-  const loaded = loadDepthCompositorFromStorage();
-  if (loaded.ok) {
-    setDepthStatus('Loaded saved depth tuning');
-  }
-
   const migrated = migrateStreamLayers(getDepthCompositorConfig().layers);
   patchDepthCompositorConfig({
     layers: migrated.map((l) => normalizeLayerBrightness({ ...l })),
@@ -281,10 +275,12 @@ export function wireDepthDevPanel() {
     setDepthStatus('Dust layer removed');
   });
 
-  document.getElementById('dev-depth-save')?.addEventListener('click', () => {
+  document.getElementById('dev-depth-save')?.addEventListener('click', async () => {
     applyGlobalsFromPanel();
-    const res = saveDepthCompositorToStorage();
-    const msg = res.ok ? 'Saved depth tuning' : `Save failed: ${res.error}`;
+    const res = await bakeDepthCompositorToRepo();
+    const msg = res.ok
+      ? 'Saved depthCompositor.js (game default)'
+      : `Save failed: ${res.error}`;
     setDepthStatus(msg);
     DevTools.status = msg;
   });
@@ -294,8 +290,8 @@ export function wireDepthDevPanel() {
     clearDepthCompositorStorage();
     bustDepthCaches();
     syncDepthPanelContent();
-    setDepthStatus('Reset to defaults');
-    DevTools.status = 'Depth tuning reset';
+    setDepthStatus('Reset to code defaults (Save to bake)');
+    DevTools.status = 'Depth tuning reset — Save to write game file';
   });
 
   syncDepthPanelContent();

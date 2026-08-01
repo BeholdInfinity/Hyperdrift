@@ -3,12 +3,11 @@
  */
 
 import { DevTools } from './DevTools.js';
+import { bakeRingBackdropToRepo } from './DevConfigBake.js';
 import {
   getRingBackdropConfig,
   patchRingBackdropConfig,
   resetRingBackdropConfig,
-  saveRingBackdropToStorage,
-  loadRingBackdropFromStorage,
   clearRingBackdropStorage,
 } from '../world/RingBackdropConfig.js';
 
@@ -108,11 +107,6 @@ function applyFromPanel() {
 }
 
 export function wireRingBandsDevPanel() {
-  const loaded = loadRingBackdropFromStorage();
-  if (loaded.ok) {
-    setRingBandsStatus('Loaded saved tuning');
-  }
-
   document.getElementById('dev-rb-enabled')?.addEventListener('change', applyFromPanel);
   document.getElementById('dev-rb-base')?.addEventListener('change', applyFromPanel);
   document.getElementById('dev-rb-bands')?.addEventListener('change', applyFromPanel);
@@ -133,10 +127,12 @@ export function wireRingBandsDevPanel() {
     document.getElementById(id)?.addEventListener('input', applyFromPanel);
   }
 
-  document.getElementById('dev-rb-save')?.addEventListener('click', () => {
+  document.getElementById('dev-rb-save')?.addEventListener('click', async () => {
     applyFromPanel();
-    const res = saveRingBackdropToStorage();
-    const msg = res.ok ? 'Saved ring band tuning' : `Save failed: ${res.error}`;
+    const res = await bakeRingBackdropToRepo();
+    const msg = res.ok
+      ? 'Saved ringBackdrop.js (game default)'
+      : `Save failed: ${res.error}`;
     setRingBandsStatus(msg);
     DevTools.status = msg;
   });
@@ -144,8 +140,8 @@ export function wireRingBandsDevPanel() {
   document.getElementById('dev-rb-reset')?.addEventListener('click', () => {
     resetRingBackdropConfig();
     clearRingBackdropStorage();
-    setRingBandsStatus('Reset to defaults');
-    DevTools.status = 'Ring band tuning reset';
+    setRingBandsStatus('Reset to code defaults (Save to bake)');
+    DevTools.status = 'Ring band tuning reset — Save to write game file';
     syncRingBandsPanelContent();
   });
 

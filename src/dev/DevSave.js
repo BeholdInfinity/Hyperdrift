@@ -1,5 +1,6 @@
 /**
  * Bake drafts back into repo files via local dev-server POST /dev/save.
+ * All dev-panel Save buttons that affect game defaults must use saveToRepo (see DevConfigBake.js).
  * Clipboard export is the fallback when the server cannot write.
  */
 
@@ -9,6 +10,8 @@ const ALLOWED = new Set([
   'src/world/hangar-layout.js',
   'src/ui/title-layout.js',
   'src/world/data/sectorLayout.js',
+  'src/world/data/ringBackdrop.js',
+  'src/world/data/depthCompositor.js',
   'src/core/Constants.js',
 ]);
 
@@ -68,5 +71,7 @@ export const SAVE_PATHS = {
   hangarLayout: 'src/world/hangar-layout.js',
   titleLayout: 'src/ui/title-layout.js',
   sectorLayout: 'src/world/data/sectorLayout.js',
+  ringBackdrop: 'src/world/data/ringBackdrop.js',
+  depthCompositor: 'src/world/data/depthCompositor.js',
   constants: 'src/core/Constants.js',
 };

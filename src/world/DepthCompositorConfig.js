@@ -1,8 +1,9 @@
 /**
- * Runtime depth-layer tuning for stars, nebulae, streaks, and dust.
+ * Runtime depth-layer tuning — authoritative bake in data/depthCompositor.js.
  */
 
 import { PHYSICS } from '../core/Constants.js';
+import { DEPTH_COMPOSITOR } from './data/depthCompositor.js';
 
 const STAR_DEFAULTS = [
   { parallax: 0.003, brightness: 0.28, color: '#556677', twinkle: 0.55 },
@@ -198,7 +199,7 @@ function clampMult(n) {
   return Math.max(0, Math.min(4, v));
 }
 
-const STORAGE_KEY = 'hyperdrift.depthCompositor.v1';
+const LEGACY_STORAGE_KEY = 'hyperdrift.depthCompositor.v1';
 
 export function snapshotDepthCompositorConfig() {
   return JSON.parse(JSON.stringify(depthCompositorConfig));
@@ -256,18 +257,10 @@ export function applyDepthCompositorSnapshot(snap) {
   return true;
 }
 
-export function saveDepthCompositorToStorage() {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshotDepthCompositorConfig()));
-    return { ok: true };
-  } catch (err) {
-    return { ok: false, error: err?.message || 'localStorage save failed' };
-  }
-}
-
+/** @deprecated legacy browser-only save — migrated to repo bake on boot */
 export function loadDepthCompositorFromStorage() {
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
+    const raw = localStorage.getItem(LEGACY_STORAGE_KEY);
     if (!raw) return { ok: false, missing: true };
     applyDepthCompositorSnapshot(JSON.parse(raw));
     return { ok: true };
@@ -278,9 +271,11 @@ export function loadDepthCompositorFromStorage() {
 
 export function clearDepthCompositorStorage() {
   try {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(LEGACY_STORAGE_KEY);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err?.message || 'localStorage clear failed' };
   }
 }
+
+applyDepthCompositorSnapshot(DEPTH_COMPOSITOR);

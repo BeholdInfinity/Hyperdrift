@@ -3,6 +3,7 @@ import { ringAt, getSectorLayout } from './world/SectorLayout.js';
 import { Settings } from './core/Settings.js';
 import { RADAR, PIPS, WORLD } from './core/Constants.js';
 import { DevTools } from './dev/DevTools.js';
+import { migrateLegacyDevBakesFromStorage } from './dev/DevConfigBake.js';
 import { syncRingBandsPanelContent, wireRingBandsDevPanel } from './dev/DevRingBands.js';
 import { syncDepthPanelContent, wireDepthDevPanel, bindDepthDevEngine } from './dev/DevDepth.js';
 import {
@@ -1892,6 +1893,19 @@ restoreDevPanelPositions();
 wireRingBandsDevPanel();
 wireDepthDevPanel();
 bindDepthDevEngine(engine);
+
+migrateLegacyDevBakesFromStorage().then((res) => {
+  if (res.ringBaked || res.depthBaked) {
+    const parts = [];
+    if (res.ringBaked) parts.push('ring backdrop');
+    if (res.depthBaked) parts.push('depth compositor');
+    DevTools.status = `Migrated browser tuning → ${parts.join(' + ')} (commit repo files)`;
+    syncRingBandsPanelContent();
+    syncDepthPanelContent();
+  } else if (res.errors?.length) {
+    DevTools.status = res.errors[0];
+  }
+});
 
 document.querySelectorAll('.dev-panel-close').forEach((btn) => {
   btn.addEventListener('click', () => {
