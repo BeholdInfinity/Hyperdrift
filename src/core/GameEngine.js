@@ -558,7 +558,7 @@ export class GameEngine {
     this.deepInstanceActive = false;
     ship.affectedByGravity = true;
     this.camera.position.set(worldX, worldY);
-    this.asteroidSystem.update(worldX, worldY, t, { materializeInView: true });
+    this.asteroidSystem.update(worldX, worldY, t, this._asteroidStreamOpts({ materializeInView: true }));
     this.sectorMapView.recenter(ship, this);
     return true;
   }
@@ -999,7 +999,7 @@ export class GameEngine {
       this.hangarPresence.seedDefault(bayIndex);
     }
 
-    this.asteroidSystem.update(spawn.x, spawn.y, this.gameTime || 0);
+    this.asteroidSystem.update(spawn.x, spawn.y, this.gameTime || 0, this._asteroidStreamOpts());
     this._setDockHud(false);
 
     if (fromHangar) {
@@ -1071,7 +1071,12 @@ export class GameEngine {
     this._applyTitleCamera(this.gameTime || 0);
     this._spaceCam.x = this.camera.position.x;
     this._spaceCam.y = this.camera.position.y;
-    this.asteroidSystem.update(this.camera.position.x, this.camera.position.y, this.gameTime || 0);
+    this.asteroidSystem.update(
+      this.camera.position.x,
+      this.camera.position.y,
+      this.gameTime || 0,
+      this._asteroidStreamOpts()
+    );
 
     // Seed a freighter on the runway so the title vignette always has motion
     const view = {
@@ -2424,7 +2429,12 @@ export class GameEngine {
       viewportRadius: this.renderer.viewportRadius,
     });
 
-    this.asteroidSystem.update(this.camera.position.x, this.camera.position.y, this.gameTime || 0);
+    this.asteroidSystem.update(
+      this.camera.position.x,
+      this.camera.position.y,
+      this.gameTime || 0,
+      this._asteroidStreamOpts()
+    );
     const asteroids = this.asteroidSystem.getActiveAsteroids();
     this._frameAsteroids = asteroids;
     this._frameAsteroids = asteroids;
@@ -3582,8 +3592,6 @@ export class GameEngine {
       processPoiBookModalInput(this);
     }
 
-    this.asteroidSystem.update(this.ship.position.x, this.ship.position.y, this.gameTime || 0);
-
     // Caps Lock LED edge sets the desire; the MODES switch can also flip it.
     const capsLED = this.input.capsLockDesired;
     if (capsLED !== this._prevCapsLED) {
@@ -3711,8 +3719,7 @@ export class GameEngine {
       });
     }
 
-    const asteroids = this.asteroidSystem.getActiveAsteroids();
-    this._frameAsteroids = asteroids;
+    const asteroids = this._frameAsteroids || this.asteroidSystem.getActiveAsteroids();
 
     if (this.hangarPresence.active) {
       this.hangarPresence.tick(deltaTime, this.gameTime || 0);
@@ -3775,6 +3782,19 @@ export class GameEngine {
       this.renderer.viewportRadius,
       camZoomWheel
     );
+
+    const speedForStream = this.ship.velocity.length();
+    this.asteroidSystem.update(
+      this.ship.position.x,
+      this.ship.position.y,
+      this.gameTime || 0,
+      this._asteroidStreamOpts({
+        shipSpeed: speedForStream,
+        shipVx: this.ship.velocity.x,
+        shipVy: this.ship.velocity.y,
+      })
+    );
+    this._frameAsteroids = this.asteroidSystem.getActiveAsteroids();
 
     if (this.mode === 'playing') {
       this.navRoute.resolvePosition(this);
@@ -4403,6 +4423,26 @@ export class GameEngine {
   /** Flip the cockpit VIEW between the ship viewport and the full radar scope. */
   toggleScanView() {
     this.scanView = this.scanView === 'scan' ? 'ship' : 'scan';
+  }
+
+  /** Extra opts for asteroid streaming (viewport trim, teleport fill, debug speed). */
+  _asteroidStreamOpts(extra = {}) {
+    const r = this.renderer;
+    const cam = this.camera;
+    const zoom = Math.max(cam?.effectiveZoom ?? 1, 0.001);
+    const ship = this.ship;
+    const speed = extra.shipSpeed ?? ship?.velocity.length() ?? 0;
+    const vx = extra.shipVx ?? ship?.velocity.x ?? 0;
+    const vy = extra.shipVy ?? ship?.velocity.y ?? 0;
+    const sx = ship?.position.x ?? cam?.position.x ?? 0;
+    const sy = ship?.position.y ?? cam?.position.y ?? 0;
+    const center = cam?.screenToWorld(r.centerX, r.centerY, r.centerX, r.centerY);
+    return {
+      visualRadius: r.viewportRadius / zoom + 140 / zoom,
+      viewCenterX: center?.x ?? sx,
+      viewCenterY: center?.y ?? sy,
+      ...extra,
+    };
   }
 
   /** Radar ring geometry for the active VIEW (thin port ring vs full scope). */

@@ -217,6 +217,20 @@ Hangar pad status boards still show display Mk stubs; modular catalog now define
 | 9.2 | Water-from-ice: cargo unit, consumable, or station commodity first? | Open — ties ice-rich outer rings to gameplay |
 | 9.3 | Full **Dev sector editor** (ring handles, POI drag, composition sliders) vs drawer-only? | **Partial (2026-07-25):** map editor MVP shipped — drag sites on LIVE sector map, site picker, tier/traffic overlays, live validator, bake; ring-handle drag + undo still open (`stage-2-editor-advanced`) |
 
+### 9.4 Asteroid streaming, clumping, and hero fields *(2026-08)*
+
+**Partial fix (2026-08-01):** Belt clumping on speed/zoom changes reduced via per-frame spawn budget (`STREAM_SPAWN_BUDGET`), time-phased shell materialize, ring-detection hysteresis, visual-radius spawn shell (250 km retention unchanged), viewport-centered render cull. **Residual:** slight speed-linked density at extreme cruise — acceptable for now.
+
+**Still open:** **Hybrid world** — **hand-authored hero asteroid sites** plus plentiful proc filler. Catalogs stay deterministic; hero layer needs sector editor or bake schema.
+
+| # | Question | Status |
+|---|----------|--------|
+| 9.4.1 | Hero field authoring — sector editor placement vs hand-edited bake file? | Open |
+| 9.4.2 | Hero vs proc priority when culling / radar cap (`MAX_CONTACTS`)? | Open |
+| 9.4.3 | Should hero rocks respawn after destruction or stay gone like proc session persistence? | Open |
+
+**Touch (shipped):** `StreamRadii.js`, `BeltStream.js`, `OpenSpaceStream.js`, `AsteroidSystem.js`, `GameEngine._asteroidStreamOpts`, `Renderer.renderAsteroids`. **Future hero:** `sectorLayout.js` + dev editor.
+
 ---
 
 ## Notes
@@ -228,4 +242,4 @@ Hangar pad status boards still show display Mk stubs; modular catalog now define
 
 ---
 
-*Last updated: 2026-07-25*
+*Last updated: 2026-08-01*

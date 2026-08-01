@@ -5,28 +5,28 @@
 
 export const RING_BACKDROP = {
   "enabled": true,
-  "showBaseFill": false,
-  "showBands": true,
+  "showBaseFill": true,
+  "showBands": false,
   "base": {
-    "edgeFeatherFrac": 0.2,
+    "edgeFeatherFrac": 0.02,
     "alphaMin": 0,
-    "alphaMax": 1,
+    "alphaMax": 0.88,
     "color": {
-      "r": 32,
-      "g": 34,
-      "b": 38
+      "r": 20,
+      "g": 20,
+      "b": 20
     }
   },
   "bands": {
-    "edgeFeatherFrac": 0.22,
-    "alphaMin": 0.49,
-    "alphaMax": 1,
+    "edgeFeatherFrac": 0.12,
+    "alphaMin": 0,
+    "alphaMax": 0.15,
     "primaryColor": {
-      "r": 145,
-      "g": 118,
-      "b": 95
+      "r": 5,
+      "g": 5,
+      "b": 5
     },
-    "primaryMix": 0.65
+    "primaryMix": 1
   }
 };
 

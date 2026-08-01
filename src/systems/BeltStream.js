@@ -10,7 +10,13 @@ import {
 } from '../world/SectorLayout.js';
 import { orbitFromWorldAt, positionAt } from '../world/OrbitKinematics.js';
 import { spawnBeltAsteroid } from './StreamSpawn.js';
-import { distWorld, inMaterializeRange, shouldDropLiveRock, shouldKeepLiveRock } from './StreamRadii.js';
+import {
+  distWorld,
+  inMaterializeRange,
+  shouldDropLiveRock,
+  shouldKeepLiveRock,
+  shouldMaterializeRock,
+} from './StreamRadii.js';
 
 function ringSalt(ringId) {
   let h = 0;
@@ -92,6 +98,8 @@ export class BeltStream {
     this._catalogs = new Map();
     /** @type {Map<string, import('../entities/Asteroid.js').Asteroid>} */
     this._live = new Map();
+    /** @type {object|null} hysteresis when nearRingAt flickers at belt edge */
+    this._lastRing = null;
   }
 
   _sectorKey(ringId, sectorIdx) {
@@ -142,14 +150,28 @@ export class BeltStream {
       destroyedIds,
       system,
       materializeInView = false,
+      spawnBudget,
+      visualRadius = null,
     } = ctx;
+    const budget = spawnBudget;
+    const shellInner = visualRadius ?? viewRadius;
     const layout = getSectorLayout();
-    const ring = nearRingAt(playerX, playerY, despawnRadius, layout);
+    const distRing = distToNearestRing(playerX, playerY, layout);
+    let ring = nearRingAt(playerX, playerY, despawnRadius, layout);
+    if (!ring && this._lastRing && distRing <= despawnRadius) {
+      ring = this._lastRing;
+    }
+    if (ring) {
+      this._lastRing = ring;
+    } else if (distRing > despawnRadius) {
+      this._lastRing = null;
+    }
     const stats = {
       ringId: ring?.id ?? null,
       distToRing: distToNearestRing(playerX, playerY, layout),
       spawned: 0,
       skipDist: 0,
+      skipBudget: 0,
       skipSite: 0,
       skipDestroyed: 0,
       sectorMin: 0,
@@ -157,7 +179,14 @@ export class BeltStream {
       live: 0,
     };
     if (!ring) {
-      this._despawnAll(system);
+      for (const [id, asteroid] of this._live) {
+        if (!asteroid?.active) continue;
+        const d = dist(asteroid.position.x, asteroid.position.y, playerX, playerY);
+        if (!shouldKeepLiveRock(d, viewRadius, despawnRadius)) {
+          system.despawnRock(asteroid);
+          this._live.delete(id);
+        }
+      }
       stats.live = this._live.size;
       return stats;
     }
@@ -206,8 +235,24 @@ export class BeltStream {
           continue;
         }
 
-        if (!inMaterializeRange(rockDist, viewRadius, spawnRadius, materializeInView)) {
+        const mayMaterialize = materializeInView
+          ? inMaterializeRange(rockDist, shellInner, spawnRadius, true)
+          : shouldMaterializeRock(
+              rockDist,
+              id,
+              viewRadius,
+              spawnRadius,
+              gameTime,
+              false,
+              shellInner
+            );
+        if (!mayMaterialize) {
           stats.skipDist++;
+          continue;
+        }
+
+        if (budget && budget.left <= 0) {
+          stats.skipBudget++;
           continue;
         }
 
@@ -239,6 +284,7 @@ export class BeltStream {
         this._live.set(id, asteroid);
         system.spawnRock(asteroid);
         stats.spawned++;
+        if (budget) budget.left--;
       }
     }
 

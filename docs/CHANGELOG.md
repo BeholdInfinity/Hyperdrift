@@ -8,6 +8,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ### Fixed
 - **Crane during player bay ops** — player arrival and departure no longer freeze the gantry; the crane keeps working other bays and only diverts away from the active pad (same as visitor ops).
+- **Belt asteroid clumping on speed/zoom changes** — per-frame spawn budget (100/frame), time-phased shell materialize, ring-detection hysteresis, visual-radius spawn shell (rocks enter viewport; 250 km retention unchanged), viewport-centered render cull; dev jump fill also budget-limited. Residual speed-linked density may remain at extreme cruise.
 
 ### Added
 - **Settings controls sandbox** — wired like real flight: ship-up view rotation, full camera (lead offset + speed zoom), depth compositor parallax, forward-cone speed streaks; no gravity/world entities. SPD readout top-right outside viewport.

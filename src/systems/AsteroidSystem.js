@@ -1,5 +1,10 @@
 import { isInsidePlayableSector, getSectorLayout } from '../world/SectorLayout.js';
-import { streamSpawnRadius, streamDespawnRadius, streamViewRadius } from './StreamRadii.js';
+import {
+  streamSpawnRadius,
+  streamDespawnRadius,
+  streamViewRadius,
+  streamSpawnBudget,
+} from './StreamRadii.js';
 import { BeltStream } from './BeltStream.js';
 import { OpenSpaceStream } from './OpenSpaceStream.js';
 import { NebulaStream } from './NebulaStream.js';
@@ -22,18 +27,6 @@ export class AsteroidSystem {
     this._listDirty = true;
   }
 
-  _viewRadius() {
-    return streamViewRadius();
-  }
-
-  _spawnRadius() {
-    return streamSpawnRadius();
-  }
-
-  _despawnRadius() {
-    return streamDespawnRadius();
-  }
-
   _syncKinematicAsteroids(gameTime = 0) {
     const layout = getSectorLayout();
     for (const asteroid of this.activeAsteroids) {
@@ -51,8 +44,8 @@ export class AsteroidSystem {
   }
 
   _cullDistantRocks(playerX, playerY) {
-    const view = this._viewRadius();
-    const drop = this._despawnRadius();
+    const view = streamViewRadius();
+    const drop = streamDespawnRadius();
     const viewSq = view * view;
     const dropSq = drop * drop;
     for (const asteroid of [...this.activeAsteroids]) {
@@ -91,9 +84,11 @@ export class AsteroidSystem {
       playerX,
       playerY,
       gameTime,
-      viewRadius: this._viewRadius(),
-      spawnRadius: this._spawnRadius(),
-      despawnRadius: this._despawnRadius(),
+      viewRadius: streamViewRadius(),
+      spawnRadius: streamSpawnRadius(),
+      despawnRadius: streamDespawnRadius(),
+      visualRadius: opts.visualRadius ?? null,
+      spawnBudget: opts.spawnBudget,
       destroyedIds: this.destroyedRockIds,
       system: this,
       materializeInView: !!opts.materializeInView,
@@ -114,15 +109,16 @@ export class AsteroidSystem {
       return;
     }
 
-    const ctx = this._streamCtx(playerX, playerY, gameTime, opts);
+    const spawnBudget = { left: streamSpawnBudget() };
+    const ctx = this._streamCtx(playerX, playerY, gameTime, { ...opts, spawnBudget });
     this.beltStream.reconcile(ctx);
     this.openStream.reconcile(ctx);
     this.nebulaStream.reconcile(
       playerX,
       playerY,
-      this._spawnRadius(),
-      this._despawnRadius(),
-      this._viewRadius()
+      streamSpawnRadius(),
+      streamDespawnRadius(),
+      streamViewRadius()
     );
 
     this._syncKinematicAsteroids(gameTime);

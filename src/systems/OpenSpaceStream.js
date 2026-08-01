@@ -9,7 +9,7 @@ import {
   getSectorLayout,
 } from '../world/SectorLayout.js';
 import { spawnKinematicAsteroid } from './StreamSpawn.js';
-import { distWorld, inMaterializeRange, shouldDropLiveRock, shouldKeepLiveRock } from './StreamRadii.js';
+import { distWorld, inMaterializeRange, shouldDropLiveRock, shouldKeepLiveRock, shouldMaterializeRock } from './StreamRadii.js';
 
 function dist(ax, ay, bx, by) {
   return distWorld(ax, ay, bx, by);
@@ -150,9 +150,13 @@ export class OpenSpaceStream {
       destroyedIds,
       system,
       materializeInView = false,
+      spawnBudget,
+      visualRadius = null,
     } = ctx;
+    const budget = spawnBudget;
+    const shellInner = visualRadius ?? viewRadius;
     const layout = getSectorLayout();
-    const stats = { inRing: false, catalogLen: 0, spawned: 0, live: 0 };
+    const stats = { inRing: false, catalogLen: 0, spawned: 0, skipBudget: 0, live: 0 };
 
     if (nearRingAt(playerX, playerY, despawnRadius, layout)) {
       this._despawnAll(system);
@@ -186,7 +190,23 @@ export class OpenSpaceStream {
         }
 
         const rockDist = dist(spec.x, spec.y, playerX, playerY);
-        if (!inMaterializeRange(rockDist, viewRadius, spawnRadius, materializeInView)) continue;
+        const mayMaterialize = materializeInView
+          ? inMaterializeRange(rockDist, shellInner, spawnRadius, true)
+          : shouldMaterializeRock(
+              rockDist,
+              id,
+              viewRadius,
+              spawnRadius,
+              gameTime,
+              false,
+              shellInner
+            );
+        if (!mayMaterialize) continue;
+
+        if (budget && budget.left <= 0) {
+          stats.skipBudget++;
+          continue;
+        }
 
         keep.add(id);
         if (asteroid) {
@@ -209,6 +229,7 @@ export class OpenSpaceStream {
         this._live.set(id, asteroid);
         system.spawnRock(asteroid);
         stats.spawned++;
+        if (budget) budget.left--;
       }
     }
 

@@ -196,8 +196,14 @@ export class Renderer {
   renderAsteroids(asteroids, camera) {
     const zoom = Math.max(camera.effectiveZoom, 0.001);
     const margin = 140 / zoom;
-    const cx = camera.position.x;
-    const cy = camera.position.y;
+    const center = camera.screenToWorld(
+      this.centerX,
+      this.centerY,
+      this.centerX,
+      this.centerY
+    );
+    const cx = center.x;
+    const cy = center.y;
     const viewR = this.viewportRadius / zoom + margin;
     const viewR2 = viewR * viewR;
 
@@ -207,7 +213,8 @@ export class Renderer {
 
         const dx = asteroid.position.x - cx;
         const dy = asteroid.position.y - cy;
-        if (dx * dx + dy * dy > viewR2) continue;
+        const d2 = dx * dx + dy * dy;
+        if (d2 > viewR2) continue;
 
         wctx.save();
         wctx.translate(asteroid.position.x, asteroid.position.y);

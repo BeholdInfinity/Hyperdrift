@@ -337,7 +337,8 @@ Three depth layers (far / mid / near) plus stream-placed world nebulae (`NebulaS
 
 - **Ring belts** — `BeltStream` angular sectors per ring band; density from `sectorLayout.rings[]`; kinematic prograde orbit (μ-derived)
 - **Open space** — sparse/dense clusters via `OpenSpaceStream` field cells (outside ring bands; 50% reduced vs legacy baseline)
-- Live rocks materialize in the shell between `STREAM_VIEW_RADIUS` (250 km, radar max) and `STREAM_SPAWN_RADIUS` (300 km); despawn beyond `STREAM_DESPAWN_RADIUS` (360 km), never while inside radar range; session-destroyed rocks stay gone until reload
+- Live rocks materialize in the shell between the **visual viewport** (~75 km at max zoom-out) and `STREAM_SPAWN_RADIUS` (300 km); retention/despawn still use `STREAM_VIEW_RADIUS` (250 km) and `STREAM_DESPAWN_RADIUS` (360 km). Per-frame spawn budget + staggered shell materialize reduce speed/zoom clumping.
+- **Planned (not shipped):** **hand-authored hero fields** alongside proc filler — see [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) §9.4
 
 ### Speed streaks
 
