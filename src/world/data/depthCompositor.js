@@ -168,11 +168,11 @@ export const DEPTH_COMPOSITOR = {
       "label": "Speed Streaks",
       "enabled": true,
       "depth": 2,
-      "brightness": 2.05,
-      "spawnRateMult": 1.41,
+      "brightness": 1.96,
+      "spawnRateMult": 1.53,
       "maxStreaks": 140,
-      "lengthMult": 2.46,
-      "widthMult": 1.14
+      "lengthMult": 2.54,
+      "widthMult": 0.65
     },
     {
       "id": "dust",
