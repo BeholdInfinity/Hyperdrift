@@ -15,6 +15,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ### Changed
 - **Station dock approach speed** — `STATION.DOCK_MAX_SPEED` raised from 120 → **200 u/s station-relative** (manual dock, auto-ingress, approach lights, occlusion hysteresis, SYNC match scoring).
+- **Thera sector layout bake** — inner ring inner radius + density (2→3), mid belt density 2.5→5, outer ice 3→8; `softEdgeRadius` tracks fringe geometry; inner warp gate orbits re-synced to the resized inner annulus.
 - **Ring backdrop (overworld)** — layered annulus fill: opaque dark-gray base (`RENDER.RING_BACKDROP_BASE`) plus shared sector-map band infill; each layer has its own edge feather and α min/max. Gated by `RENDER.RING_BACKDROP` (default off). Band layer α now scales directly per strip (fixes α max cliff from broken `destination-in` post-pass).
 
 ### Added

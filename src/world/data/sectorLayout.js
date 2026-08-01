@@ -30,9 +30,9 @@ export const SECTOR_LAYOUT = {
   "rings": [
     {
       "id": "inner_ore",
-      "innerR": 349500,
+      "innerR": 377963.7960116412,
       "outerR": 456500,
-      "density": 2,
+      "density": 3,
       "composition": {
         "iron": 0.45,
         "silicate": 0.35,
@@ -47,7 +47,7 @@ export const SECTOR_LAYOUT = {
       "id": "mid_mixed",
       "innerR": 586000,
       "outerR": 800000,
-      "density": 2.5,
+      "density": 5,
       "composition": {
         "iron": 0.2,
         "silicate": 0.25,
@@ -62,7 +62,7 @@ export const SECTOR_LAYOUT = {
       "id": "outer_ice",
       "innerR": 978500,
       "outerR": 1225500,
-      "density": 3,
+      "density": 8,
       "composition": {
         "iron": 0.08,
         "silicate": 0.12,
@@ -78,7 +78,7 @@ export const SECTOR_LAYOUT = {
     "minOrbitalSep": 150000,
     "minFringeFromRing": 270000,
     "referenceTransitSpeed": 900,
-    "softEdgeRadius": 750000,
+    "softEdgeRadius": 1726001,
     "siteExclusionRadius": 45000
   },
   "socialOrbitInner": {
@@ -406,11 +406,11 @@ export const SECTOR_LAYOUT = {
       "motion": "orbit",
       "trafficPolicy": "standard",
       "orbit": {
-        "orbitR": 348500,
+        "orbitR": 376963.7960116412,
         "orbitAngle0": 0,
-        "orbitOmega": 0.00652126845691739
+        "orbitOmega": 0.005796779613905466
       },
-      "x": 348500,
+      "x": 376963.7960116412,
       "y": 0,
       "pairId": "inner",
       "pairSide": "a",
@@ -424,12 +424,12 @@ export const SECTOR_LAYOUT = {
       "motion": "orbit",
       "trafficPolicy": "standard",
       "orbit": {
-        "orbitR": 348500,
+        "orbitR": 376963.7960116412,
         "orbitAngle0": 3.141592653589793,
-        "orbitOmega": 0.00652126845691739
+        "orbitOmega": 0.005796779613905466
       },
-      "x": -348500,
-      "y": 4.267894095028526e-11,
+      "x": -376963.7960116412,
+      "y": 4.616475061800922e-11,
       "pairId": "inner",
       "pairSide": "b",
       "pairTarget": "site.warp.ring.inner.a"
@@ -514,12 +514,12 @@ export const SECTOR_LAYOUT = {
       "motion": "orbit",
       "trafficPolicy": "standard",
       "orbit": {
-        "orbitR": 1726000,
+        "orbitR": 1726000.0000000002,
         "orbitAngle0": 0.12246105741734142,
-        "orbitOmega": 0.0005916638912831381
+        "orbitOmega": 0.0005916638912831379
       },
-      "x": 1713074.0048369276,
-      "y": 210839.8775183911,
+      "x": 1713074.0048369279,
+      "y": 210839.87751839112,
       "fringeClearance": 500500.00000000023
     },
     {
