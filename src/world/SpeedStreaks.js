@@ -33,8 +33,9 @@ export class SpeedStreaks {
 
     const spawnRate = speedRatio * 70 * spawnRateMult;
     if (Math.random() < spawnRate * deltaTime && this.streaks.length < maxStreaks) {
+      // Forward cone along velocity — streaks spawn ahead and stream aft past the ship
       const spawnSpread = Math.PI * 0.42;
-      const spawnAngle = streakAngle + (Math.random() - 0.5) * spawnSpread;
+      const spawnAngle = velAngle + (Math.random() - 0.5) * spawnSpread;
       const spawnDist = viewportRadius * (0.2 + Math.random() * 0.78);
 
       this.streaks.push({
