@@ -322,7 +322,7 @@ export const STATION = {
    */
   RUNWAY_LENGTH: 160 * STATION_SCALE,
   /** Safe approach speed — ship handling, not station scale */
-  DOCK_MAX_SPEED: 120,
+  DOCK_MAX_SPEED: 200,
   /** Hangar / quick-launch egress: station co-orbit + this much downstream REL V. */
   EXIT_REL_SPEED: 200,
   /** Seconds after egress before auto/manual dock is allowed (under-roof spawn). */

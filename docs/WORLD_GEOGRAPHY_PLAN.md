@@ -545,7 +545,7 @@ New module: [`src/world/GravitySystem.js`](src/world/GravitySystem.js)
 |-------------|--------|
 | **Player in gravity influence** | Uncapped — natural `v_circ`, gravity, and thrust define speed |
 | **Deep space (outside influence)** | Uncapped |
-| **Station dock approach** | [`STATION.DOCK_MAX_SPEED`](src/core/Constants.js) (120) — separate dock rule |
+| **Station dock approach** | [`STATION.DOCK_MAX_SPEED`](src/core/Constants.js) (200) — separate dock rule |
 | **NPC ambient traffic** | Own cruise caps / `NpcPilot` behavior |
 
 **Regulatory posted limits** (below) are separate — fines when witnessed, not a physics clamp.

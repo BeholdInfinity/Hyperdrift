@@ -391,7 +391,7 @@ export class GameEngine {
         this.ship.velocity.x,
         this.ship.velocity.y
       );
-      const score = Math.max(0, 100 * (1 - slip / 120));
+      const score = Math.max(0, 100 * (1 - slip / STATION.DOCK_MAX_SPEED));
       return {
         score,
         target: { vx: tvx, vy: tvy },

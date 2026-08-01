@@ -14,6 +14,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 - **Dev Ring Bands panel** — space overworld dev submenu: independent **background fill** and **band layer** controls (edge feather, α min/max, colors); **Save** persists tuning to `localStorage` (auto-loads on panel open); **Reset** clears saved tuning.
 
 ### Changed
+- **Station dock approach speed** — `STATION.DOCK_MAX_SPEED` raised from 120 → **200 u/s station-relative** (manual dock, auto-ingress, approach lights, occlusion hysteresis, SYNC match scoring).
 - **Ring backdrop (overworld)** — layered annulus fill: opaque dark-gray base (`RENDER.RING_BACKDROP_BASE`) plus shared sector-map band infill; each layer has its own edge feather and α min/max. Gated by `RENDER.RING_BACKDROP` (default off). Band layer α now scales directly per strip (fixes α max cliff from broken `destination-in` post-pass).
 
 ### Added
