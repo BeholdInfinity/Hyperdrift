@@ -515,23 +515,157 @@
     </div>
 
     <div id="controls-hud" class="hidden">
-      <div class="controls-banner">
-        <span class="controls-title">SETTINGS · CONTROLS</span>
-        <span class="controls-sub">Live ship sandbox — no world</span>
+      <div class="settings-shell" role="dialog" aria-labelledby="settings-heading" aria-modal="true">
+        <header class="settings-header">
+          <div class="settings-header-text">
+            <h1 id="settings-heading" class="settings-title">SETTINGS</h1>
+            <p class="settings-subtitle">Display, controls, and saved data</p>
+          </div>
+          <button id="settings-fullscreen-btn" class="settings-action-btn" type="button">Enter Fullscreen</button>
+        </header>
+
+        <div class="settings-body">
+          <nav class="settings-tabs" role="tablist" aria-label="Settings sections">
+            <button type="button" class="settings-tab active" data-tab="display" role="tab" aria-selected="true" aria-controls="settings-panel-display">Display</button>
+            <button type="button" class="settings-tab" data-tab="controls" role="tab" aria-selected="false" aria-controls="settings-panel-controls">Controls</button>
+            <button type="button" class="settings-tab" data-tab="data" role="tab" aria-selected="false" aria-controls="settings-panel-data">Data</button>
+            <button type="button" class="settings-tab settings-tab-dev" data-tab="developer" role="tab" aria-selected="false" aria-controls="settings-panel-developer">Developer</button>
+            <button type="button" class="settings-tab" data-tab="about" role="tab" aria-selected="false" aria-controls="settings-panel-about">About</button>
+          </nav>
+
+          <div class="settings-panels">
+            <section id="settings-panel-display" class="settings-panel active" data-panel="display" role="tabpanel">
+              <h2 class="settings-section-title">Display</h2>
+              <div class="settings-rows">
+                <label class="settings-row settings-toggle-row">
+                  <span class="settings-row-label">
+                    <span class="settings-row-name">Show FPS counter</span>
+                    <span class="settings-row-hint">Top-right frame rate during flight and hangar</span>
+                  </span>
+                  <input type="checkbox" class="settings-switch" id="show-fps-toggle" />
+                </label>
+                <div class="settings-row settings-row-action">
+                  <span class="settings-row-label">
+                    <span class="settings-row-name">Fullscreen</span>
+                    <span class="settings-row-hint">Borderless play — also in pause menu (ESC)</span>
+                  </span>
+                  <button type="button" id="settings-fullscreen-inline-btn" class="settings-inline-btn">Enter Fullscreen</button>
+                </div>
+              </div>
+            </section>
+
+            <section id="settings-panel-controls" class="settings-panel" data-panel="controls" role="tabpanel" hidden>
+              <h2 class="settings-section-title">Live preview</h2>
+              <div class="settings-rows">
+                <label class="settings-row settings-toggle-row">
+                  <span class="settings-row-label">
+                    <span class="settings-row-name">Sandbox ship</span>
+                    <span class="settings-row-hint">Opens a flyable preview beside this panel — try bindings while you read</span>
+                  </span>
+                  <input type="checkbox" class="settings-switch" id="controls-sandbox-toggle" checked />
+                </label>
+              </div>
+
+              <h2 class="settings-section-title">Flight</h2>
+              <div class="settings-bind-grid">
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span class="settings-bind-desc">Maneuvering thrusters</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>Q</kbd><kbd>E</kbd></span><span class="settings-bind-desc">Yaw left / right</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>Space</kbd></span><span class="settings-bind-desc">Main engine (strongest forward thrust)</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>Shift</kbd></span><span class="settings-bind-desc">Afterburner</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>Alt</kbd></span><span class="settings-bind-desc">Brakes — thruster pairs + retro-burn</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>Alt</kbd><span class="settings-bind-x">×2</span></span><span class="settings-bind-desc">Zero-hold latch when slow (&lt;100 u/s)</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>Caps</kbd></span><span class="settings-bind-desc">Precision mode — fine thrust authority</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>Scroll</kbd></span><span class="settings-bind-desc">Zoom viewport (or radar scope in SCAN view)</span></div>
+                <div class="settings-bind-row settings-bind-note"><span class="settings-bind-keys"><kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd></span><span class="settings-bind-desc">Double-tap then hold — burst maneuver / fast yaw</span></div>
+              </div>
+
+              <h2 class="settings-section-title">Combat</h2>
+              <div class="settings-bind-grid">
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>LMB</kbd></span><span class="settings-bind-desc">Dorsal turret — pointer must be inside viewport</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>RMB</kbd></span><span class="settings-bind-desc">Mining laser</span></div>
+              </div>
+
+              <h2 class="settings-section-title">Cockpit &amp; HUD</h2>
+              <div class="settings-bind-grid">
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>R</kbd></span><span class="settings-bind-desc">ORIENT — ship-up vs north-up</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>V</kbd></span><span class="settings-bind-desc">VIEW — ship viewport vs full-disc SCAN radar</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>LMB</kbd></span><span class="settings-bind-desc">Select radar blip or CONTACTS row</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>MMB</kbd></span><span class="settings-bind-desc">Select hull in viewport or add nav stop on map</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>ESC</kbd></span><span class="settings-bind-desc">Pause (in flight) or back to previous screen</span></div>
+              </div>
+
+              <h2 class="settings-section-title">Navigation &amp; Docking</h2>
+              <div class="settings-bind-grid">
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>Enter</kbd></span><span class="settings-bind-desc">Dock / engage holding pattern when HUD ready</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>Shift</kbd><kbd>LMB</kbd></span><span class="settings-bind-desc">Drop pin on sector map</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>RMB</kbd></span><span class="settings-bind-desc">Sector map context — pin, stop, or jump (Dev)</span></div>
+              </div>
+
+              <h2 class="settings-section-title">Hangar</h2>
+              <div class="settings-bind-grid">
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>LMB</kbd></span><span class="settings-bind-desc">Click ship to select · drag to pan camera</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>Scroll</kbd></span><span class="settings-bind-desc">Zoom hangar view</span></div>
+              </div>
+            </section>
+
+            <section id="settings-panel-data" class="settings-panel" data-panel="data" role="tabpanel" hidden>
+              <h2 class="settings-section-title">Saved data</h2>
+              <p class="settings-lead">Navigation profile is stored in this browser (POI book, travel log, pip loadouts, route queue).</p>
+              <div class="settings-rows">
+                <div class="settings-row settings-row-action settings-row-danger">
+                  <span class="settings-row-label">
+                    <span class="settings-row-name">Clear navigation data</span>
+                    <span class="settings-row-hint">Removes pins, logs, loadouts, and active route — cannot be undone</span>
+                  </span>
+                  <button type="button" id="settings-clear-nav-btn" class="settings-inline-btn settings-inline-btn-danger">Clear</button>
+                </div>
+              </div>
+              <p id="settings-data-status" class="settings-status" aria-live="polite"></p>
+            </section>
+
+            <section id="settings-panel-developer" class="settings-panel" data-panel="developer" role="tabpanel" hidden>
+              <h2 class="settings-section-title">Developer tools</h2>
+              <p class="settings-lead">Prototype tuning — off for a cleaner play-through.</p>
+              <div class="settings-rows">
+                <label class="settings-row settings-toggle-row">
+                  <span class="settings-row-label">
+                    <span class="settings-row-name">Dev Mode</span>
+                    <span class="settings-row-hint">Dev drawer (<kbd>`</kbd>), hangar edit, Blueprint Author, sector map editor</span>
+                  </span>
+                  <input type="checkbox" class="settings-switch" id="dev-mode-toggle" />
+                </label>
+              </div>
+            </section>
+
+            <section id="settings-panel-about" class="settings-panel" data-panel="about" role="tabpanel" hidden>
+              <h2 class="settings-section-title">Hyperdrift</h2>
+              <p class="settings-about-tagline">Browser prototype for <em>Stranger in the Galaxy</em></p>
+              <dl class="settings-about-meta">
+                <div class="settings-about-row">
+                  <dt>Version</dt>
+                  <dd id="settings-version">—</dd>
+                </div>
+                <div class="settings-about-row">
+                  <dt>Build</dt>
+                  <dd id="settings-build-stamp">—</dd>
+                </div>
+              </dl>
+              <div class="settings-about-actions">
+                <button type="button" id="settings-changelog-btn" class="settings-inline-btn">View changelog</button>
+              </div>
+            </section>
+          </div>
+        </div>
+
+        <footer class="settings-footer">
+          <p class="settings-footer-hint"><kbd>ESC</kbd> back</p>
+          <button id="controls-back-btn" class="menu-btn panel-btn" type="button">Back</button>
+        </footer>
       </div>
-      <div class="controls-panel">
-        <p><kbd>WASD</kbd> Thrust · double-tap hold = burst</p>
-        <p><kbd>Q</kbd>/<kbd>E</kbd> Yaw · double-tap hold = fast</p>
-        <p><kbd>SPACE</kbd> Main engine &nbsp; <kbd>SHIFT</kbd> Afterburner &nbsp; <kbd>ALT</kbd> Brakes</p>
-        <p><kbd>CAPS</kbd> Precision &nbsp; <kbd>LMB</kbd> Turret &nbsp; <kbd>RMB</kbd> Mining laser</p>
-        <p><kbd>SCROLL</kbd> Zoom &nbsp; <kbd>ESC</kbd> Back</p>
-        <label class="settings-toggle">
-          <input type="checkbox" id="dev-mode-toggle" />
-          <span>Dev Mode</span>
-        </label>
-        <p class="settings-toggle-hint">Dev drawer (`), hangar edit, Blueprint Author (mounts / Save)</p>
-      </div>
-      <button id="controls-back-btn" class="menu-btn panel-btn" type="button">Back</button>
+    </div>
+    <div id="settings-sandbox-speed" class="settings-sandbox-speed hidden" aria-live="polite">
+      <span class="settings-sandbox-speed-label">SPD</span>
+      <span id="settings-sandbox-speed-value" class="settings-sandbox-speed-value">0</span>
     </div>
 
     <button id="dock-hud" class="hidden" type="button">APPROACH BAY MOUTH · SLOW TO DOCK</button>
@@ -688,6 +822,7 @@
       }
 
       window.__hyperdriftCloseChangelog = closeChangelog;
+      window.__hyperdriftOpenChangelog = openChangelog;
 
       if (changelogBtn) {
         changelogBtn.addEventListener('click', function (e) {

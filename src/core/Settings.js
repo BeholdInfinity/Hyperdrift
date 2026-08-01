@@ -7,6 +7,10 @@ const STORAGE_KEY = 'hyperdrift.settings';
 const DEFAULTS = {
   /** Dev tools: hangar service reroll, sim speed, Blueprint sandbox. Default on for now. */
   devMode: true,
+  /** Frame-rate readout (top-right during play). */
+  showFps: true,
+  /** Live ship sandbox beside Controls tab in Settings. */
+  controlsSandbox: true,
 };
 
 function load() {
@@ -51,5 +55,21 @@ export const Settings = {
 
   setDevMode(on) {
     return this.set('devMode', !!on);
+  },
+
+  isShowFps() {
+    return _state.showFps !== false;
+  },
+
+  setShowFps(on) {
+    return this.set('showFps', !!on);
+  },
+
+  isControlsSandbox() {
+    return _state.controlsSandbox !== false;
+  },
+
+  setControlsSandbox(on) {
+    return this.set('controlsSandbox', !!on);
   },
 };

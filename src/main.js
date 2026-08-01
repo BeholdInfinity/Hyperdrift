@@ -1,6 +1,7 @@
 import { GameEngine } from './core/GameEngine.js';
 import { ringAt, getSectorLayout } from './world/SectorLayout.js';
 import { Settings } from './core/Settings.js';
+import { VERSION } from './version.js';
 import { RADAR, PIPS, WORLD } from './core/Constants.js';
 import { DevTools } from './dev/DevTools.js';
 import { migrateLegacyDevBakesFromStorage } from './dev/DevConfigBake.js';
@@ -99,6 +100,20 @@ const sectorEditorBackBtn = document.getElementById('sector-editor-back-btn');
 const controlsBackBtn = document.getElementById('controls-back-btn');
 const blueprintBackBtn = document.getElementById('blueprint-back-btn');
 const devModeToggle = document.getElementById('dev-mode-toggle');
+const showFpsToggle = document.getElementById('show-fps-toggle');
+const settingsFullscreenBtn = document.getElementById('settings-fullscreen-btn');
+const settingsFullscreenInlineBtn = document.getElementById('settings-fullscreen-inline-btn');
+const settingsClearNavBtn = document.getElementById('settings-clear-nav-btn');
+const settingsDataStatus = document.getElementById('settings-data-status');
+const settingsVersionEl = document.getElementById('settings-version');
+const settingsBuildStampEl = document.getElementById('settings-build-stamp');
+const settingsChangelogBtn = document.getElementById('settings-changelog-btn');
+const controlsSandboxToggle = document.getElementById('controls-sandbox-toggle');
+const settingsTabs = document.querySelectorAll('.settings-tab');
+const settingsPanels = document.querySelectorAll('.settings-panel');
+const fpsCounter = document.getElementById('fps-counter');
+/** @type {string} */
+let activeSettingsTab = 'display';
 const hud = document.getElementById('hud');
 const overlay = document.getElementById('overlay');
 const cornerUi = document.getElementById('corner-ui');
@@ -206,6 +221,106 @@ function syncDevModeUi() {
     syncBayOptionsPanelContent();
   }
   syncBpAuthorSliders();
+}
+
+function syncFpsCounterVisibility() {
+  if (!fpsCounter) return;
+  fpsCounter.classList.toggle('hidden', !Settings.isShowFps());
+}
+
+function syncSettingsAbout() {
+  if (settingsVersionEl) settingsVersionEl.textContent = `v${VERSION}`;
+  if (settingsBuildStampEl) {
+    const stamp = document.getElementById('build-stamp');
+    settingsBuildStampEl.textContent = stamp?.textContent?.replace(/^v[\d.]+\s·\s/, '') || '—';
+  }
+}
+
+function activateSettingsTab(tabId) {
+  activeSettingsTab = tabId;
+  settingsTabs.forEach((tab) => {
+    const active = tab.dataset.tab === tabId;
+    tab.classList.toggle('active', active);
+    tab.setAttribute('aria-selected', active ? 'true' : 'false');
+  });
+  settingsPanels.forEach((panel) => {
+    const active = panel.dataset.panel === tabId;
+    panel.classList.toggle('active', active);
+    panel.hidden = !active;
+  });
+  syncSettingsSandbox();
+}
+
+function getActiveSettingsTab() {
+  return activeSettingsTab;
+}
+
+function syncSettingsSandbox() {
+  const onControlsTab = getActiveSettingsTab() === 'controls';
+  const prefOn = Settings.isControlsSandbox();
+  if (controlsSandboxToggle) controlsSandboxToggle.checked = prefOn;
+  const wantSandbox = onControlsTab && prefOn;
+  if (engine?.mode === 'settings') {
+    engine.setSettingsSandbox(wantSandbox);
+  }
+  controlsHud?.classList.toggle('has-sandbox-dock', wantSandbox);
+}
+
+function syncSettingsUi() {
+  if (showFpsToggle) showFpsToggle.checked = Settings.isShowFps();
+  syncFpsCounterVisibility();
+  syncSettingsAbout();
+  syncSettingsSandbox();
+  engine?._updateFullscreenButtons(!!document.fullscreenElement);
+}
+
+function wireSettingsPanel() {
+  settingsTabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      if (tab.dataset.tab) activateSettingsTab(tab.dataset.tab);
+    });
+  });
+
+  if (showFpsToggle) {
+    showFpsToggle.addEventListener('change', () => {
+      Settings.setShowFps(showFpsToggle.checked);
+      syncFpsCounterVisibility();
+    });
+  }
+
+  if (controlsSandboxToggle) {
+    controlsSandboxToggle.addEventListener('change', () => {
+      Settings.setControlsSandbox(controlsSandboxToggle.checked);
+      syncSettingsSandbox();
+    });
+  }
+
+  const toggleSettingsFullscreen = () => engine?.toggleFullscreen();
+  settingsFullscreenBtn?.addEventListener('click', toggleSettingsFullscreen);
+  settingsFullscreenInlineBtn?.addEventListener('click', toggleSettingsFullscreen);
+
+  settingsClearNavBtn?.addEventListener('click', () => {
+    if (
+      !window.confirm(
+        'Clear all navigation data?\n\nPOI pins, travel log, pip loadouts, route queue, and traffic fines will be reset.'
+      )
+    ) {
+      return;
+    }
+    engine?.resetNavProfile();
+    if (settingsDataStatus) {
+      settingsDataStatus.textContent = 'Navigation data cleared.';
+      window.setTimeout(() => {
+        if (settingsDataStatus) settingsDataStatus.textContent = '';
+      }, 4000);
+    }
+  });
+
+  settingsChangelogBtn?.addEventListener('click', () => {
+    if (typeof window.__hyperdriftOpenChangelog === 'function') {
+      window.__hyperdriftOpenChangelog();
+    }
+  });
 }
 
 /** @deprecated use syncContext via syncDevModeUi */
@@ -1004,6 +1119,7 @@ function showControlsUi() {
   if (controlsHud) controlsHud.classList.remove('hidden');
   if (dockHud) dockHud.classList.add('hidden');
   syncDevModeUi();
+  syncSettingsUi();
 }
 
 function showSectorEditorUi() {
@@ -1084,7 +1200,9 @@ function leaveHangar() {
 
 function openSettings(from = 'title') {
   showControlsUi();
-  engine.beginControls(from === 'pause' ? 'pause' : 'title');
+  activateSettingsTab('display');
+  engine.beginSettings(from === 'pause' ? 'pause' : 'title');
+  syncSettingsUi();
 }
 
 function openBlueprint(from = 'title') {
@@ -1129,9 +1247,10 @@ engine.onEnterHangar = () => {
   showHangarUi();
 };
 
-engine.onControlsExit = (dest) => {
+engine.onSettingsExit = (dest) => {
   leaveControls(dest);
 };
+engine.onControlsExit = engine.onSettingsExit;
 
 engine.onBlueprintEnter = () => {
   syncBlueprintUi();
@@ -1178,9 +1297,11 @@ if (devModeToggle) {
     syncDevModeUi();
   });
 }
+wireSettingsPanel();
+syncSettingsUi();
 if (controlsBackBtn) {
   controlsBackBtn.addEventListener('click', () => {
-    const dest = engine.exitControls();
+    const dest = engine.exitSettings();
     leaveControls(dest);
   });
 }
@@ -1308,6 +1429,9 @@ if (smeLayoutCopy) {
 window.addEventListener('resize', () => {
   if (engine.mode === 'blueprint') syncBlueprintLayoutVars();
   if (engine.mode === 'sectorEditor') syncSectorEditorLayoutVars();
+  if (engine.mode === 'settings' && engine._settingsSandboxActive) {
+    engine._syncSandboxSpeedHud(engine._sandboxShip?.velocity?.length?.() ?? 0);
+  }
 });
 
 const bpViewBtn = document.getElementById('bp-view-btn');

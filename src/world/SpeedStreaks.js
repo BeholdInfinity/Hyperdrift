@@ -29,13 +29,13 @@ export class SpeedStreaks {
 
     const velAngle = Math.atan2(shipVelocity.y, shipVelocity.x);
     const streakAngle = velAngle + Math.PI;
-    // Screen px/sec — scales with perceived speed, not world units under zoom
     const streakSpeed = (140 + speedRatio * 420) * (0.85 + Math.random() * 0.3);
 
     const spawnRate = speedRatio * 70 * spawnRateMult;
     if (Math.random() < spawnRate * deltaTime && this.streaks.length < maxStreaks) {
-      const spawnDist = viewportRadius * (0.08 + Math.random() * 0.92);
-      const spawnAngle = Math.random() * Math.PI * 2;
+      const spawnSpread = Math.PI * 0.42;
+      const spawnAngle = streakAngle + (Math.random() - 0.5) * spawnSpread;
+      const spawnDist = viewportRadius * (0.2 + Math.random() * 0.78);
 
       this.streaks.push({
         x: Math.cos(spawnAngle) * spawnDist,

@@ -20,12 +20,14 @@ export class Renderer {
     /** Largest 16:9 cockpit content box; {x,y,w,h} or null outside space mode. */
     this.hudRect = null;
     this.time = 0;
-    /** @type {'default'|'blueprint'} */
+    /** @type {'default'|'blueprint'|'settings'} */
     this.layoutMode = 'default';
   }
 
   setLayoutMode(mode) {
-    this.layoutMode = mode === 'blueprint' ? 'blueprint' : 'default';
+    const next =
+      mode === 'blueprint' ? 'blueprint' : mode === 'settings' ? 'settings' : 'default';
+    this.layoutMode = next;
     if (this.width && this.height) this.resize();
   }
 
@@ -39,6 +41,20 @@ export class Renderer {
     if (this.layoutMode === 'blueprint') {
       this.centerY = this.height * BLUEPRINT.VIEW_CENTER_Y;
       this.viewportRadius = (minDim / 2) * BLUEPRINT.VIEW_RADIUS_FRAC;
+      this.radarBand = 0;
+      this.radarOuterRadius = this.viewportRadius;
+      this.poiOuterRadius = this.viewportRadius;
+      this.hudRect = null;
+    } else if (this.layoutMode === 'settings') {
+      const panelReserve = Math.min(720, Math.max(450, this.width * 0.69));
+      const rightW = Math.max(160, this.width - panelReserve);
+      const pad = 28;
+      this.centerX = panelReserve + rightW * 0.5;
+      this.centerY = this.height * 0.5;
+      this.viewportRadius = Math.max(
+        80,
+        Math.min((rightW - pad * 2) * 0.5, (this.height - pad * 2) * 0.5)
+      );
       this.radarBand = 0;
       this.radarOuterRadius = this.viewportRadius;
       this.poiOuterRadius = this.viewportRadius;

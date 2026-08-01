@@ -19,10 +19,11 @@ const MODE_TO_CONTEXT = {
   sectorEditor: 'sectorEditor',
   blueprint: null,
   controls: null,
+  settings: null,
 };
 
 /** Modes where the entire dev drawer is hidden. */
-export const DEV_DRAWER_HIDDEN_MODES = new Set(['blueprint', 'controls']);
+export const DEV_DRAWER_HIDDEN_MODES = new Set(['blueprint', 'settings']);
 
 /**
  * @typedef {{ id: string, label: string, panelId?: string, action?: string }} DevLauncher

@@ -153,7 +153,7 @@ src/
 - **Plume flow** (`computePlumeFlow`) — leading cue/wash + crosswind lean from relative wind (`−velocity`); trailing stretch; ship-local particles on the player, world-space on visitors/ambient
 - **Modular ships** — `src/ships/`: swap groups, full section/item ID matrix (parametric), `createPlayerStarter()`, shared `ShipRenderer` (top-down + 16 angled views)
 - **Mk2+ vessel interiors** — Place graph + simBindings (hull/fuel/ammo); enter when player-manned (space/hangar/unseat); crew ticks logistics in background; interior hull heal clamps to scar ceiling; exterior pad restore clears scars. Walker TBD (`shipInterior` mode).
-- **Modes** — `title` (bokeh Jennings vignette + wordmark/ship), `playing` (flight), `hangar` (active Place hangar), `controls` (ship-only settings sandbox), `blueprint`
+- **Modes** — `title` (bokeh Jennings vignette + wordmark/ship), `playing` (flight), `hangar` (active Place hangar), `settings` (tabbed settings overlay; optional Controls sandbox), `blueprint`
 - **Future modes (vision)** — `shipInterior` / `derelict` (shared 2.5D walker), `dialogue` (portrait overlay); see [`VISION.md`](VISION.md) Presentation Layers
 - **Future-ready** for multiple ships, AI, trading, mining, missions, Home Base launch/extract, narrative runtime, networking, save/load
 
@@ -177,7 +177,7 @@ src/
 | Jennings Station overworld exterior + dock prompt (4× scale via `STATION.SCALE`) | Done |
 | All 12 Thera orbital stations in overworld + dockable Jennings-clone interiors (`StationField`) | Done |
 | Ambient space traffic (modular; police pack near station; thruster `NpcPilot`; police hex + racetrack hold) | Done (v0.1.275) |
-| Settings controls sandbox (ship-only viewport) | Done |
+| Settings (tabbed: Display, Controls + optional flight sandbox, Data, Developer, About) | Done |
 | Blueprint (player Upgrade UI + Dev Author) | Done — always available; Dev Mode adds mount drag / tuning Save |
 | Dev Mode drawer + hangar layout editor + bake-back | Done (v0.1.159); Bay Options panel (v0.1.160); bay unit spacing drag (v0.1.173); unified prop categories (v0.1.174); **Title Layout** panel (v0.1.243) |
 | Procedural asteroids + nebulae | Done |
@@ -400,11 +400,11 @@ Cosmetic / lower priority:
 - Asteroids destroy but don't fragment into smaller pieces yet
 - No fuel consumption on afterburner
 - Comms panel HAIL/DOCK/TRADE still no-ops (other cockpit panels live)
-- Settings beyond controls sandbox (audio/graphics bindings)
+- Audio/graphics bindings in Settings (beyond FPS + fullscreen)
 
 ## Dev Mode + Blueprint + Hangar editor
 
-**Dev Mode** (Settings toggle, default on): floating **DEV** button (` key) opens a **compact launcher**; each entry opens a **draggable sub-menu popup** scoped to context — **Title:** Title Layout, **Depth**, Sim, Inspect, AI Traffic; **Hangar:** Sim, Inspect, Overlays, Hangar (edit / Bay Options / Place), Vessel; **Space:** Sim, Inspect, Overlays, Radar, **Depth**, Ring Bands, Map Editor entry; **Sector Map Editor:** DEV button stays visible (collapsed on entry), **Sim** speed only. **Vessel** is hangar-only (Mk2+ interior + hull-scar dev shortcuts). Sim toolbar: **−** (÷2), pause, play (resume or reset 1×), **+** (×2), editable multiplier field. Popups cascade below the launcher (spill to column 2 when needed); positions persist in `localStorage`. Closing the dev menu hides popups without clearing open state. **Hidden** in Blueprint and Settings controls — those modes use their own side docks (`bp-author-card`, `#sector-editor-hud`). Bake via `POST /dev/save` (allowlisted paths) or clipboard Export. See `src/dev/DevMenu.js`.
+**Dev Mode** (Settings → Developer tab, default on): floating **DEV** button (` key) opens a **compact launcher**; each entry opens a **draggable sub-menu popup** scoped to context — **Title:** Title Layout, **Depth**, Sim, Inspect, AI Traffic; **Hangar:** Sim, Inspect, Overlays, Hangar (edit / Bay Options / Place), Vessel; **Space:** Sim, Inspect, Overlays, Radar, **Depth**, Ring Bands, Map Editor entry; **Sector Map Editor:** DEV button stays visible (collapsed on entry), **Sim** speed only. **Vessel** is hangar-only (Mk2+ interior + hull-scar dev shortcuts). Sim toolbar: **−** (÷2), pause, play (resume or reset 1×), **+** (×2), editable multiplier field. Popups cascade below the launcher (spill to column 2 when needed); positions persist in `localStorage`. Closing the dev menu hides popups without clearing open state. **Hidden** in Blueprint and Settings — those modes use their own side docks (`bp-author-card`, `#sector-editor-hud`, `#controls-hud`). Bake via `POST /dev/save` (allowlisted paths) or clipboard Export. See `src/dev/DevMenu.js`.
 
 **Data files (machine-editable):**
 - `src/world/data/sectorLayout.js` — Thera geography (sector map editor Save)

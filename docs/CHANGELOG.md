@@ -10,6 +10,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 - **Crane during player bay ops** — player arrival and departure no longer freeze the gantry; the crane keeps working other bays and only diverts away from the active pad (same as visitor ops).
 
 ### Added
+- **Settings controls sandbox** — wired like real flight: ship-up view rotation, full camera (lead offset + speed zoom), depth compositor parallax, forward-cone speed streaks; no gravity/world entities. SPD readout top-right outside viewport.
 - **DepthCompositor + dev Depth panel** — single signed-depth stack for all space ambience (7 star layers, 3 ambient nebula, 3 Nebula Stream depth layers, speed streaks, optional dust). Each layer box has one **Brightness** slider (stars included); legacy alpha fields migrate on load. Negative depth = behind ship, 0 = playable band, positive = in front. Dev **Depth** submenu (space + title): per-layer controls; **Add dust layer**; **Save** bakes to `src/world/data/depthCompositor.js`; **Reset** restores code defaults (Save to write).
 - **Dev Ring Bands panel** — space overworld dev submenu: independent **background fill** and **band layer** controls (edge feather, α min/max, colors); **Save** bakes to `src/world/data/ringBackdrop.js`; **Reset** restores code defaults (Save to write).
 

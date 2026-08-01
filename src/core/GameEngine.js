@@ -18,10 +18,10 @@ import { PipSystem } from '../systems/PipSystem.js';
 import { PipLoadouts } from '../systems/PipLoadouts.js';
 import { processPipLoadoutModalInput } from '../systems/PipLoadoutPanel.js';
 import { processSectorMapModalInput, processPoiBookModalInput } from '../systems/SectorMapPanel.js';
-import { PoiSystem } from '../world/PoiSystem.js';
+import { PoiSystem, setPoiIdCounter } from '../world/PoiSystem.js';
 import { SectorMap, trailDistance } from '../world/SectorMap.js';
 import { TravelLog } from '../world/TravelLog.js';
-import { loadNavProfile, saveNavProfile } from '../world/NavPersistence.js';
+import { loadNavProfile, saveNavProfile, clearNavProfileStorage } from '../world/NavPersistence.js';
 import { bootstrapSectorWorld, syncStationAnchor, syncStationToPlace } from '../world/SectorBootstrap.js';
 import { StationField, DEFAULT_BAY_SIGNALS } from '../world/StationField.js';
 import { finiteGameTime, circularOrbitVelocityAtWorld } from '../world/OrbitKinematics.js';
@@ -136,7 +136,7 @@ export class GameEngine {
     this.canvas = canvas;
     this.running = false;
     this.paused = false;
-    /** @type {'title'|'playing'|'hangar'|'controls'|'blueprint'|'sectorEditor'} */
+    /** @type {'title'|'playing'|'hangar'|'settings'|'blueprint'|'sectorEditor'} */
     this.mode = 'title';
     this.lastTime = 0;
 
@@ -291,7 +291,8 @@ export class GameEngine {
     /** gameTime until egress grace ends (blocks dock after hangar/quick launch). */
     this._exitIngressBlockedUntil = 0;
     this._dockLocked = true;
-    this._controlsReturn = 'title';
+    this._settingsReturn = 'title';
+    this._settingsSandboxActive = false;
     this._dockPrompt = false;
     this._dockKeyHeld = false;
     /**
@@ -319,6 +320,8 @@ export class GameEngine {
     this._hudPrecision = document.getElementById('precision-value');
     this._hudHangarZoom = document.getElementById('hangar-zoom-value');
     this._fpsCounter = document.getElementById('fps-counter');
+    this._sandboxSpeedHud = document.getElementById('settings-sandbox-speed');
+    this._sandboxSpeedValue = document.getElementById('settings-sandbox-speed-value');
     this._fpsFrames = 0;
     this._fpsAccumMs = 0;
     this._fpsLastTs = 0;
@@ -376,6 +379,25 @@ export class GameEngine {
       navRoute: this.navRoute.exportForSave(),
       trafficRecord: this.trafficRecord.toJSON(),
     });
+  }
+
+  /** Wipe browser nav save and restore layout-default POIs + default pip loadout. */
+  resetNavProfile() {
+    clearNavProfileStorage();
+    this.nextExpeditionId = 1;
+    this.travelLog.fromJSON({ nextId: 1, entries: [] });
+    this.navRoute.clearAll();
+    this.pipLoadouts.fromJSON(null);
+    this.pipLoadouts.entries = [];
+    this.pipLoadouts._nextId = 1;
+    this.pipLoadouts.activeId = null;
+    this.pipLoadouts.seedDefaultIfEmpty();
+    this.trafficRecord = new TrafficRecord();
+    this.trafficEnforcement = new TrafficEnforcement(this.trafficRecord);
+    setPoiIdCounter(1);
+    this.poiSystem.bootstrapFromLayout(getSectorLayout());
+    this.persistNavProfile();
+    return true;
   }
 
   _computeSyncAssist() {
@@ -1296,13 +1318,10 @@ export class GameEngine {
     this._enterTitleSim({ fadeIn: false });
   }
 
-  /** Controls sandbox — ship only, no world. */
-  beginControls(returnTo = 'title') {
-    if (this.mode === 'playing' && this.paused) {
-      this.paused = false;
-      if (this._pauseMenu) this._pauseMenu.classList.add('hidden');
-    }
-    this._controlsReturn = returnTo;
+  /** Settings overlay — optional live controls sandbox on Controls tab only. */
+  beginSettings(returnTo = 'title') {
+    this._stopSettingsSandbox();
+    this._settingsReturn = returnTo;
     this._savedCam = {
       x: this.camera.position.x,
       y: this.camera.position.y,
@@ -1311,30 +1330,89 @@ export class GameEngine {
       speedZoom: this.camera.speedZoom,
       effectiveZoom: this.camera.effectiveZoom,
     };
-    this._sandboxShip = new Ship(0, 0);
-    this.precisionActive = false;
-    this.mode = 'controls';
-    this.input.enable();
-    this.input.paused = false;
-    this.camera.position.set(0, 0);
-    this.camera.offset.set(0, 0);
-    this.camera.userZoom = 2.4;
-    this.camera.targetUserZoom = 2.4;
-    this.camera.speedZoom = 1;
-    this.camera.effectiveZoom = 2.4;
-    this._setTitleFade(1);
-    this.canvas.style.opacity = '1';
+    this.mode = 'settings';
+    this.renderer.setLayoutMode('default');
+    if (returnTo === 'pause') {
+      this.paused = true;
+      this.input.paused = true;
+      this.input.disable();
+      this.canvas.style.opacity = '1';
+    } else {
+      if (this._pauseMenu) this._pauseMenu.classList.add('hidden');
+      this.input.disable();
+      this.paused = false;
+      this._setTitleFade(1);
+      this.canvas.style.opacity = '1';
+    }
     if (this._controlsHud) this._controlsHud.classList.remove('hidden');
     if (this._hangarHud) this._hangarHud.classList.add('hidden');
     this._setLaunchBtnVisible(false);
     this._setDockHud(false);
   }
 
-  exitControls() {
-    if (this.mode !== 'controls') return;
+  /** Live ship sandbox beside the Controls tab. */
+  setSettingsSandbox(active) {
+    const want = !!active;
+    if (want === this._settingsSandboxActive) return want;
+    if (want) this._startSettingsSandbox();
+    else this._stopSettingsSandbox();
+    return this._settingsSandboxActive;
+  }
+
+  _startSettingsSandbox() {
+    if (this.mode !== 'settings' || this._settingsSandboxActive) return;
+    this._sandboxShip = new Ship(0, 0);
+    this._sandboxShip.affectedByGravity = false;
+    this.precisionActive = false;
+    this.entityManager.clear();
+    this.particleSystem.clear();
+    this.input.enable();
+    this.input.paused = false;
+    this.camera.position.set(0, 0);
+    this.camera.offset.set(0, 0);
+    this.camera.targetOffset.set(0, 0);
+    this.camera.rotation = 0;
+    this.camera.userZoom = 1;
+    this.camera.targetUserZoom = 1;
+    this.camera.speedZoom = 1;
+    this.camera.effectiveZoom = 1;
+    this.renderer.setLayoutMode('settings');
+    this._settingsSandboxActive = true;
+    if (this._sandboxSpeedHud) this._sandboxSpeedHud.classList.remove('hidden');
+  }
+
+  _stopSettingsSandbox() {
+    if (!this._settingsSandboxActive && !this._sandboxShip) return;
     this._sandboxShip = null;
+    this._settingsSandboxActive = false;
+    this.entityManager.clear();
+    this.particleSystem.clear();
+    this.camera.offset.set(0, 0);
+    this.camera.targetOffset.set(0, 0);
+    this.camera.rotation = 0;
+    if (this._sandboxSpeedHud) this._sandboxSpeedHud.classList.add('hidden');
+    this.camera.rotation = 0;
+    if (this._sandboxSpeedHud) this._sandboxSpeedHud.classList.add('hidden');
+    if (this.mode === 'settings') {
+      this.input.disable();
+      this.input.paused = this._settingsReturn === 'pause';
+      this.renderer.setLayoutMode('default');
+      if (this._settingsReturn === 'pause' && this._savedCam) {
+        this.camera.position.set(this._savedCam.x, this._savedCam.y);
+        this.camera.userZoom = this._savedCam.userZoom;
+        this.camera.targetUserZoom = this._savedCam.targetUserZoom;
+        this.camera.speedZoom = this._savedCam.speedZoom;
+        this.camera.effectiveZoom = this._savedCam.effectiveZoom;
+        this.camera.offset.set(0, 0);
+      }
+    }
+  }
+
+  exitSettings() {
+    if (this.mode !== 'settings') return;
+    this._stopSettingsSandbox();
     if (this._controlsHud) this._controlsHud.classList.add('hidden');
-    const ret = this._controlsReturn;
+    const ret = this._settingsReturn;
     if (ret === 'pause' && this.ship) {
       this.mode = 'playing';
       this.paused = true;
@@ -1357,6 +1435,16 @@ export class GameEngine {
     this._titleHasDrawn = true;
     this._enterTitleSim({ fadeIn: false });
     return 'title';
+  }
+
+  /** @deprecated use beginSettings */
+  beginControls(returnTo = 'title') {
+    this.beginSettings(returnTo);
+  }
+
+  /** @deprecated use exitSettings */
+  exitControls() {
+    return this.exitSettings();
   }
 
   /**
@@ -1871,6 +1959,10 @@ export class GameEngine {
     const label = isFullscreen ? 'Exit Fullscreen' : 'Enter Fullscreen';
     if (this._fullscreenBtn) this._fullscreenBtn.textContent = label;
     if (this._pauseFullscreenBtn) this._pauseFullscreenBtn.textContent = label;
+    for (const id of ['settings-fullscreen-btn', 'settings-fullscreen-inline-btn']) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = label;
+    }
   }
 
   requestLaunch() {
@@ -2242,9 +2334,9 @@ export class GameEngine {
           this.exitHangar();
           if (typeof this.onHangarExit === 'function') this.onHangarExit();
         }
-      } else if (this.mode === 'controls' && this.input.consumePauseToggle()) {
-        const dest = this.exitControls();
-        if (typeof this.onControlsExit === 'function') this.onControlsExit(dest);
+      } else if (this.mode === 'settings' && this.input.consumePauseToggle()) {
+        const dest = this.exitSettings();
+        if (typeof this.onSettingsExit === 'function') this.onSettingsExit(dest);
       } else if (this.mode === 'blueprint' && this.input.consumePauseToggle()) {
         const dest = this.exitBlueprint();
         if (typeof this.onBlueprintExit === 'function') this.onBlueprintExit(dest);
@@ -2260,6 +2352,15 @@ export class GameEngine {
         this._lastFrameDt = deltaTime;
         this.gameTime += deltaTime;
         this._updateTitle(deltaTime);
+      } else if (
+        this.mode === 'settings' &&
+        !this._settingsSandboxActive &&
+        this._settingsReturn !== 'pause'
+      ) {
+        const deltaTime = Math.min(rawDt, 0.05);
+        this._lastFrameDt = deltaTime;
+        this.gameTime += deltaTime;
+        this._updateTitle(deltaTime);
       } else if (!this.paused && speed > 0) {
         const deltaTime = Math.min(rawDt * speed, 0.05 * Math.max(1, speed));
         if (!Number.isFinite(this.gameTime)) {
@@ -2269,7 +2370,7 @@ export class GameEngine {
         if (!Number.isFinite(this.gameTime)) this.gameTime = 0;
         if (this.mode === 'hangar') {
           this._updateHangar(deltaTime);
-        } else if (this.mode === 'controls') {
+        } else if (this.mode === 'settings' && this._settingsSandboxActive) {
           this._updateControls(deltaTime);
         } else if (this.mode === 'blueprint') {
           this._updateBlueprint(deltaTime);
@@ -3301,18 +3402,48 @@ export class GameEngine {
     );
 
     this.shipController.update(ship, this.input, this.precisionActive, deltaTime);
-    ship.position.x += (0 - ship.position.x) * Math.min(1, deltaTime * 0.15);
-    ship.position.y += (0 - ship.position.y) * Math.min(1, deltaTime * 0.15);
 
     this.weaponSystem.update(ship, this.input, aimWorld, pointerInViewport, [], deltaTime, {
       gravityEnabled: false,
       consumeAmmo: false,
     });
+    ship.update(deltaTime);
     this.entityManager.update(deltaTime);
     this.particleSystem.update(deltaTime);
 
-    this.camera.update(ship.position, ship.velocity, deltaTime, this.renderer.viewportRadius, zoomWheel);
+    this._applyViewRotation(ship);
+    this.camera.update(
+      ship.position,
+      ship.velocity,
+      deltaTime,
+      this.renderer.viewportRadius,
+      zoomWheel
+    );
+
+    const speed = ship.velocity.length();
+    this.depthCompositor.update(deltaTime, {
+      shipVelocity: { x: ship.velocity.x, y: ship.velocity.y },
+      shipSpeed: speed,
+      viewportRadius: this.renderer.viewportRadius,
+    });
+
     this.renderer.emitThrusterParticles(ship, this.particleSystem);
+    this._syncSandboxSpeedHud(speed);
+  }
+
+  _syncSandboxSpeedHud(speed = 0) {
+    if (!this._settingsSandboxActive) return;
+    if (this._sandboxSpeedValue) {
+      this._sandboxSpeedValue.textContent = String(Math.round(speed));
+    }
+    if (!this._sandboxSpeedHud) return;
+    const r = this.renderer;
+    if (!r?.width) return;
+    const pad = 10;
+    const left = r.centerX + r.viewportRadius + pad;
+    const top = r.centerY - r.viewportRadius + pad;
+    this._sandboxSpeedHud.style.left = `${left}px`;
+    this._sandboxSpeedHud.style.top = `${top}px`;
   }
 
   _updateBlueprint(deltaTime) {
@@ -3350,6 +3481,7 @@ export class GameEngine {
         gravityEnabled: false,
         consumeAmmo: false,
       });
+      ship.update(deltaTime);
       this.entityManager.update(deltaTime);
       this.particleSystem.update(deltaTime);
       this.renderer.emitThrusterParticles(ship, this.particleSystem);
@@ -3966,15 +4098,38 @@ export class GameEngine {
       return;
     }
 
+    if (this.mode === 'settings') {
+      if (this._settingsSandboxActive) {
+        this.renderer.beginFrame();
+        this._renderControls();
+        return;
+      }
+      if (this._settingsReturn === 'pause' && this.ship) {
+        this.renderer.beginFrame();
+        this._renderPlayingCockpit();
+        return;
+      }
+      this._blitTitleDofBackdrop();
+      {
+        const spacer = document.getElementById('title-art-spacer');
+        const r = spacer?.getBoundingClientRect?.();
+        const rect = r
+          ? { x: r.left, y: r.top, width: r.width, height: r.height }
+          : null;
+        this.titleScreen.render(
+          this.renderer.ctx,
+          rect,
+          this.gameTime,
+          this._lastFrameDt
+        );
+      }
+      return;
+    }
+
     this.renderer.beginFrame();
 
     if (this.mode === 'hangar') {
       this._renderHangar();
-      return;
-    }
-
-    if (this.mode === 'controls') {
-      this._renderControls();
       return;
     }
 
@@ -3994,34 +4149,41 @@ export class GameEngine {
     if (playerDead && !hudBursting) {
       this._renderDeathView();
     } else {
-      this.renderer.setupCircularClip();
-      if (this.scanView === 'scan') this._renderScanBackdrop();
-      else this._renderPlayWorld();
-      this.renderer.endCircularClip();
-
-      this._renderRadar();
-      this._renderViewportTelemetry();
-      this.cockpitFrame.render(this.renderer.ctx, this.renderer);
-      this.cockpitFrame.drawPoiDots(
-        this.renderer.ctx,
-        this.renderer,
-        this.poiSystem,
-        this.ship,
-        this.camera.rotation || 0,
-        this.gameTime || 0
-      );
-      this.cockpitFrame.drawNavRouteDot(
-        this.renderer.ctx,
-        this.renderer,
-        this.navRoute,
-        this.ship,
-        this,
-        this.camera.rotation || 0
-      );
-      this.cockpitPanels.render(this.renderer.ctx, this);
-      this._renderCornerReadouts();
-      if (hudBursting) this.combat.renderHudBurst(this.renderer.ctx);
+      this._renderPlayingCockpit();
     }
+  }
+
+  /** Normal in-flight cockpit frame (also used frozen behind Settings from pause). */
+  _renderPlayingCockpit() {
+    const hudBursting = this.combat.hudBursting(this.ship);
+
+    this.renderer.setupCircularClip();
+    if (this.scanView === 'scan') this._renderScanBackdrop();
+    else this._renderPlayWorld();
+    this.renderer.endCircularClip();
+
+    this._renderRadar();
+    this._renderViewportTelemetry();
+    this.cockpitFrame.render(this.renderer.ctx, this.renderer);
+    this.cockpitFrame.drawPoiDots(
+      this.renderer.ctx,
+      this.renderer,
+      this.poiSystem,
+      this.ship,
+      this.camera.rotation || 0,
+      this.gameTime || 0
+    );
+    this.cockpitFrame.drawNavRouteDot(
+      this.renderer.ctx,
+      this.renderer,
+      this.navRoute,
+      this.ship,
+      this,
+      this.camera.rotation || 0
+    );
+    this.cockpitPanels.render(this.renderer.ctx, this);
+    this._renderCornerReadouts();
+    if (hudBursting) this.combat.renderHudBurst(this.renderer.ctx);
   }
 
   /** Full-window space view after the HUD breakup — wreck + traffic, no cockpit chrome. */
@@ -4277,12 +4439,14 @@ export class GameEngine {
    * Apply the pilot view lock to the camera. World-locked keeps rotation at 0
    * (ship spins inside a fixed world); ship-locked counter-rotates the world so
    * the hull always points screen-up, matching the spawn pose.
+   * @param {import('../entities/Ship.js').Ship|null} [ship]
    */
-  _applyViewRotation() {
-    if (this.viewMode === 'ship' && this.ship) {
-      const angle = this.combat.playerDead(this.ship)
-        ? (this.combat.getWreckCameraPose(this.ship)?.angle ?? this.ship.angle)
-        : this.ship.angle;
+  _applyViewRotation(ship = this.ship) {
+    if (this.viewMode === 'ship' && ship) {
+      const angle =
+        ship === this.ship && this.combat.playerDead(this.ship)
+          ? (this.combat.getWreckCameraPose(this.ship)?.angle ?? ship.angle)
+          : ship.angle;
       this.camera.rotation = -Math.PI / 2 - angle;
     } else {
       this.camera.rotation = 0;
@@ -4477,35 +4641,17 @@ export class GameEngine {
 
   _renderControls() {
     this.renderer.setupCircularClip();
-    const ctx = this.renderer.ctx;
-    ctx.fillStyle = '#050810';
-    ctx.fillRect(
-      this.renderer.centerX - this.renderer.viewportRadius,
-      this.renderer.centerY - this.renderer.viewportRadius,
-      this.renderer.viewportRadius * 2,
-      this.renderer.viewportRadius * 2
+    this._renderBackground({ fullscreen: false });
+
+    this.depthCompositor.paintAtPlayable(
+      this.renderer.ctx,
+      this._depthPaintParams(false)
     );
 
-    const g = ctx.createRadialGradient(
-      this.renderer.centerX,
-      this.renderer.centerY,
-      20,
-      this.renderer.centerX,
-      this.renderer.centerY,
-      this.renderer.viewportRadius
-    );
-    g.addColorStop(0, 'rgba(20, 40, 60, 0.5)');
-    g.addColorStop(1, 'rgba(0, 0, 0, 0)');
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(
-      this.renderer.centerX,
-      this.renderer.centerY,
-      this.renderer.viewportRadius,
-      0,
-      Math.PI * 2
-    );
-    ctx.fill();
+    const ship = this._sandboxShip;
+    if (ship) {
+      this.renderer.renderShip(ship, this.camera);
+    }
 
     this.renderer.renderProjectiles(
       this.entityManager.getByType('projectile'),
@@ -4514,12 +4660,15 @@ export class GameEngine {
     this.renderer.renderParticles(
       this.particleSystem.particles,
       this.camera,
-      this._sandboxShip
+      ship
     );
-    if (this._sandboxShip) {
-      this.renderer.renderShip(this._sandboxShip, this.camera);
-    }
+
+    this.depthCompositor.paintAbovePlayable(
+      this.renderer.ctx,
+      this._depthPaintParams(false)
+    );
     this.renderer.endCircularClip();
+    this._syncSandboxSpeedHud(ship?.velocity?.length?.() ?? 0);
   }
 
   _renderBlueprint() {

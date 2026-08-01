@@ -19,6 +19,15 @@ export function loadNavProfile() {
   }
 }
 
+export function clearNavProfileStorage() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function saveNavProfile({
   pois,
   travelLog,

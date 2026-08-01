@@ -369,7 +369,7 @@ The title screen is the player's **resume surface**. The game **save point** is 
 | Title screen | Bokeh-blurred live space sim backdrop + *Stranger in the Galaxy* wordmark over 2.5D showcase ship (GALAXY nebula windows; STRANGER bronze plate windows via `src/textures/strangerBronzePlate.js` + letter-masked metal kiss); ENTER HANGAR / QUICK LAUNCH enter hangar / space immediately; SETTINGS / BLUEPRINT (industrial plate buttons); build stamp + Changelog; Dev **` key** launcher → **Title Layout** popup tunes camera/type/ship/menu/bokeh and bakes to disk. **Planned:** backdrop = last docked port; ship = last piloted hull (see above) | Done (personalization planned) |
 | Home Base hangar (Jennings Station) | Docked bay + launch/land; industrial set; danger lights; B1–B3 captain checklists | Done (player-request queue later) |
 | Jennings Station (overworld) | Industrial exterior (~4× hull); approach lights + Enter / auto edge dock | Done |
-| Settings / controls | Ship-only sandbox viewport with live bindings | Done |
+| Settings | Tabbed panel: Display (FPS, fullscreen), Controls reference + optional live sandbox dock (checkbox, default on), Data (clear nav profile), Developer (dev mode), About (version + changelog). Title or paused-game backdrop on non-Controls tabs | Done |
 | Top-left | (reserved) | Placeholder |
 | Top-right | Ship Status (systems/fuel/weapons stub) + FPS counter | Partial |
 | Bottom-left | Weapons | Placeholder |
