@@ -58,6 +58,19 @@ import {
   formatSectorLayoutModule,
 } from './dev/DevSectorEditor.js';
 import { selectSite } from './dev/SectorMapEditor.js';
+import {
+  addRing,
+  addShepherdMoon,
+  addAsteroidField,
+  setMoonRadius,
+  deleteRing,
+  setOrbitLock,
+  isOrbitLocked,
+  listRingGaps,
+  addSubBelt,
+  updateSubBelt,
+  removeSubBelt,
+} from './dev/SectorEditorGeography.js';
 import { saveToRepo, exportToClipboard, SAVE_PATHS } from './dev/DevSave.js';
 import {
   saveDevPanelPositions,
@@ -730,9 +743,45 @@ function syncSectorEditorHud() {
 
   tierFields?.classList.toggle('hidden', !tier);
   ringFields?.classList.toggle('hidden', !ring);
+  const subBeltFields = document.getElementById('sme-subbelt-fields');
+  subBeltFields?.classList.toggle('hidden', !ring);
+  const subBeltList = document.getElementById('sme-subbelt-list');
+  if (subBeltList) {
+    subBeltList.innerHTML = '';
+    if (ring) {
+      for (const sb of ring.subBelts ?? []) {
+        const row = document.createElement('div');
+        row.className = 'sme-subbelt-row';
+        row.dataset.subBeltId = sb.id;
+        const ice = Math.round((sb.composition?.ice ?? 0) * 100);
+        const iron = Math.round((sb.composition?.iron ?? 0) * 100);
+        row.innerHTML = `
+          <span class="bp-meta">${sb.id}</span>
+          <label class="sme-field">t0 <input type="number" data-field="t0" class="dev-num-input" step="0.05" min="0" max="1" value="${sb.t0 ?? 0}" /></label>
+          <label class="sme-field">t1 <input type="number" data-field="t1" class="dev-num-input" step="0.05" min="0" max="1" value="${sb.t1 ?? 1}" /></label>
+          <label class="sme-field">ice% <input type="number" data-field="ice" class="dev-num-input" step="5" min="0" max="100" value="${ice}" /></label>
+          <label class="sme-field">iron% <input type="number" data-field="iron" class="dev-num-input" step="5" min="0" max="100" value="${iron}" /></label>
+          <button type="button" class="bp-action bp-warn sme-subbelt-del" data-sub-belt-id="${sb.id}">Del</button>
+        `;
+        subBeltList.appendChild(row);
+      }
+    }
+  }
   orbitFields?.classList.toggle('hidden', !site?.orbit);
   surfaceFields?.classList.toggle('hidden', !(site?.kind === 'planetary' || site?.motion === 'surface'));
   staticFields?.classList.toggle('hidden', !(site?.motion === 'static' && !site?.orbit));
+  const moonFields = document.getElementById('sme-moon-fields');
+  moonFields?.classList.toggle('hidden', site?.kind !== 'shepherd_moon');
+  const delRingBtn = document.getElementById('sme-delete-ring');
+  delRingBtn?.classList.toggle('hidden', !ring);
+  const orbitLockEl = document.getElementById('sme-orbit-lock');
+  if (orbitLockEl && document.activeElement !== orbitLockEl) {
+    orbitLockEl.checked = isOrbitLocked();
+  }
+  if (site?.kind === 'shepherd_moon') {
+    const moonR = document.getElementById('sme-moon-radius');
+    if (moonR && document.activeElement !== moonR) moonR.value = String(Math.round(site.radius ?? 8000));
+  }
 
   const statsTitle = document.getElementById('sme-orbit-stats-title');
   const statsR = document.getElementById('sme-orbit-radius');
@@ -1734,6 +1783,107 @@ document.getElementById('sme-planet-r')?.addEventListener('input', (e) => {
 
 document.getElementById('sme-traffic-preview')?.addEventListener('change', (e) => {
   sectorEditorUI.showTrafficPreview = !!e.target.checked;
+  syncSectorEditorHud();
+});
+
+document.getElementById('sme-orbit-lock')?.addEventListener('change', (e) => {
+  setOrbitLock(!!e.target.checked);
+  syncSectorEditorHud();
+});
+
+document.getElementById('sme-add-ring')?.addEventListener('click', () => {
+  const ring = addRing();
+  if (ring) {
+    selectRing(ring.id);
+    syncSectorEditorHud();
+  }
+});
+
+document.getElementById('sme-delete-ring')?.addEventListener('click', () => {
+  const ring = getSelectedRing();
+  if (!ring) return;
+  if (!window.confirm(`Delete ring "${ring.id}"?`)) return;
+  deleteRing(ring.id);
+  syncSectorEditorHud();
+});
+
+document.getElementById('sme-add-moon')?.addEventListener('click', () => {
+  const gaps = listRingGaps();
+  if (!gaps.length) {
+    window.alert('Need at least two rings to place a shepherd moon in a gap.');
+    return;
+  }
+  const moon = addShepherdMoon(0);
+  if (moon) {
+    selectSite(moon.id, engine);
+    syncSectorEditorHud();
+  }
+});
+
+document.getElementById('sme-add-field')?.addEventListener('click', () => {
+  const layout = getSectorLayout();
+  const rings = layout.rings ?? [];
+  const ring = getSelectedRing() || rings.find((r) => r.id === 'mid_mixed') || rings[0];
+  if (!ring) return;
+  const midR = (ring.innerR + ring.outerR) * 0.5;
+  const ang = Math.random() * Math.PI * 2;
+  const field = addAsteroidField(Math.cos(ang) * midR, Math.sin(ang) * midR, {
+    name: 'Asteroid Cluster',
+    rockCount: 10,
+  });
+  if (field) {
+    selectSite(field.id, engine);
+    syncSectorEditorHud();
+  }
+});
+
+wireSmeField('sme-moon-radius', (v) => {
+  const site = getSelectedSite();
+  if (!site || site.kind !== 'shepherd_moon') return;
+  setMoonRadius(site.id, v);
+});
+
+document.getElementById('sme-add-subbelt')?.addEventListener('click', () => {
+  const ring = getSelectedRing();
+  if (!ring) return;
+  addSubBelt(ring.id);
+  syncSectorEditorHud();
+});
+
+document.getElementById('sme-subbelt-list')?.addEventListener('change', (e) => {
+  const input = e.target;
+  if (!(input instanceof HTMLInputElement)) return;
+  const row = input.closest('.sme-subbelt-row');
+  const ring = getSelectedRing();
+  if (!row || !ring) return;
+  const subId = row.dataset.subBeltId;
+  const field = input.dataset.field;
+  const v = Number(input.value);
+  if (field === 't0' || field === 't1') {
+    updateSubBelt(ring.id, subId, { [field]: v });
+  } else if (field === 'ice' || field === 'iron') {
+    const iceIn = row.querySelector('input[data-field="ice"]');
+    const ironIn = row.querySelector('input[data-field="iron"]');
+    const ice = Math.max(0, Number(iceIn?.value) || 0) / 100;
+    const iron = Math.max(0, Number(ironIn?.value) || 0) / 100;
+    const rest = Math.max(0, 1 - ice - iron);
+    updateSubBelt(ring.id, subId, {
+      composition: {
+        ice,
+        iron,
+        silicate: rest > 0 ? rest : 0.01,
+      },
+    });
+  }
+  syncSectorEditorHud();
+});
+
+document.getElementById('sme-subbelt-list')?.addEventListener('click', (e) => {
+  const btn = e.target.closest?.('.sme-subbelt-del');
+  if (!btn) return;
+  const ring = getSelectedRing();
+  if (!ring) return;
+  removeSubBelt(ring.id, btn.dataset.subBeltId);
   syncSectorEditorHud();
 });
 document.getElementById('sme-tier-bands')?.addEventListener('change', (e) => {

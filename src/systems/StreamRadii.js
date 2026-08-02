@@ -19,6 +19,15 @@ export function streamSpawnBudget() {
   return WORLD.STREAM_SPAWN_BUDGET ?? 100;
 }
 
+/** Raise outer-shell budget when catalog materialize is behind (speed-independent density). */
+export function streamSpawnBudgetForBacklog(backlog) {
+  const base = streamSpawnBudget();
+  const max = WORLD.STREAM_SPAWN_BUDGET_MAX ?? 400;
+  const frames = Math.max(1, WORLD.STREAM_SPAWN_CATCHUP_FRAMES ?? 3);
+  const catchup = Math.ceil(Math.max(0, backlog) / frames);
+  return Math.min(max, Math.max(base, catchup));
+}
+
 export function distWorld(ax, ay, bx, by) {
   return Math.hypot(ax - bx, ay - by);
 }

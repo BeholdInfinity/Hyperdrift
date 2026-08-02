@@ -29,7 +29,12 @@ import { WarpGateSystem } from '../world/WarpGateSystem.js';
 import { TrafficRecord } from '../world/TrafficRecord.js';
 import { TrafficEnforcement } from '../world/TrafficEnforcement.js';
 import { drawRingBackdrop } from '../world/RingBackdrop.js';
-import { getSiteById, getSectorLayout, siteWorldPosition } from '../world/SectorLayout.js';
+import {
+  getSiteById,
+  getSectorLayout,
+  siteWorldPosition,
+  listSites,
+} from '../world/SectorLayout.js';
 import { NavRoute } from '../world/NavRoute.js';
 import { SectorMapView } from '../systems/SectorMapView.js';
 import { drawSectorEditorFrame, processSectorEditorInput } from '../systems/SectorEditorPanel.js';
@@ -4285,6 +4290,17 @@ export class GameEngine {
         });
       }, this.camera);
     }
+
+    const shepherdMoons = [];
+    for (const site of listSites('shepherd_moon')) {
+      const pos = siteWorldPosition(site, this.gameTime);
+      shepherdMoons.push({
+        x: pos.x,
+        y: pos.y,
+        radius: site.radius ?? 8000,
+      });
+    }
+    this.renderer.renderShepherdMoons(shepherdMoons, this.camera);
 
     this.renderer.renderAsteroids(
       this._frameAsteroids || this.asteroidSystem.getActiveAsteroids(),

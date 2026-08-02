@@ -6,13 +6,17 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Added
+- **Belt asteroid permanence + taxonomy** — catalogs store permanent `orbitR` / `orbitAngle0`; view-priority fill + backlog catch-up for speed-independent density; proc rocks follow `RingBeltVisual` sub-bands; seven size tiers with gen-time capacity/composition/`lootSeed`; mining shrink by tier; ammo ~25% yield (`AsteroidCatalog.js`).
+- **Hero asteroid fields** — charted `asteroid_field` POIs (seeded Iron Needle Cluster); `HeroFieldStream` + envelope suppress of proc rocks; Large/Very Large reserved for heroes.
+- **Fourth ring + shepherd moons** — `fringe_ice` annulus; three gap moons (charted POIs + flight discs); mid-belt example `subBelts` composition pockets.
+- **Sector editor geography** — Orbit lock (t=0); Add ring / moon / field / Delete ring; moon radius; sub-belt inspector on selected ring (`SectorEditorGeography.js`).
+- **Settings controls sandbox** — wired like real flight: ship-up view rotation, full camera (lead offset + speed zoom), depth compositor parallax, forward-cone speed streaks; no gravity/world entities. SPD readout top-right outside viewport.
+
 ### Fixed
 - **Speed streaks spawn cone** — forward-cone streaks were spawning on the aft (`vel + π`) axis instead of along velocity, so they only appeared behind the ship; spawn angle now uses the velocity heading so streaks rush past from ahead.
 - **Crane during player bay ops** — player arrival and departure no longer freeze the gantry; the crane keeps working other bays and only diverts away from the active pad (same as visitor ops).
-- **Belt asteroid clumping on speed/zoom changes** — per-frame spawn budget (100/frame), time-phased shell materialize, ring-detection hysteresis, visual-radius spawn shell (rocks enter viewport; 250 km retention unchanged), viewport-centered render cull; dev jump fill also budget-limited. Residual speed-linked density may remain at extreme cruise.
-
-### Added
-- **Settings controls sandbox** — wired like real flight: ship-up view rotation, full camera (lead offset + speed zoom), depth compositor parallax, forward-cone speed streaks; no gravity/world entities. SPD readout top-right outside viewport.
+- **Belt asteroid clumping on speed/zoom changes** — per-frame spawn budget (100/frame), time-phased shell materialize, ring-detection hysteresis, visual-radius spawn shell (rocks enter viewport; 250 km retention unchanged), viewport-centered render cull; view-priority backlog catch-up further reduces speed-linked density.
 - **DepthCompositor + dev Depth panel** — single signed-depth stack for all space ambience (7 star layers, 3 ambient nebula, 3 Nebula Stream depth layers, speed streaks, optional dust). Each layer box has one **Brightness** slider (stars included); legacy alpha fields migrate on load. Negative depth = behind ship, 0 = playable band, positive = in front. Dev **Depth** submenu (space + title): per-layer controls; **Add dust layer**; **Save** bakes to `src/world/data/depthCompositor.js`; **Reset** restores code defaults (Save to write).
 - **Dev Ring Bands panel** — space overworld dev submenu: independent **background fill** and **band layer** controls (edge feather, α min/max, colors); **Save** bakes to `src/world/data/ringBackdrop.js`; **Reset** restores code defaults (Save to write).
 

@@ -131,6 +131,11 @@ function getBandModel(ring) {
   return model;
 }
 
+/** Shared Saturn-style sub-bands — visuals + belt asteroid density use the same model. */
+export function getRingBandModel(ring) {
+  return getBandModel(ring);
+}
+
 function clipAnnulus(ctx, cx, cy, innerPx, outerPx) {
   ctx.beginPath();
   ctx.arc(cx, cy, outerPx, 0, Math.PI * 2);

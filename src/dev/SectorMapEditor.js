@@ -23,6 +23,7 @@ import {
   isSiteListFilterActive,
   TIER_DISPLAY_NAMES,
 } from './DevSectorEditor.js';
+import { editorMapTime } from './SectorEditorGeography.js';
 import {
   getSectorLayout,
   listSites,
@@ -165,7 +166,7 @@ function ringEdgeAtScreen(sx, sy, ring, mapBox, view, layout = getSectorLayout()
 
 export function pickSiteAtScreen(engine, sx, sy, mapBox, view) {
   const w = view.screenToWorld(sx, sy, mapBox);
-  return pickSiteAtWorld(w.x, w.y, view, getSectorLayout(), engine.gameTime || 0);
+  return pickSiteAtWorld(w.x, w.y, view, getSectorLayout(), editorMapTime(engine));
 }
 
 function applySiteWorldPosition(site, wx, wy, layout, shiftKey) {
@@ -218,7 +219,7 @@ export function selectSite(siteId, engine = null) {
   if (view && siteId) {
     const site = getSectorLayout().sites?.find((s) => s.id === siteId);
     if (site) {
-      const pos = siteWorldXY(site, getSectorLayout(), engine?.gameTime || 0);
+      const pos = siteWorldXY(site, getSectorLayout(), editorMapTime(engine));
       view.followShip = false;
       view.panCenter.x = pos.x;
       view.panCenter.y = pos.y;
@@ -237,7 +238,7 @@ export function beginEditorPointer(engine, sx, sy, mapBox, view) {
 
   const layout = getSectorLayout();
   const site =
-    pickSiteAtScreenEditor(sx, sy, mapBox, view, engine.gameTime || 0) ??
+    pickSiteAtScreenEditor(sx, sy, mapBox, view, editorMapTime(engine)) ??
     pickSiteAtScreen(engine, sx, sy, mapBox, view);
   if (site) {
     _drag.siteId = site.id;
@@ -368,11 +369,11 @@ export function sectorEditorBlocksMapClick() {
   return isSectorEditorActive();
 }
 
-export function drawSectorEditorOverlay(ctx, mapBox, engine, view) {
+export function drawSectorEditorOverlay(ctx, mapBox, engine, view, mapTime = null) {
   if (!isSectorEditorActive()) return;
   const layout = getSectorLayout();
   const scale = view.scaleForBox(mapBox.w, mapBox.h);
-  const t = engine.gameTime || 0;
+  const t = mapTime != null ? mapTime : editorMapTime(engine);
   const ps = planetScreenCenter(view, mapBox, layout);
 
   ctx.save();
@@ -467,9 +468,24 @@ export function drawSectorEditorOverlay(ctx, mapBox, engine, view) {
     const s = view.worldToScreen(pos.x, pos.y, mapBox);
     const selected = site.id === sectorEditorUI.selectedSiteId;
     const fade = isSiteListFilterActive() ? mapFilterFadeAlpha('site', site) : 1;
-    const r = selected ? 7 : site.kind === 'station' ? 4.5 : 3.5;
+    let r = selected ? 7 : site.kind === 'station' ? 4.5 : 3.5;
+    if (site.kind === 'shepherd_moon') {
+      r = Math.max(selected ? 6 : 4, (site.radius ?? 8000) * scale * 0.35);
+    } else if (site.kind === 'asteroid_field') {
+      r = selected ? 8 : 5.5;
+    }
     ctx.globalAlpha = selected ? 1 : fade;
-    ctx.fillStyle = tierColor(site.socialTier || site.kind, selected ? 0.95 : 0.75);
+    if (site.kind === 'shepherd_moon') {
+      ctx.fillStyle = selected
+        ? 'rgba(210, 200, 180, 0.95)'
+        : 'rgba(180, 170, 150, 0.8)';
+    } else if (site.kind === 'asteroid_field') {
+      ctx.fillStyle = selected
+        ? 'rgba(220, 180, 90, 0.95)'
+        : 'rgba(200, 160, 70, 0.75)';
+    } else {
+      ctx.fillStyle = tierColor(site.socialTier || site.kind, selected ? 0.95 : 0.75);
+    }
     ctx.beginPath();
     ctx.arc(s.x, s.y, r, 0, TAU);
     ctx.fill();
@@ -477,7 +493,7 @@ export function drawSectorEditorOverlay(ctx, mapBox, engine, view) {
       ctx.strokeStyle = ACCENT;
       ctx.lineWidth = 1.5;
       ctx.beginPath();
-      ctx.arc(s.x, s.y, 11, 0, TAU);
+      ctx.arc(s.x, s.y, Math.max(11, r + 4), 0, TAU);
       ctx.stroke();
     }
     ctx.globalAlpha = 1;

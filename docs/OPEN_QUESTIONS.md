@@ -209,7 +209,7 @@ Hangar pad status boards still show display Mk stubs; modular catalog now define
 
 ## 9. Prototype sector map & harvesting (direction set — details TBD)
 
-**Direction (2026-07):** Play space is the bounded **Thera system** — **Therissa Prime** (short **Thera**) at Planet Center `(0,0)`, three asteroid ring bands, 12 outlaw-country orbital stations (Jennings + clones), five planetary surface sites, six ring warp gates, and deep fringe stubs. Authored in `src/world/data/sectorLayout.js` v2; bootstrapped via `SectorBootstrap.js`. Sector Map shows rotating planet/rings with fog-tier brightness; proc gen respects site exclusion zones and ring **composition** tags. Mining/harvest loop still prototype — `Asteroid.composition` is scaffold only.
+**Direction (2026-07 / updated 2026-08):** Play space is the bounded **Thera system** — **Therissa Prime** (short **Thera**) at Planet Center `(0,0)`, **four** asteroid ring bands + shepherd moons + hero fields, 12 outlaw-country orbital stations (Jennings + clones), five planetary surface sites, six ring warp gates, and deep fringe stubs. Authored in `src/world/data/sectorLayout.js` v2; bootstrapped via `SectorBootstrap.js`. Proc belts use visual sub-band density + ring/`subBelts` composition; capacity/taxonomy shipped (drop economy still stub).
 
 | # | Question | Status |
 |---|----------|--------|
@@ -217,19 +217,17 @@ Hangar pad status boards still show display Mk stubs; modular catalog now define
 | 9.2 | Water-from-ice: cargo unit, consumable, or station commodity first? | Open — ties ice-rich outer rings to gameplay |
 | 9.3 | Full **Dev sector editor** (ring handles, POI drag, composition sliders) vs drawer-only? | **Partial (2026-07-25):** map editor MVP shipped — drag sites on LIVE sector map, site picker, tier/traffic overlays, live validator, bake; ring-handle drag + undo still open (`stage-2-editor-advanced`) |
 
-### 9.4 Asteroid streaming, clumping, and hero fields *(2026-08)*
+### 9.4 Asteroid streaming, taxonomy, and hero fields *(2026-08)*
 
-**Partial fix (2026-08-01):** Belt clumping on speed/zoom changes reduced via per-frame spawn budget (`STREAM_SPAWN_BUDGET`), time-phased shell materialize, ring-detection hysteresis, visual-radius spawn shell (250 km retention unchanged), viewport-centered render cull. **Residual:** slight speed-linked density at extreme cruise — acceptable for now.
-
-**Still open:** **Hybrid world** — **hand-authored hero asteroid sites** plus plentiful proc filler. Catalogs stay deterministic; hero layer needs sector editor or bake schema.
+**Resolved (2026-08):** Hybrid belts shipped — permanent orbital catalogs, speed-independent view fill, band-driven proc density, rock taxonomy (`AsteroidCatalog.js`), hero `asteroid_field` POIs + envelope suppress, shepherd moons in ring gaps, fourth ring (`fringe_ice`), sector editor Orbit lock / Add ring|moon|field / sub-belt pockets.
 
 | # | Question | Status |
 |---|----------|--------|
-| 9.4.1 | Hero field authoring — sector editor placement vs hand-edited bake file? | Open |
-| 9.4.2 | Hero vs proc priority when culling / radar cap (`MAX_CONTACTS`)? | Open |
-| 9.4.3 | Should hero rocks respawn after destruction or stay gone like proc session persistence? | Open |
+| 9.4.1 | Hero field authoring — sector editor placement vs hand-edited bake file? | **Resolved:** both — editor **Add field** + bake to `sectorLayout.js` (seeded `site.asteroid.mid.cluster_a`) |
+| 9.4.2 | Hero vs proc priority when culling / radar cap (`MAX_CONTACTS`)? | Open — envelope suppress shipped; radar cap priority TBD |
+| 9.4.3 | Should hero rocks respawn after destruction or stay gone like proc session persistence? | **Resolved (default):** session-destroy like proc (`destroyedRockIds`); campaign respawn later |
 
-**Touch (shipped):** `StreamRadii.js`, `BeltStream.js`, `OpenSpaceStream.js`, `AsteroidSystem.js`, `GameEngine._asteroidStreamOpts`, `Renderer.renderAsteroids`. **Future hero:** `sectorLayout.js` + dev editor.
+**Deferred:** impact damage / deflection, full drop tables + science UI, laser Mk curve polish, N-body shepherds.
 
 ---
 

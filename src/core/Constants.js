@@ -108,8 +108,12 @@ export const WORLD = {
   STREAM_SPAWN_RADIUS: 30000,
   /** Drop live rocks beyond this; never while d <= viewRadius. */
   STREAM_DESPAWN_RADIUS: 36000,
-  /** Max new proc rocks materialized per frame (belt + open combined per stream). */
+  /** Baseline max new proc rocks materialized per frame (outer shell). */
   STREAM_SPAWN_BUDGET: 100,
+  /** Catch up spawn backlog over this many frames when density falls behind. */
+  STREAM_SPAWN_CATCHUP_FRAMES: 3,
+  /** Hard ceiling on per-frame spawns during backlog catch-up. */
+  STREAM_SPAWN_BUDGET_MAX: 400,
   /** Belt angular sector arc length at player radius (world u). */
   BELT_SECTOR_ARC: 1200,
   /** Open-space sparse field cell size (world u). */

@@ -450,6 +450,13 @@
           <h3 class="bp-card-title">Overlays</h3>
           <label class="dev-check"><input type="checkbox" id="sme-traffic-preview" checked /> Traffic shells</label>
           <label class="dev-check"><input type="checkbox" id="sme-tier-bands" /> Social tier bands</label>
+          <label class="dev-check"><input type="checkbox" id="sme-orbit-lock" checked /> Orbit lock (t=0)</label>
+          <div class="sme-geo-actions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+            <button type="button" class="bp-action" id="sme-add-ring">Add ring</button>
+            <button type="button" class="bp-action" id="sme-add-moon">Add moon</button>
+            <button type="button" class="bp-action" id="sme-add-field">Add field</button>
+            <button type="button" class="bp-action bp-warn hidden" id="sme-delete-ring">Delete ring</button>
+          </div>
         </section>
         <section class="bp-card sme-validator-card">
           <h3 class="bp-card-title">Validator <span class="bp-card-hint" id="sme-validator-status">—</span></h3>
@@ -486,10 +493,18 @@
                 <label class="sme-field">Width <input type="number" id="sme-ring-width" class="dev-num-input" step="1000" min="5000" /></label>
                 <label class="sme-field">Density <input type="number" id="sme-ring-density" class="dev-num-input" step="0.05" min="0" max="3" /></label>
               </div>
+              <div class="sme-field-row hidden" id="sme-subbelt-fields">
+                <p class="bp-meta sme-sel-line">Sub-belts (composition pockets)</p>
+                <div id="sme-subbelt-list" class="sme-subbelt-list"></div>
+                <button type="button" class="bp-action" id="sme-add-subbelt">Add sub-belt</button>
+              </div>
               <div class="sme-field-row hidden" id="sme-orbit-fields">
                 <label class="sme-field">Orbit R <input type="number" id="sme-orbit-r" class="dev-num-input" step="1000" /></label>
                 <label class="sme-field">Angle° <input type="number" id="sme-orbit-angle" class="dev-num-input" step="1" /></label>
                 <label class="sme-field hidden">Fringe clearance <input type="number" id="sme-fringe-clearance" class="dev-num-input" step="1000" min="0" /></label>
+              </div>
+              <div class="sme-field-row hidden" id="sme-moon-fields">
+                <label class="sme-field">Moon radius <input type="number" id="sme-moon-radius" class="dev-num-input" step="500" min="500" /></label>
               </div>
               <div class="sme-field-row hidden" id="sme-surface-fields">
                 <label class="sme-field">Surface° <input type="number" id="sme-surface-angle" class="dev-num-input" step="1" /></label>

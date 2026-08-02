@@ -82,7 +82,7 @@ These were agreed in discussion **after** the initial plan draft and must stay i
 
 - **Planet:** **Therissa Prime** (official) · **Thera** (short). World `(0, 0)` = **Planet Center** on Thera (2D top-down map origin + gravity anchor), not Jennings.
 - **Planet spin:** The planet body rotates **once every 30 game-hours** (`108,000` s at 1× `gameTime`). Rings, belts, and orbital mechanics stay in the **inertial** frame around Planet Center; only the disc + **surface-fixed** sites co-rotate.
-- **One bounded system — the Thera system** — Therissa Prime + asteroid rings + populated orbital shell + deep-space fringe (not infinite void).
+- **One bounded system — the Thera system** — Therissa Prime + **four** asteroid rings (`inner_ore` → `fringe_ice`) + shepherd moons in gaps + hero `asteroid_field` POIs + populated orbital shell + deep-space fringe (not infinite void).
 - **17 major sites:**
   - **5 planetary landing spots** (surface/outpost — future on-foot or landing sequences): farm, industrial, cosmetics city, rebuild farm, trading port — themed names in roster below.
   - **12 orbital stations** (open space, **not on ring bands**): **Jennings + 11 Jennings-clone ports** with **Outlaw Country 80s–90s** names (structural clones; balance/traffic fine-tuned later).
@@ -337,11 +337,11 @@ New module: [`src/world/SectorBootstrap.js`](src/world/SectorBootstrap.js)
 
 ## Proc gen and traffic adjustments
 
-**Asteroids** ([`AsteroidSystem.js`](src/systems/AsteroidSystem.js) + [`BeltStream.js`](src/systems/BeltStream.js) / [`OpenSpaceStream.js`](src/systems/OpenSpaceStream.js)):
-- Ring-weighted composition via [`SectorLayout.js`](src/world/SectorLayout.js)
-- Site **exclusion zones** (no asteroids within N units of stations/gates)
-- `isInsidePlayableSector()` expands to ~750k u radius; outside = no proc spawn (soft edge)
-- **Shipped:** ring-sector streaming — belt angular sectors + open-space field cells; live position from `orbitR` / `orbitAngle0` + `simTime`; retention-radius materialize/despawn
+**Asteroids** ([`AsteroidSystem.js`](src/systems/AsteroidSystem.js) + [`BeltStream.js`](src/systems/BeltStream.js) / [`HeroFieldStream.js`](src/systems/HeroFieldStream.js) / [`OpenSpaceStream.js`](src/systems/OpenSpaceStream.js)):
+- Ring + `subBelts` composition via [`AsteroidCatalog.js`](src/systems/AsteroidCatalog.js); density from shared [`RingBeltVisual`](src/world/RingBeltVisual.js) bands
+- Site **exclusion zones** (stations/gates/moons; hero fields use envelope suppress instead of holes)
+- Soft edge from layout hydrate (tracks outermost ring + fringe clearance)
+- **Shipped:** permanent orbital catalogs; speed-independent view fill; taxonomy + mining shrink; hero fields; four rings + shepherd moons
 
 **Ambient traffic** ([`AmbientTrafficSystem.js`](src/world/AmbientTrafficSystem.js)):
 - Retarget density rings from `STATION.SCALE`-relative to **layout-relative** (near each station's **live** orbit position, not world origin)

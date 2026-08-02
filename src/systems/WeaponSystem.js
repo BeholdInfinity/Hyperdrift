@@ -150,14 +150,22 @@ export class WeaponSystem {
     }
 
     if (ast.asteroid) {
-      const destroyed = ast.asteroid.takeDamage(damage);
+      const rock = ast.asteroid;
+      const hitX = origin.x + dir.x * astDist;
+      const hitY = origin.y + dir.y * astDist;
       ship.miningLaserBeamLength = astDist;
-      if (destroyed) {
-        this._createImpactEffect(
-          origin.x + dir.x * astDist,
-          origin.y + dir.y * astDist,
-          true
-        );
+      if (typeof rock.mineExtract === 'function') {
+        const laserMk = ship.miningLaserMk ?? ship.scannerMk ?? 1;
+        const mined = rock.mineExtract(deltaTime, laserMk);
+        if (mined.extracted > 0 || mined.shrunk) {
+          this._createImpactEffect(hitX, hitY, mined.shrunk || mined.destroyed);
+        }
+        if (mined.destroyed) {
+          this._createImpactEffect(hitX, hitY, true);
+        }
+      } else {
+        const destroyed = rock.takeDamage(damage);
+        if (destroyed) this._createImpactEffect(hitX, hitY, true);
       }
     } else {
       ship.miningLaserBeamLength = range;

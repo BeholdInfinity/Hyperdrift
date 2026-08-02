@@ -32,6 +32,7 @@ export const SECTOR_LAYOUT = {
       "id": "inner_ore",
       "innerR": 377963.7960116412,
       "outerR": 456500,
+      "warpPairId": "inner",
       "density": 3,
       "composition": {
         "iron": 0.45,
@@ -47,6 +48,7 @@ export const SECTOR_LAYOUT = {
       "id": "mid_mixed",
       "innerR": 586000,
       "outerR": 800000,
+      "warpPairId": "mid",
       "density": 5,
       "composition": {
         "iron": 0.2,
@@ -56,12 +58,39 @@ export const SECTOR_LAYOUT = {
         "rare": 0.1
       },
       "postedSpeedLimit": 650,
-      "enforcement": "patrol_witness"
+      "enforcement": "patrol_witness",
+      "subBelts": [
+        {
+          "id": "mid_ice_core",
+          "t0": 0,
+          "t1": 0.45,
+          "theta0": null,
+          "theta1": null,
+          "composition": {
+            "ice": 0.75,
+            "iron": 0.15,
+            "silicate": 0.1
+          }
+        },
+        {
+          "id": "mid_iron_pocket",
+          "t0": 0.25,
+          "t1": 0.75,
+          "theta0": -0.4,
+          "theta1": 0.4,
+          "composition": {
+            "iron": 0.8,
+            "ice": 0.1,
+            "silicate": 0.1
+          }
+        }
+      ]
     },
     {
       "id": "outer_ice",
       "innerR": 978500,
       "outerR": 1225500,
+      "warpPairId": "outer",
       "density": 8,
       "composition": {
         "iron": 0.08,
@@ -72,13 +101,30 @@ export const SECTOR_LAYOUT = {
       },
       "postedSpeedLimit": 850,
       "enforcement": "patrol_witness"
+    },
+    {
+      "id": "fringe_ice",
+      "innerR": 1400000,
+      "outerR": 1650000,
+      "warpPairId": null,
+      "density": 4,
+      "composition": {
+        "ice": 0.62,
+        "silicate": 0.14,
+        "carbonaceous": 0.1,
+        "iron": 0.08,
+        "rare": 0.06
+      },
+      "postedSpeedLimit": 950,
+      "enforcement": "patrol_witness",
+      "subBelts": []
     }
   ],
   "spacing": {
     "minOrbitalSep": 150000,
     "minFringeFromRing": 270000,
     "referenceTransitSpeed": 900,
-    "softEdgeRadius": 1726001,
+    "softEdgeRadius": 1920000,
     "siteExclusionRadius": 45000
   },
   "socialOrbitInner": {
@@ -537,6 +583,208 @@ export const SECTOR_LAYOUT = {
       "x": -1573025.6550108725,
       "y": 710398.6829081364,
       "fringeClearance": 500500
+    },
+    {
+      "id": "site.moon.gap.inner_mid",
+      "kind": "shepherd_moon",
+      "name": "Shepherd A",
+      "iff": "blue",
+      "motion": "orbit",
+      "orbit": {
+        "orbitR": 521250,
+        "orbitAngle0": 0.3,
+        "orbitOmega": 0.00355
+      },
+      "x": 498200,
+      "y": 153800,
+      "radius": 7000,
+      "shepherds": {
+        "innerRingId": "inner_ore",
+        "outerRingId": "mid_mixed"
+      }
+    },
+    {
+      "id": "site.moon.gap.mid_outer",
+      "kind": "shepherd_moon",
+      "name": "Shepherd B",
+      "iff": "blue",
+      "motion": "orbit",
+      "orbit": {
+        "orbitR": 889250,
+        "orbitAngle0": 1.8,
+        "orbitOmega": 0.00159
+      },
+      "x": -202000,
+      "y": 866000,
+      "radius": 9000,
+      "shepherds": {
+        "innerRingId": "mid_mixed",
+        "outerRingId": "outer_ice"
+      }
+    },
+    {
+      "id": "site.moon.gap.outer_fringe",
+      "kind": "shepherd_moon",
+      "name": "Shepherd C",
+      "iff": "blue",
+      "motion": "orbit",
+      "orbit": {
+        "orbitR": 1312750,
+        "orbitAngle0": 3.5,
+        "orbitOmega": 0.00089
+      },
+      "x": -1228000,
+      "y": -461000,
+      "radius": 10000,
+      "shepherds": {
+        "innerRingId": "outer_ice",
+        "outerRingId": "fringe_ice"
+      }
+    },
+    {
+      "id": "site.asteroid.mid.cluster_a",
+      "kind": "asteroid_field",
+      "name": "Iron Needle Cluster",
+      "iff": "yellow",
+      "motion": "orbit",
+      "orbit": {
+        "orbitR": 693000,
+        "orbitAngle0": 0.8,
+        "orbitOmega": 0.002322
+      },
+      "x": 483157.3,
+      "y": 496785.5,
+      "fieldRadius": 2800,
+      "rocks": [
+        {
+          "id": "r0",
+          "orbitR": 692353,
+          "orbitAngle0": 0.8085,
+          "sizeTier": "very_large",
+          "weight": 21,
+          "capacityMax": 12,
+          "capacityRemaining": 12,
+          "radius": 107,
+          "hp": 51,
+          "seed": 23834,
+          "composition": { "iron": 0.55, "ice": 0.25, "silicate": 0.2 },
+          "compositionTag": "iron",
+          "lootSeed": 3098279049,
+          "allowHeroTiers": true
+        },
+        {
+          "id": "r1",
+          "orbitR": 691437,
+          "orbitAngle0": 0.8116,
+          "sizeTier": "large",
+          "weight": 13,
+          "capacityMax": 11,
+          "capacityRemaining": 11,
+          "radius": 50,
+          "hp": 35,
+          "seed": 40037,
+          "composition": { "iron": 0.55, "ice": 0.25, "silicate": 0.2 },
+          "compositionTag": "iron",
+          "lootSeed": 3407198724,
+          "allowHeroTiers": true
+        },
+        {
+          "id": "r2",
+          "orbitR": 693925,
+          "orbitAngle0": 0.8095,
+          "sizeTier": "small_medium",
+          "weight": 3,
+          "capacityMax": 2,
+          "capacityRemaining": 2,
+          "radius": 22,
+          "hp": 10,
+          "seed": 82903,
+          "composition": { "iron": 0.55, "ice": 0.25, "silicate": 0.2 },
+          "compositionTag": "iron",
+          "lootSeed": 1921580354,
+          "allowHeroTiers": true
+        },
+        {
+          "id": "r3",
+          "orbitR": 692062,
+          "orbitAngle0": 0.8008,
+          "sizeTier": "medium",
+          "weight": 5,
+          "capacityMax": 4,
+          "capacityRemaining": 4,
+          "radius": 30,
+          "hp": 16,
+          "seed": 39915,
+          "composition": { "iron": 0.55, "ice": 0.25, "silicate": 0.2 },
+          "compositionTag": "iron",
+          "lootSeed": 1921883864,
+          "allowHeroTiers": true
+        },
+        {
+          "id": "r4",
+          "orbitR": 692387,
+          "orbitAngle0": 0.7981,
+          "sizeTier": "large_medium",
+          "weight": 8,
+          "capacityMax": 6,
+          "capacityRemaining": 6,
+          "radius": 40,
+          "hp": 22,
+          "seed": 74456,
+          "composition": { "iron": 0.55, "ice": 0.25, "silicate": 0.2 },
+          "compositionTag": "iron",
+          "lootSeed": 607560558,
+          "allowHeroTiers": true
+        },
+        {
+          "id": "r5",
+          "orbitR": 691551,
+          "orbitAngle0": 0.8044,
+          "sizeTier": "small",
+          "weight": 2,
+          "capacityMax": 1,
+          "capacityRemaining": 1,
+          "radius": 15,
+          "hp": 6,
+          "seed": 89374,
+          "composition": { "iron": 0.55, "ice": 0.25, "silicate": 0.2 },
+          "compositionTag": "iron",
+          "lootSeed": 237674728,
+          "allowHeroTiers": true
+        },
+        {
+          "id": "r6",
+          "orbitR": 693155,
+          "orbitAngle0": 0.7977,
+          "sizeTier": "medium",
+          "weight": 5,
+          "capacityMax": 3,
+          "capacityRemaining": 3,
+          "radius": 28,
+          "hp": 14,
+          "seed": 4756,
+          "composition": { "iron": 0.55, "ice": 0.25, "silicate": 0.2 },
+          "compositionTag": "iron",
+          "lootSeed": 4163714360,
+          "allowHeroTiers": true
+        },
+        {
+          "id": "r7",
+          "orbitR": 694366,
+          "orbitAngle0": 0.8096,
+          "sizeTier": "small_medium",
+          "weight": 3,
+          "capacityMax": 2,
+          "capacityRemaining": 2,
+          "radius": 20,
+          "hp": 9,
+          "seed": 10761,
+          "composition": { "iron": 0.55, "ice": 0.25, "silicate": 0.2 },
+          "compositionTag": "iron",
+          "lootSeed": 3638443621,
+          "allowHeroTiers": true
+        }
+      ]
     }
   ]
 };

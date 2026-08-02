@@ -31,7 +31,10 @@ export class PoiSystem {
     this._siteById.clear();
     for (const site of layout.sites ?? []) {
       const pos = siteWorldPosition(site, 0, layout);
-      const charted = site.kind === 'station';
+      const charted =
+        site.kind === 'station' ||
+        site.kind === 'asteroid_field' ||
+        site.kind === 'shepherd_moon';
       const poi = this.register(
         {
           x: pos.x,

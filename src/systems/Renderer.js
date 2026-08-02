@@ -193,6 +193,48 @@ export class Renderer {
     drawModularShip(ctx, ship, view || topDownView());
   }
 
+  /**
+   * Simple shaded discs for shepherd moons (kinematic POIs).
+   * @param {{ x: number, y: number, radius: number }[]} moons
+   */
+  renderShepherdMoons(moons, camera) {
+    if (!moons?.length) return;
+    const zoom = camera.effectiveZoom || 1;
+    const cx = camera.position?.x ?? 0;
+    const cy = camera.position?.y ?? 0;
+    const viewR = this.viewportRadius / zoom + 40000;
+    const viewR2 = viewR * viewR;
+
+    this.renderWorldLayer((ctx) => {
+      for (const moon of moons) {
+        const dx = moon.x - cx;
+        const dy = moon.y - cy;
+        if (dx * dx + dy * dy > viewR2) continue;
+        const r = Math.max(80, moon.radius || 4000);
+        ctx.save();
+        const grad = ctx.createRadialGradient(
+          moon.x - r * 0.35,
+          moon.y - r * 0.35,
+          r * 0.1,
+          moon.x,
+          moon.y,
+          r
+        );
+        grad.addColorStop(0, 'rgba(190, 195, 205, 0.95)');
+        grad.addColorStop(0.55, 'rgba(110, 118, 130, 0.92)');
+        grad.addColorStop(1, 'rgba(55, 60, 70, 0.88)');
+        ctx.fillStyle = grad;
+        ctx.beginPath();
+        ctx.arc(moon.x, moon.y, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(220, 225, 235, 0.35)';
+        ctx.lineWidth = 2 / zoom;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }, camera);
+  }
+
   renderAsteroids(asteroids, camera) {
     const zoom = Math.max(camera.effectiveZoom, 0.001);
     const margin = 140 / zoom;
@@ -220,8 +262,8 @@ export class Renderer {
         wctx.translate(asteroid.position.x, asteroid.position.y);
         wctx.rotate(asteroid.angle);
 
-        wctx.fillStyle = '#3a3a3a';
-        wctx.strokeStyle = '#5a5a5a';
+        wctx.fillStyle = asteroid.fillStyle?.() ?? '#3a3a3a';
+        wctx.strokeStyle = asteroid.strokeStyle?.() ?? '#5a5a5a';
         wctx.lineWidth = 1 / zoom;
 
         wctx.beginPath();

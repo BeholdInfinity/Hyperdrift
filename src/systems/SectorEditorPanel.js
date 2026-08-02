@@ -13,6 +13,7 @@ import {
 } from '../dev/SectorMapEditor.js';
 import { selectRing, selectTier } from '../dev/DevSectorEditor.js';
 import { mapFilterFadeAlpha, isSiteListFilterActive } from '../dev/DevSectorEditor.js';
+import { editorMapTime } from '../dev/SectorEditorGeography.js';
 
 /** Map rect aligned to the blueprint play circle (full square viewport). */
 export function sectorEditorMapBox(renderer) {
@@ -34,13 +35,14 @@ export function drawSectorEditorFrame(ctx, renderer, engine, view) {
   ctx.lineWidth = 2;
   ctx.strokeRect(box.x + 0.5, box.y + 0.5, box.w - 1, box.h - 1);
 
+  const mapTime = editorMapTime(engine);
   drawStandaloneSectorMap(ctx, box, engine, view, {
     fog: false,
     bright: true,
-    gameTime: engine.gameTime || 0,
+    gameTime: mapTime,
     editorFilterFade: isSiteListFilterActive() ? mapFilterFadeAlpha : null,
   });
-  drawSectorEditorOverlay(ctx, box, engine, view);
+  drawSectorEditorOverlay(ctx, box, engine, view, mapTime);
   ctx.restore();
 
   return box;
@@ -94,7 +96,7 @@ export function processSectorEditorInput(engine, input, view) {
       }
     }
   } else {
-    const hover = hoverTargetAtScreen(mx, my, box, view, engine.gameTime || 0);
+    const hover = hoverTargetAtScreen(mx, my, box, view, editorMapTime(engine));
     view.mapHoverTooltip = hover
       ? { text: hover.name || hover.id, sx: mx, sy: my - 14 }
       : null;

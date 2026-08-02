@@ -335,10 +335,14 @@ Three depth layers (far / mid / near) plus stream-placed world nebulae (`NebulaS
 
 ### Asteroids
 
-- **Ring belts** — `BeltStream` angular sectors per ring band; density from `sectorLayout.rings[]`; kinematic prograde orbit (μ-derived)
-- **Open space** — sparse/dense clusters via `OpenSpaceStream` field cells (outside ring bands; 50% reduced vs legacy baseline)
-- Live rocks materialize in the shell between the **visual viewport** (~75 km at max zoom-out) and `STREAM_SPAWN_RADIUS` (300 km); retention/despawn still use `STREAM_VIEW_RADIUS` (250 km) and `STREAM_DESPAWN_RADIUS` (360 km). Per-frame spawn budget + staggered shell materialize reduce speed/zoom clumping.
-- **Planned (not shipped):** **hand-authored hero fields** alongside proc filler — see [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) §9.4
+- **Ring belts** — four Thera rings (`inner_ore` → `fringe_ice`); `BeltStream` angular sectors; proc density follows shared `RingBeltVisual` sub-bands (gaps nearly empty); kinematic prograde orbit from permanent `orbitR` / `orbitAngle0` (μ-derived). In-viewport fill uses view-priority + backlog catch-up so density is not ship-speed dependent.
+- **Shepherd moons** — `shepherd_moon` sites in inter-ring gaps (charted POIs); simple disc in the flight viewport; clear proc rocks via site exclusion.
+- **Rock taxonomy** — seven size tiers (Fibonacci weights 1–21); proc belts never roll Large / Very Large. Gen-time fields: `sizeTier`, `weight`, `capacityMax` / `capacityRemaining`, composition mix, `lootSeed`. Mining laser extracts over time and shrinks the rock by size-tier when remaining capacity no longer fits; ammo destroy is wasteful (~25% yield).
+- **Composition** — ring default mix + authored `subBelts[]` pockets (most-specific overlap wins). Appearance tint from mix.
+- **Hero fields** — charted `asteroid_field` POIs with authored child rocks (may include Large / Very Large); stream IDs `hero:{siteId}:{rockId}`; proc rocks suppressed inside the field envelope.
+- **Open space** — sparse/dense clusters via `OpenSpaceStream` field cells (outside ring bands; 50% reduced vs legacy baseline).
+- Live rocks materialize in the shell between the **visual viewport** (~75 km at max zoom-out) and `STREAM_SPAWN_RADIUS` (300 km); retention/despawn still use `STREAM_VIEW_RADIUS` (250 km) and `STREAM_DESPAWN_RADIUS` (360 km).
+- **Deferred:** impact damage / deflection from weight, full drop tables + science-seat UI, laser Mk yield curve polish, N-body shepherd physics.
 
 ### Speed streaks
 

@@ -166,6 +166,8 @@ export function isInsidePlayableSector(x, y, layout = getSectorLayout()) {
 export function isNearAuthoredSite(x, y, layout = getSectorLayout()) {
   const ex = layout.spacing?.siteExclusionRadius ?? 45000;
   for (const site of layout.sites ?? []) {
+    // Hero asteroid fields intentionally sit in belts — do not punch holes.
+    if (site.kind === 'asteroid_field') continue;
     const pos = siteWorldPosition(site, 0, layout);
     if (Math.hypot(x - pos.x, y - pos.y) < ex) return true;
   }

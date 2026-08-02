@@ -3,11 +3,11 @@ import { SeededRandom, hashCoords } from '../utils/SeededRandom.js';
 import {
   ringAt,
   nearRingAt,
-  pickCompositionTag,
   isInsidePlayableSector,
   isNearAuthoredSite,
   getSectorLayout,
 } from '../world/SectorLayout.js';
+import { rollRockStats } from './AsteroidCatalog.js';
 import { spawnKinematicAsteroid } from './StreamSpawn.js';
 import { distWorld, inMaterializeRange, shouldDropLiveRock, shouldKeepLiveRock, shouldMaterializeRock } from './StreamRadii.js';
 
@@ -68,14 +68,11 @@ export function buildOpenFieldCatalog(cellX, cellY, seed = WORLD.SEED) {
         if (!isInsidePlayableSector(x, y, layout)) continue;
         if (ringAt(x, y, layout)) continue;
         if (isNearAuthoredSite(x, y, layout)) continue;
-        catalog.push({
-          x,
-          y,
-          radius: rng.range(8, 35),
-          hp: Math.ceil(rng.range(8, 35) / 4),
-          seed: rng.int(1, 99999),
-          composition: pickCompositionTag(rng, null),
+        const stats = rollRockStats({
+          rng,
+          composition: { silicate: 0.7, iron: 0.2, ice: 0.1 },
         });
+        catalog.push({ x, y, ...stats });
       }
     }
   } else if (regionType < 0.45 * mult) {
@@ -87,14 +84,11 @@ export function buildOpenFieldCatalog(cellX, cellY, seed = WORLD.SEED) {
       if (!isInsidePlayableSector(x, y, layout)) continue;
       if (ringAt(x, y, layout)) continue;
       if (isNearAuthoredSite(x, y, layout)) continue;
-      catalog.push({
-        x,
-        y,
-        radius: rng.range(12, 40),
-        hp: Math.ceil(rng.range(12, 40) / 5),
-        seed: rng.int(1, 99999),
-        composition: pickCompositionTag(rng, null),
+      const stats = rollRockStats({
+        rng,
+        composition: { silicate: 0.7, iron: 0.2, ice: 0.1 },
       });
+      catalog.push({ x, y, ...stats });
     }
   }
 
@@ -223,7 +217,8 @@ export class OpenSpaceStream {
           spec.composition,
           gameTime,
           layout,
-          id
+          id,
+          spec
         );
         if (!asteroid) continue;
         this._live.set(id, asteroid);

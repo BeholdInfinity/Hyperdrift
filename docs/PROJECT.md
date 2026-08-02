@@ -61,10 +61,13 @@ src/
     Renderer.js           Circular viewport, multi-section ship, thrusters, entities
     WeaponSystem.js       Dorsal turret + mining laser, collisions, impacts
     AsteroidSystem.js     Ring-sector + open-space streaming orchestrator
-    BeltStream.js         Belt angular-sector catalogs + reconcile
+    AsteroidCatalog.js    Size tiers, capacity, composition, sub-belt pick, mining yield stubs
+    BeltStream.js         Belt angular-sector catalogs + reconcile (permanent orbits, band density)
+    HeroFieldStream.js    Authored asteroid_field hero rock stream
     OpenSpaceStream.js    Sparse open-space field cells
     NebulaStream.js       Decorative nebula cells
-    StreamSpawn.js        Kinematic rock spawn helpers
+    StreamRadii.js        Stream distance / spawn budget helpers
+    StreamSpawn.js        Shared rock spawn from catalog stats
     RadarSystem.js          Radar model: contacts, sweep-gated paints, piecewise pip range + SCAN plot-zoom, age fade, selection
     RadarDisplay.js         Radar ring/scope renderer (silhouettes, IFF, sweep, nose/tail, chevrons)
     ViewportTelemetry.js  Viewport speed + contact/POI/nav distance labels (collision-aware layout)
@@ -90,6 +93,7 @@ src/
     index.js              Modular ship public API
   dev/
     DevTools.js, DevSave.js, DevOverlay.js, DevPanelDrag.js, DevMenu.js, DevSimSpeed.js, DevDepth.js, BlueprintAuthoring.js, HangarLayoutEditor.js, DevSectorEditor.js
+    SectorEditorGeography.js  Add ring/moon/field, Orbit lock, sub-belts, hero rock gen
   world/
     hangar-layout.js      Flavor props / linger / gossip (Dev bake target)
     place/                Place → Area → Feature registry (stations, ships, outposts, vessels)
@@ -128,7 +132,7 @@ src/
     TravelLog.js          Archived expedition trails (rename, lock, map overlays)
     SectorLayout.js       Ring sampling + composition for proc gen
     SectorBootstrap.js    Layout v2 → POI, Station anchor, Place registration
-    data/sectorLayout.js  Authoritative Thera system geography (v2)
+    data/sectorLayout.js  Authoritative Thera system geography (v2; 4 rings + moons + hero fields)
     PlanetSpin.js         Therissa Prime 30 h rotation
     OrbitKinematics.js    Shared μ, belt/station orbit helpers
     GravitySystem.js      Planetary gravity toward Planet Center
@@ -138,7 +142,6 @@ src/
     TrafficEnforcement.js Sensor + patrol citation stub
     TrafficRecord.js      Per-station fine ledger (nav v4)
     TransitCorridor.js    Inter-station lane spawn weighting
-    data/sectorLayout.js  Baked planet + rings + fixed POIs (Dev save target)
   utils/
     MathUtils.js, SeededRandom.js
 ```
@@ -238,12 +241,12 @@ src/
 
 Full plan + todo list: [`WORLD_GEOGRAPHY_PLAN.md`](WORLD_GEOGRAPHY_PLAN.md) (code audit **2026-07-25**).
 
-**Shipped:** Stage 1 foundation; Stage 2 visuals core + **map editor MVP** (drag sites, validator, bake); Stage 3 motion core (gravity, orbiting stations/gates, `worldPosition`, PRO/SYNC, corridors, Jennings ambient co-orbit v0.1.290); **ring-sector asteroid streaming** (`BeltStream` / `OpenSpaceStream` / `NebulaStream`); Stage 4 systems core (warp gates, LIM/fines stub, chart zoom); Stage 5 Place registry (Jennings-clone + planetary stubs); **`InteriorSession`** hangar instancing.
+**Shipped:** Stage 1 foundation; Stage 2 visuals core + **map editor MVP** (drag sites, validator, bake; Orbit lock; add ring/moon/field; sub-belt pockets); Stage 3 motion core (gravity, orbiting stations/gates, `worldPosition`, PRO/SYNC, corridors, Jennings ambient co-orbit v0.1.290); **ring-sector asteroid streaming** with permanent orbits, band density, taxonomy, hero fields, shepherd moons, fourth ring; Stage 4 systems core (warp gates, LIM/fines stub, chart zoom); Stage 5 Place registry (Jennings-clone + planetary stubs); **`InteriorSession`** hangar instancing.
 
 **Open (see plan todos):** sector editor advanced (ring handles, undo); trade block / broker / outlaw IFF wiring; fragment gravity; dev gravity μ slider.
 
 ### Polish / follow-ups
-- **Asteroid hero fields (open)** — clumping on speed/zoom **partially fixed** (spawn budget, staggered shell, visual-radius materialize, viewport render cull; 250 km retention kept). Residual cruise density acceptable. **Next:** hand-authored **hero** sites + proc filler — [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) §9.4.
+- **Asteroid deferred systems** — impact damage / deflection from rock weight; full drop tables + science-seat readout; laser Mk yield polish; N-body shepherd physics. Radar hero-vs-proc contact-cap priority still open — [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) §9.4.
 - **Space hangar presence / bay mouth traffic (needs more tuning)** — first pass shipped (`HangarPresence`, retrograde reservation spawns, beacon fix, stall retry). Still open: reliable door inbound while player co-orbits Jennings; visible elevator beacon cadence vs interior hangar; spawn speed/distance/geometry; reservation retry pacing; mouth mutex vs `MAX_SHIPS`. Touch `HangarPresence.js`, `AmbientTrafficSystem.spawnBayApproach` / `_tickBayMouth`, `BayTrafficManifest.js`, `Constants.js` (`AMBIENT.*`, `HANGAR.INBOUND_RESERVATION_STALL_SEC`).
 - **Thruster cup size** — tune via Blueprint Author sliders / `visualTuning.js` (still subjective)
 - **Hardpoint / plume mounts** — author in Blueprint + Dev Mode; bake to `mountLayouts.js`

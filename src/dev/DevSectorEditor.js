@@ -13,7 +13,13 @@ import {
   setSectorLayoutOverride,
   clearSectorLayoutOverride,
 } from '../world/SectorLayout.js';
-import { circularSpeed, period, gravityMu, angularSpeed } from '../world/OrbitKinematics.js';
+import {
+  circularSpeed,
+  period,
+  gravityMu,
+  angularSpeed,
+  orbitOmegaFor,
+} from '../world/OrbitKinematics.js';
 import { saveToRepo, exportToClipboard, SAVE_PATHS } from './DevSave.js';
 
 /** Live draft (mutated by dev UI). */
@@ -29,6 +35,8 @@ export const sectorEditorUI = {
   selectedTierId: null,
   showTrafficPreview: true,
   showTierBands: true,
+  /** When true (default), sector editor map uses t=0 — not a full sim pause. */
+  freezeOrbit: true,
   siteFilters: { kind: 'all', tier: 'all', search: '' },
   revision: 0,
 };
@@ -217,10 +225,10 @@ export function migrateStaticFringeToOrbit(layout = sectorEditorDraft) {
 }
 
 export function syncWarpGatesFromRing(ringId, layout = sectorEditorDraft, { silent = false } = {}) {
-  const pairId = RING_TO_PAIR_ID[ringId];
-  if (!pairId) return false;
   const ring = layout.rings?.find((r) => r.id === ringId);
   if (!ring) return false;
+  const pairId = ring.warpPairId || RING_TO_PAIR_ID[ringId];
+  if (!pairId) return false;
   const gateR = warpGateOrbitR(ring, layout);
   for (const site of layout.sites ?? []) {
     if (site.kind !== 'warp_ring' || site.pairId !== pairId || !site.orbit) continue;
@@ -234,8 +242,8 @@ export function syncWarpGatesFromRing(ringId, layout = sectorEditorDraft, { sile
 }
 
 export function syncAllWarpGatesFromRings(layout = sectorEditorDraft, { silent = false } = {}) {
-  for (const ringId of Object.keys(RING_TO_PAIR_ID)) {
-    syncWarpGatesFromRing(ringId, layout, { silent: true });
+  for (const ring of layout.rings ?? []) {
+    syncWarpGatesFromRing(ring.id, layout, { silent: true });
   }
   if (!silent) notifySectorEditorChange();
 }
@@ -448,6 +456,8 @@ export const SITE_KIND_FILTERS = [
   { id: 'warp_ring', label: 'Warp ring' },
   { id: 'landmark', label: 'Landmark' },
   { id: 'warp_instance', label: 'Warp instance' },
+  { id: 'asteroid_field', label: 'Asteroid field' },
+  { id: 'shepherd_moon', label: 'Shepherd moon' },
 ];
 
 export const SITE_TIER_FILTERS = [
@@ -480,11 +490,21 @@ export function randomizePlanetLook() {
 export function moveSiteOrbit(siteId, orbitR, orbitAngle0) {
   const site = sectorEditorDraft.sites?.find((s) => s.id === siteId);
   if (!site?.orbit) return false;
+  const prevOrbit = { ...site.orbit };
   site.orbit.orbitR = orbitR;
   site.orbit.orbitAngle0 = orbitAngle0;
+  site.orbit.orbitOmega = orbitOmegaFor(orbitR, sectorEditorDraft);
   const pos = siteWorldPosition(site, 0, sectorEditorDraft);
   site.x = pos.x;
   site.y = pos.y;
+  if (site.kind === 'asteroid_field' && site.rocks?.length) {
+    const dR = orbitR - (prevOrbit.orbitR ?? orbitR);
+    const dA = orbitAngle0 - (prevOrbit.orbitAngle0 ?? orbitAngle0);
+    for (const rock of site.rocks) {
+      rock.orbitR = (rock.orbitR ?? orbitR) + dR;
+      rock.orbitAngle0 = (rock.orbitAngle0 ?? orbitAngle0) + dA;
+    }
+  }
   if (isFringeSite(site)) {
     site.fringeClearance = distToNearestRing(pos.x, pos.y, sectorEditorDraft);
   } else if (site.kind === 'station' && site.socialTier) {
@@ -637,17 +657,71 @@ export const VALIDATOR_RULE_DEFS = [
     id: 'warp_pairs',
     label: 'Warp gate pairs',
     hint:
-      'Each warp ring pair (inner, mid, outer) must have exactly two gate sites — one per side — so jump routes stay symmetric.',
+      'Each warp pairId in use must have exactly two gate sites (or zero). Rings may omit warpPairId.',
     severity: 'error',
     collect(layout) {
       const issues = [];
-      for (const pairId of ['inner', 'mid', 'outer']) {
+      const pairIds = new Set();
+      for (const s of layout.sites ?? []) {
+        if (s.kind === 'warp_ring' && s.pairId) pairIds.add(s.pairId);
+      }
+      for (const ring of layout.rings ?? []) {
+        const pid = ring.warpPairId || RING_TO_PAIR_ID[ring.id];
+        if (pid) pairIds.add(pid);
+      }
+      for (const pairId of pairIds) {
         const sides = (layout.sites ?? []).filter(
           (s) => s.kind === 'warp_ring' && s.pairId === pairId
         );
-        if (sides.length !== 2) {
-          issues.push(`warp pair "${pairId}" needs 2 gates (found ${sides.length})`);
+        if (sides.length !== 0 && sides.length !== 2) {
+          issues.push(`warp pair "${pairId}" needs 0 or 2 gates (found ${sides.length})`);
         }
+      }
+      return issues;
+    },
+  },
+  {
+    id: 'asteroid_field_in_ring',
+    label: 'Asteroid fields inside rings',
+    hint: 'Hero asteroid_field sites must sit inside a ring band.',
+    severity: 'error',
+    collect(layout) {
+      const issues = [];
+      for (const site of layout.sites ?? []) {
+        if (site.kind === 'asteroid_field' && !siteInsideRing(site, layout)) {
+          issues.push(`${site.id} must sit inside a ring band`);
+        }
+      }
+      return issues;
+    },
+  },
+  {
+    id: 'shepherd_moon_in_gap',
+    label: 'Shepherd moons in gaps',
+    hint: 'Shepherd moons must orbit in the gap between two ring bands.',
+    severity: 'error',
+    collect(layout) {
+      const issues = [];
+      const rings = [...(layout.rings ?? [])].sort((a, b) => a.innerR - b.innerR);
+      for (const site of layout.sites ?? []) {
+        if (site.kind !== 'shepherd_moon') continue;
+        const r = site.orbit?.orbitR;
+        if (r == null) {
+          issues.push(`${site.id} missing orbitR`);
+          continue;
+        }
+        let inGap = false;
+        for (let i = 0; i < rings.length - 1; i++) {
+          if (r > rings[i].outerR && r < rings[i + 1].innerR) {
+            inGap = true;
+            const halfGap = (rings[i + 1].innerR - rings[i].outerR) * 0.5;
+            if ((site.radius ?? 0) >= halfGap) {
+              issues.push(`${site.id} radius too large for gap`);
+            }
+            break;
+          }
+        }
+        if (!inGap) issues.push(`${site.id} not in an inter-ring gap`);
       }
       return issues;
     },

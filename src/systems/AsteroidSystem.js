@@ -8,6 +8,7 @@ import {
 import { BeltStream } from './BeltStream.js';
 import { OpenSpaceStream } from './OpenSpaceStream.js';
 import { NebulaStream } from './NebulaStream.js';
+import { HeroFieldStream } from './HeroFieldStream.js';
 
 export class AsteroidSystem {
   constructor(entityManager) {
@@ -15,6 +16,7 @@ export class AsteroidSystem {
     this.beltStream = new BeltStream();
     this.openStream = new OpenSpaceStream();
     this.nebulaStream = new NebulaStream();
+    this.heroStream = new HeroFieldStream();
     this.activeAsteroids = new Set();
     /** Session-persistent — destroyed proc rocks stay gone until reload. */
     this.destroyedRockIds = new Set();
@@ -73,6 +75,7 @@ export class AsteroidSystem {
     if (asteroid.streamId) {
       this.beltStream.dropLive(asteroid.streamId);
       this.openStream.dropLive(asteroid.streamId);
+      this.heroStream.dropLive(asteroid.streamId);
     }
     this.entityManager.remove(asteroid);
     this.activeAsteroids.delete(asteroid);
@@ -83,6 +86,9 @@ export class AsteroidSystem {
     return {
       playerX,
       playerY,
+      // Viewport center when provided — matches camera lead / what the player sees.
+      anchorX: opts.viewCenterX ?? opts.anchorX ?? playerX,
+      anchorY: opts.viewCenterY ?? opts.anchorY ?? playerY,
       gameTime,
       viewRadius: streamViewRadius(),
       spawnRadius: streamSpawnRadius(),
@@ -103,6 +109,7 @@ export class AsteroidSystem {
     if (!playable) {
       this.beltStream.clear(this);
       this.openStream.clear(this);
+      this.heroStream.clear(this);
       this.nebulaStream.clear();
       this._collectDestroyed();
       this._markDirty();
@@ -111,6 +118,8 @@ export class AsteroidSystem {
 
     const spawnBudget = { left: streamSpawnBudget() };
     const ctx = this._streamCtx(playerX, playerY, gameTime, { ...opts, spawnBudget });
+    // Heroes first so preferential budget / fill wins over proc belts.
+    this.heroStream.reconcile(ctx);
     this.beltStream.reconcile(ctx);
     this.openStream.reconcile(ctx);
     this.nebulaStream.reconcile(
