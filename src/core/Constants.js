@@ -108,12 +108,24 @@ export const WORLD = {
   STREAM_SPAWN_RADIUS: 30000,
   /** Drop live rocks beyond this; never while d <= viewRadius. */
   STREAM_DESPAWN_RADIUS: 36000,
+  /**
+   * Belt live/stream radii (tighter than open-space Mk5 radar retention).
+   * Asteroid radar blips are R1-gated (~50 km); ship VIEW tops out ~75 km —
+   * keeping a 250 km belt entity field was ~4–5k rocks and ~20 FPS.
+   */
+  STREAM_BELT_VIEW_RADIUS: 10000,
+  STREAM_BELT_SPAWN_RADIUS: 12000,
+  STREAM_BELT_DESPAWN_RADIUS: 15000,
+  /** Cap ω·t shear used for catalog sector windows (avoids unbounded scan). */
+  BELT_SHEAR_TIME_CAP: 60,
   /** Baseline max new proc rocks materialized per frame (outer shell). */
   STREAM_SPAWN_BUDGET: 100,
   /** Catch up spawn backlog over this many frames when density falls behind. */
   STREAM_SPAWN_CATCHUP_FRAMES: 3,
   /** Hard ceiling on per-frame spawns during backlog catch-up. */
   STREAM_SPAWN_BUDGET_MAX: 400,
+  /** After teleport/jump, keep non-staggered shell fill this many frames. */
+  STREAM_JUMP_FILL_FRAMES: 12,
   /** Belt angular sector arc length at player radius (world u). */
   BELT_SECTOR_ARC: 1200,
   /** Open-space sparse field cell size (world u). */

@@ -7,14 +7,18 @@ import {
   distToNearestRing,
   getSectorLayout,
 } from '../world/SectorLayout.js';
-import { orbitFromWorldAt, positionAt } from '../world/OrbitKinematics.js';
+import {
+  finiteGameTime,
+  orbitFromWorldAt,
+  orbitOmegaFor,
+  positionAt,
+} from '../world/OrbitKinematics.js';
 import { getRingBandModel } from '../world/RingBeltVisual.js';
 import { rollRockStats } from './AsteroidCatalog.js';
 import { spawnBeltAsteroid } from './StreamSpawn.js';
 import { isInsideHeroFieldEnvelope } from './HeroFieldStream.js';
 import {
   distWorld,
-  inMaterializeRange,
   shouldDropLiveRock,
   shouldKeepLiveRock,
   shouldMaterializeRock,
@@ -40,6 +44,46 @@ function sectorDeltaTheta(ring) {
 
 function sectorIndex(theta, deltaTheta) {
   return Math.floor((theta + Math.PI) / deltaTheta);
+}
+
+/**
+ * Catalog sectors are keyed by t=0 orbit angle. Live rocks drift by ω(R)·t;
+ * only the local radial band (playerR ± reach) can be in range, so shear the
+ * orbitAngle0 window across that band — not the full ring annulus.
+ * Shear time is capped so sector scan cost stays bounded in long sessions.
+ */
+function catalogAngleWindow(ring, ax, ay, gameTime, retainArc, radialReach, layout) {
+  const cx = layout.planet?.center?.x ?? 0;
+  const cy = layout.planet?.center?.y ?? 0;
+  const playerTheta = Math.atan2(ay - cy, ax - cx);
+  const playerR = Math.hypot(ax - cx, ay - cy);
+  const tCap = WORLD.BELT_SHEAR_TIME_CAP ?? 60;
+  const t = Math.min(finiteGameTime(gameTime), tCap);
+  const reach = Math.max(0, radialReach);
+  const r0 = Math.max(ring.innerR, playerR - reach);
+  const r1 = Math.min(ring.outerR, playerR + reach);
+  const a0A = playerTheta - orbitOmegaFor(r0, layout) * t;
+  const a0B = playerTheta - orbitOmegaFor(r1, layout) * t;
+  return {
+    playerTheta,
+    a0Min: Math.min(a0A, a0B) - retainArc,
+    a0Max: Math.max(a0A, a0B) + retainArc,
+  };
+}
+
+function beltViewRadius(ctxView) {
+  const belt = WORLD.STREAM_BELT_VIEW_RADIUS ?? 10000;
+  return Math.min(ctxView, belt);
+}
+
+function beltSpawnRadius(ctxSpawn) {
+  const belt = WORLD.STREAM_BELT_SPAWN_RADIUS ?? 12000;
+  return Math.min(ctxSpawn, belt);
+}
+
+function beltDespawnRadius(ctxDespawn) {
+  const belt = WORLD.STREAM_BELT_DESPAWN_RADIUS ?? 15000;
+  return Math.min(ctxDespawn, belt);
 }
 
 function beltRockTarget(ring) {
@@ -160,6 +204,8 @@ export class BeltStream {
     this._live = new Map();
     /** @type {object|null} hysteresis when nearRingAt flickers at belt edge */
     this._lastRing = null;
+    /** Frames of post-jump non-staggered shell fill remaining. */
+    this._fillBurst = 0;
   }
 
   _sectorKey(ringId, sectorIdx) {
@@ -174,15 +220,19 @@ export class BeltStream {
     return this._catalogs.get(key);
   }
 
-  _unloadDistantSectors(ring, playerTheta, deltaTheta, despawnRadius, playerX, playerY) {
-    const centerSector = sectorIndex(playerTheta, deltaTheta);
-    const retainArc = despawnRadius / Math.max(radiusAt(playerX, playerY), 1);
-    const sectorSpan = Math.ceil(retainArc / deltaTheta) + 2;
+  _unloadDistantSectors(ring, a0Min, a0Max, deltaTheta) {
+    const sectorMin = sectorIndex(a0Min, deltaTheta) - 2;
+    const sectorMax = sectorIndex(a0Max, deltaTheta) + 2;
+    const prefix = `${ring.id}:`;
 
     for (const key of this._catalogs.keys()) {
-      if (!key.startsWith(`${ring.id}:`)) continue;
+      if (!key.startsWith(prefix)) {
+        // Drop other rings — jump/travel rebuilds on return.
+        this._catalogs.delete(key);
+        continue;
+      }
       const sectorIdx = Number(key.split(':')[1]);
-      if (Math.abs(sectorIdx - centerSector) > sectorSpan) {
+      if (sectorIdx < sectorMin || sectorIdx > sectorMax) {
         this._catalogs.delete(key);
       }
     }
@@ -218,16 +268,20 @@ export class BeltStream {
     const ax = ctx.anchorX ?? playerX;
     const ay = ctx.anchorY ?? playerY;
     const budget = spawnBudget;
-    const shellInner = visualRadius ?? viewRadius;
+    // Belt retention is tighter than open-space Mk5 stream radii (FPS).
+    const viewR = beltViewRadius(viewRadius);
+    const spawnR = beltSpawnRadius(spawnRadius);
+    const despawnR = beltDespawnRadius(despawnRadius);
+    const shellInner = Math.min(visualRadius ?? viewR, viewR);
     const layout = getSectorLayout();
     const distRing = distToNearestRing(playerX, playerY, layout);
-    let ring = nearRingAt(playerX, playerY, despawnRadius, layout);
-    if (!ring && this._lastRing && distRing <= despawnRadius) {
+    let ring = nearRingAt(playerX, playerY, despawnR, layout);
+    if (!ring && this._lastRing && distRing <= despawnR) {
       ring = this._lastRing;
     }
     if (ring) {
       this._lastRing = ring;
-    } else if (distRing > despawnRadius) {
+    } else if (distRing > despawnR) {
       this._lastRing = null;
     }
     const stats = {
@@ -247,7 +301,7 @@ export class BeltStream {
       for (const [id, asteroid] of this._live) {
         if (!asteroid?.active) continue;
         const d = dist(asteroid.position.x, asteroid.position.y, ax, ay);
-        if (!shouldKeepLiveRock(d, viewRadius, despawnRadius)) {
+        if (!shouldKeepLiveRock(d, viewR, despawnR)) {
           system.despawnRock(asteroid);
           this._live.delete(id);
         }
@@ -256,51 +310,84 @@ export class BeltStream {
       return stats;
     }
 
-    const cx = layout.planet?.center?.x ?? 0;
-    const cy = layout.planet?.center?.y ?? 0;
-    const playerTheta = Math.atan2(ay - cy, ax - cx);
     const playerR = radiusAt(ax, ay, layout);
     const deltaTheta = sectorDeltaTheta(ring);
-    const retainArc = spawnRadius / Math.max(playerR, 1);
-    const sectorMin = sectorIndex(playerTheta - retainArc, deltaTheta);
-    const sectorMax = sectorIndex(playerTheta + retainArc, deltaTheta);
+    const retainArc = spawnR / Math.max(playerR, 1);
+    const unloadArc = despawnR / Math.max(playerR, 1);
+    const spawnWin = catalogAngleWindow(
+      ring,
+      ax,
+      ay,
+      gameTime,
+      retainArc,
+      spawnR,
+      layout
+    );
+    const unloadWin = catalogAngleWindow(
+      ring,
+      ax,
+      ay,
+      gameTime,
+      unloadArc,
+      despawnR,
+      layout
+    );
+    const sectorMin = sectorIndex(spawnWin.a0Min, deltaTheta);
+    const sectorMax = sectorIndex(spawnWin.a0Max, deltaTheta);
     stats.sectorMin = sectorMin;
     stats.sectorMax = sectorMax;
     const keep = new Set();
 
-    this._unloadDistantSectors(ring, playerTheta, deltaTheta, despawnRadius, ax, ay);
+    if (materializeInView) {
+      this._fillBurst = Math.max(
+        this._fillBurst,
+        WORLD.STREAM_JUMP_FILL_FRAMES ?? 12
+      );
+    }
+    const burst = this._fillBurst > 0;
+    if (burst) this._fillBurst--;
+
+    this._unloadDistantSectors(ring, unloadWin.a0Min, unloadWin.a0Max, deltaTheta);
+
+    // Retain live rocks without re-scanning the whole catalog.
+    for (const [id, asteroid] of this._live) {
+      if (!asteroid?.active) continue;
+      const liveDist = dist(asteroid.position.x, asteroid.position.y, ax, ay);
+      if (shouldKeepLiveRock(liveDist, viewR, despawnR)) {
+        keep.add(id);
+      }
+    }
 
     /** @type {{ id: string, template: object, pos: { x: number, y: number }, dist: number }[]} */
     const viewPending = [];
     /** @type {{ id: string, template: object, pos: { x: number, y: number }, dist: number }[]} */
     const shellPending = [];
+    const rMin = playerR - spawnR;
+    const rMax = playerR + spawnR;
 
     for (let sectorIdx = sectorMin; sectorIdx <= sectorMax; sectorIdx++) {
       const catalog = this._getCatalog(ring, sectorIdx);
       for (let i = 0; i < catalog.length; i++) {
         const template = catalog[i];
         const id = beltRockId(ring.id, sectorIdx, i);
+        if (this._live.get(id)?.active) continue;
         if (destroyedIds.has(id)) {
           stats.skipDestroyed++;
           continue;
         }
 
         if (!(template.orbitR > 0)) continue;
+        // Radial reject before orbital position (catalog scan hot path).
+        if (template.orbitR < rMin || template.orbitR > rMax) {
+          stats.skipDist++;
+          continue;
+        }
         const orbit = {
           orbitR: template.orbitR,
           orbitAngle0: template.orbitAngle0 ?? 0,
         };
         const pos = positionAt(orbit, gameTime, layout);
         const rockDist = dist(pos.x, pos.y, ax, ay);
-
-        let asteroid = this._live.get(id);
-        if (asteroid?.active) {
-          const liveDist = dist(asteroid.position.x, asteroid.position.y, ax, ay);
-          if (shouldKeepLiveRock(liveDist, viewRadius, despawnRadius)) {
-            keep.add(id);
-          }
-          continue;
-        }
 
         if (isNearAuthoredSite(pos.x, pos.y, layout)) {
           stats.skipSite++;
@@ -313,8 +400,10 @@ export class BeltStream {
 
         const entry = { id, template, pos, dist: rockDist };
 
-        if (materializeInView) {
-          if (inMaterializeRange(rockDist, shellInner, spawnRadius, true)) {
+        // Jump / burst: camera shell unbudgeted; rest of spawn radius catch-up
+        // without time-phase stagger (amortized by per-frame budget).
+        if (burst) {
+          if (rockDist <= spawnR) {
             if (rockDist <= shellInner) viewPending.push(entry);
             else shellPending.push(entry);
           } else {
@@ -333,8 +422,8 @@ export class BeltStream {
           shouldMaterializeRock(
             rockDist,
             id,
-            viewRadius,
-            spawnRadius,
+            viewR,
+            spawnR,
             gameTime,
             false,
             shellInner
@@ -347,9 +436,15 @@ export class BeltStream {
       }
     }
 
+    if (shellPending.length > 1) {
+      shellPending.sort((a, b) => a.dist - b.dist);
+    }
+
     stats.backlog = viewPending.length + shellPending.length;
     if (budget) {
-      budget.left = streamSpawnBudgetForBacklog(shellPending.length);
+      budget.left = burst
+        ? WORLD.STREAM_SPAWN_BUDGET_MAX ?? 400
+        : streamSpawnBudgetForBacklog(shellPending.length);
     }
 
     // Fill viewport first — never starve visible density to the outer-shell budget.
@@ -406,8 +501,8 @@ export class BeltStream {
           keep,
           ax,
           ay,
-          viewRadius,
-          despawnRadius
+          viewR,
+          despawnR
         )
       ) {
         continue;

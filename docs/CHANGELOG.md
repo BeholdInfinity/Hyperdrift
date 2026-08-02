@@ -16,6 +16,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 - **Settings controls sandbox** — wired like real flight: ship-up view rotation, full camera (lead offset + speed zoom), depth compositor parallax, forward-cone speed streaks; no gravity/world entities. SPD readout top-right outside viewport.
 
 ### Fixed
+- **Belt asteroids empty after map jumps** — streaming selected catalog sectors by live world angle while catalogs are keyed by t=0 `orbitAngle0`, so as belts sheared the loaded wedge held only far rocks; sector pick now uses the local `orbitAngle0` window (ω·t over playerR ± spawn reach, shear-time capped). Dev JUMP HERE runs a short non-staggered catch-up burst (budget-capped).
+- **Belt stream FPS** — full Mk5 250–300 km belt entity retention spawned ~4–5k rocks (~20 FPS). Belts now use tighter live radii (100/120/150 km) matching zoomed-out VIEW + R1 asteroid radar; catalog retain walks `_live` first and radially rejects before `positionAt`.
 - **Sector editor click-drag** — clicking a site no longer pans the camera onto the pointer (that remapped the click into a move). Map clicks select in place; objects only move after a real drag past a 4px threshold. Site-list picks still focus the camera.
 - **Speed streaks spawn cone** — forward-cone streaks were spawning on the aft (`vel + π`) axis instead of along velocity, so they only appeared behind the ship; spawn angle now uses the velocity heading so streaks rush past from ahead.
 - **Crane during player bay ops** — player arrival and departure no longer freeze the gantry; the crane keeps working other bays and only diverts away from the active pad (same as visitor ops).
