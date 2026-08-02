@@ -115,9 +115,13 @@ export const WORLD = {
    */
   STREAM_BELT_VIEW_RADIUS: 10000,
   STREAM_BELT_SPAWN_RADIUS: 12000,
-  STREAM_BELT_DESPAWN_RADIUS: 15000,
-  /** Cap ω·t shear used for catalog sector windows (avoids unbounded scan). */
-  BELT_SHEAR_TIME_CAP: 60,
+  /** Drop belt rocks soon after they leave the spawn shell (fewer off-screen sims). */
+  STREAM_BELT_DESPAWN_RADIUS: 13000,
+  /**
+   * Max half-width (each side) of belt catalog sectors scanned per frame when
+   * radial shear is wide; every 4th frame runs an uncapped pass for correctness.
+   */
+  BELT_SECTOR_SCAN_HALF: 40,
   /** Baseline max new proc rocks materialized per frame (outer shell). */
   STREAM_SPAWN_BUDGET: 100,
   /** Catch up spawn backlog over this many frames when density falls behind. */

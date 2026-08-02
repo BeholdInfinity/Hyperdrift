@@ -46,29 +46,66 @@ function sectorIndex(theta, deltaTheta) {
   return Math.floor((theta + Math.PI) / deltaTheta);
 }
 
+function sectorCount(ring) {
+  return Math.max(1, Math.ceil((Math.PI * 2) / sectorDeltaTheta(ring)));
+}
+
+/** One physical wedge per ring — avoids duplicate catalogs when sectorIdx drifts. */
+function canonicalSectorIdx(sectorIdx, ring) {
+  const n = sectorCount(ring);
+  return ((sectorIdx % n) + n) % n;
+}
+
+function forEachSectorInRange(centerIdx, halfSpan, ring, fn) {
+  const n = sectorCount(ring);
+  const c = canonicalSectorIdx(centerIdx, ring);
+  for (let d = -halfSpan; d <= halfSpan; d++) {
+    fn(canonicalSectorIdx(c + d, ring));
+  }
+}
+
+function angleDelta(a, b) {
+  return Math.atan2(Math.sin(a - b), Math.cos(a - b));
+}
+
+/** Cheap reject before positionAt — arc length bound for spawn shell. */
+function rockAngularlyNear(template, playerTheta, gameTime, spawnR, layout) {
+  const orbitR = template.orbitR;
+  if (!(orbitR > 0)) return false;
+  const omega = orbitOmegaFor(orbitR, layout);
+  const liveTheta = (template.orbitAngle0 ?? 0) + omega * finiteGameTime(gameTime);
+  return Math.abs(angleDelta(liveTheta, playerTheta)) * orbitR <= spawnR * 1.2;
+}
+
 /**
  * Catalog sectors are keyed by t=0 orbit angle. Live rocks drift by ω(R)·t;
  * only the local radial band (playerR ± reach) can be in range, so shear the
  * orbitAngle0 window across that band — not the full ring annulus.
- * Shear time is capped so sector scan cost stays bounded in long sessions.
+ * Center uses full gameTime (must match positionAt); radial shear grows with t.
  */
-function catalogAngleWindow(ring, ax, ay, gameTime, retainArc, radialReach, layout) {
+function beltCatalogWindow(ring, ax, ay, gameTime, retainArc, radialReach, layout) {
   const cx = layout.planet?.center?.x ?? 0;
   const cy = layout.planet?.center?.y ?? 0;
   const playerTheta = Math.atan2(ay - cy, ax - cx);
   const playerR = Math.hypot(ax - cx, ay - cy);
-  const tCap = WORLD.BELT_SHEAR_TIME_CAP ?? 60;
-  const t = Math.min(finiteGameTime(gameTime), tCap);
+  const t = finiteGameTime(gameTime);
   const reach = Math.max(0, radialReach);
   const r0 = Math.max(ring.innerR, playerR - reach);
   const r1 = Math.min(ring.outerR, playerR + reach);
-  const a0A = playerTheta - orbitOmegaFor(r0, layout) * t;
-  const a0B = playerTheta - orbitOmegaFor(r1, layout) * t;
+  const omegaP = orbitOmegaFor(playerR, layout);
+  const a0Center = playerTheta - omegaP * t;
+  const shear = Math.abs(orbitOmegaFor(r0, layout) - orbitOmegaFor(r1, layout)) * t;
   return {
     playerTheta,
-    a0Min: Math.min(a0A, a0B) - retainArc,
-    a0Max: Math.max(a0A, a0B) + retainArc,
+    a0Center,
+    halfWidth: retainArc + shear,
   };
+}
+
+function beltSectorHalfSpan(halfWidth, deltaTheta, gameTime, wideScan) {
+  const raw = Math.ceil(halfWidth / deltaTheta) + 1;
+  const cap = WORLD.BELT_SECTOR_SCAN_HALF ?? 40;
+  return wideScan ? raw : Math.min(raw, cap);
 }
 
 function beltViewRadius(ctxView) {
@@ -213,16 +250,17 @@ export class BeltStream {
   }
 
   _getCatalog(ring, sectorIdx) {
-    const key = this._sectorKey(ring.id, sectorIdx);
+    const canon = canonicalSectorIdx(sectorIdx, ring);
+    const key = this._sectorKey(ring.id, canon);
     if (!this._catalogs.has(key)) {
-      this._catalogs.set(key, buildSectorCatalog(ring, sectorIdx));
+      this._catalogs.set(key, buildSectorCatalog(ring, canon));
     }
     return this._catalogs.get(key);
   }
 
-  _unloadDistantSectors(ring, a0Min, a0Max, deltaTheta) {
-    const sectorMin = sectorIndex(a0Min, deltaTheta) - 2;
-    const sectorMax = sectorIndex(a0Max, deltaTheta) + 2;
+  _unloadDistantSectors(ring, centerSector, halfSpan) {
+    const keep = new Set();
+    forEachSectorInRange(centerSector, halfSpan + 2, ring, (idx) => keep.add(idx));
     const prefix = `${ring.id}:`;
 
     for (const key of this._catalogs.keys()) {
@@ -232,7 +270,7 @@ export class BeltStream {
         continue;
       }
       const sectorIdx = Number(key.split(':')[1]);
-      if (sectorIdx < sectorMin || sectorIdx > sectorMax) {
+      if (!keep.has(sectorIdx)) {
         this._catalogs.delete(key);
       }
     }
@@ -314,7 +352,8 @@ export class BeltStream {
     const deltaTheta = sectorDeltaTheta(ring);
     const retainArc = spawnR / Math.max(playerR, 1);
     const unloadArc = despawnR / Math.max(playerR, 1);
-    const spawnWin = catalogAngleWindow(
+    const wideScan = (Math.floor(finiteGameTime(gameTime) * 60) & 3) === 0;
+    const spawnWin = beltCatalogWindow(
       ring,
       ax,
       ay,
@@ -323,7 +362,7 @@ export class BeltStream {
       spawnR,
       layout
     );
-    const unloadWin = catalogAngleWindow(
+    const unloadWin = beltCatalogWindow(
       ring,
       ax,
       ay,
@@ -332,10 +371,21 @@ export class BeltStream {
       despawnR,
       layout
     );
-    const sectorMin = sectorIndex(spawnWin.a0Min, deltaTheta);
-    const sectorMax = sectorIndex(spawnWin.a0Max, deltaTheta);
-    stats.sectorMin = sectorMin;
-    stats.sectorMax = sectorMax;
+    const centerSector = sectorIndex(spawnWin.a0Center, deltaTheta);
+    const halfSpan = beltSectorHalfSpan(
+      spawnWin.halfWidth,
+      deltaTheta,
+      gameTime,
+      wideScan
+    );
+    const unloadHalfSpan = beltSectorHalfSpan(
+      unloadWin.halfWidth,
+      deltaTheta,
+      gameTime,
+      true
+    );
+    stats.sectorMin = centerSector - halfSpan;
+    stats.sectorMax = centerSector + halfSpan;
     const keep = new Set();
 
     if (materializeInView) {
@@ -347,7 +397,7 @@ export class BeltStream {
     const burst = this._fillBurst > 0;
     if (burst) this._fillBurst--;
 
-    this._unloadDistantSectors(ring, unloadWin.a0Min, unloadWin.a0Max, deltaTheta);
+    this._unloadDistantSectors(ring, centerSector, unloadHalfSpan);
 
     // Retain live rocks without re-scanning the whole catalog.
     for (const [id, asteroid] of this._live) {
@@ -365,7 +415,9 @@ export class BeltStream {
     const rMin = playerR - spawnR;
     const rMax = playerR + spawnR;
 
-    for (let sectorIdx = sectorMin; sectorIdx <= sectorMax; sectorIdx++) {
+    const canonCenter = canonicalSectorIdx(centerSector, ring);
+    for (let d = -halfSpan; d <= halfSpan; d++) {
+      const sectorIdx = canonicalSectorIdx(canonCenter + d, ring);
       const catalog = this._getCatalog(ring, sectorIdx);
       for (let i = 0; i < catalog.length; i++) {
         const template = catalog[i];
@@ -379,6 +431,18 @@ export class BeltStream {
         if (!(template.orbitR > 0)) continue;
         // Radial reject before orbital position (catalog scan hot path).
         if (template.orbitR < rMin || template.orbitR > rMax) {
+          stats.skipDist++;
+          continue;
+        }
+        if (
+          !rockAngularlyNear(
+            template,
+            spawnWin.playerTheta,
+            gameTime,
+            spawnR,
+            layout
+          )
+        ) {
           stats.skipDist++;
           continue;
         }

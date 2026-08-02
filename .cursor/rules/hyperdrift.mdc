@@ -74,6 +74,7 @@ When the user asks for a new dev panel with variable edits + **Save**, implement
 - One primary class per file; wire through `GameEngine`
 - Thruster visuals must reflect `ship.thrusters` physics state; plume mounts come from `ShipHardpoints.js`
 - Keep diffs focused; no new dependencies without explicit request
+- **Framerate maintenance is extremely important** — target ~75 FPS in typical play; bound per-frame entity counts, streaming radii, and catalog scans; cull before heavy work; profile before/after features that add sim or render load. See `docs/PROJECT.md` § Framerate maintenance.
 
 ## Run
 

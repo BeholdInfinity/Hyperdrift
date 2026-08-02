@@ -148,6 +148,7 @@ src/
 
 ## Architecture principles
 
+- **Framerate is a first-class requirement** — see [Framerate maintenance](#framerate-maintenance) below; do not ship features that tank the sim without a perf pass
 - **Modular systems** wired by `GameEngine` — extend via new systems/entities, not monolith edits
 - **Place → Area → Feature** — top-level hosts are Places (`station` | `capitalShip` | `outpost` | `vessel`), not “the hangar” singleton. Hangars are `areaType: 'hangar'` with bay Features; shops/bars/farms/decks are stub area types. Stable string IDs; look shells inherit place → area → feature (condition, tech, theme). See `src/world/place/`.
 - **Chunk-based world** — deterministic seeds, load radius 3, unload radius 5 (`WORLD` in Constants)
@@ -234,6 +235,24 @@ src/
 - Update `CHANGELOG.md` for user-visible changes
 - Update `GDD.md` when design intent changes; update this file when architecture or handoff facts change
 - On **commit and push**, the agent checks whether handoff docs need a sync and asks before including those updates (see `.cursor/rules/hyperdrift.mdc`)
+
+## Framerate maintenance
+
+**Maintaining framerate is extremely important to this project.** Flight feel, HUD readability, and hangar sim density all assume a responsive loop. Treat regressions as release blockers, not polish backlog.
+
+**Benchmark:** ~**75 FPS** in typical play (space flight in a belt, hangar + quick launch) on a mid-range dev machine. The top-right FPS readout is real `requestAnimationFrame` rate (0.5 s average).
+
+**Design for bounded per-frame work:**
+
+- **Stream, don't hoard** — proc worlds (belts, open space, nebula) materialize near the player and despawn beyond retention radii; do not keep simulating or syncing off-screen entity fields “just in case.” Belt radii in `Constants.js` (`STREAM_BELT_*`) were tightened explicitly after 4–5k live rocks drove ~20 FPS.
+- **Cull before heavy work** — radial/angular rejects before `positionAt`; viewport cull before draw; cap catalog sector scans and amortize wide passes (see `BeltStream.js`).
+- **Budget spawns** — `STREAM_SPAWN_BUDGET` / shell stagger so catch-up does not instantiate thousands of entities in one frame.
+- **Cache and batch** — starfield alpha batches, nebula plates per camera cell, cockpit frame chrome, sector-map static layers when panned.
+- **Isolate expensive modes** — hangar/title sims do not tick full overworld streaming; `InteriorSession` owns hangar entities.
+
+**When adding or changing features**, ask: how many entities or hot-path iterations does this add per frame at max zoom / max density? If unclear, profile in-game (FPS counter) before and after. Document intentional tradeoffs in `CHANGELOG.md`.
+
+**Recent examples:** title DoF blur at reduced resolution (~15 FPS → acceptable); belt ω·t sector fix vs scan cap + 130 km despawn; radar sim moved off the render path.
 
 ## Known gaps / next steps
 
