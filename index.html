@@ -420,7 +420,7 @@
           <span class="bp-topbar-kicker">DEV</span>
           <span class="bp-topbar-title">SECTOR MAP EDITOR</span>
         </div>
-        <p class="bp-topbar-sub" id="sme-status">Thera system layout · drag sites on map · click to select</p>
+        <p class="bp-topbar-sub" id="sme-status">Thera system layout · click to select · drag to move · Back/Forward undo</p>
       </header>
 
       <aside class="bp-dock bp-dock-left" id="sme-panel-left">
@@ -465,6 +465,10 @@
         <section class="bp-card sme-validator-card">
           <h3 class="bp-card-title">Validator <span class="bp-card-hint" id="sme-validator-status">—</span></h3>
           <div id="sme-validator" class="sme-validator-body" aria-live="polite"></div>
+          <div class="bp-btn-row">
+            <button type="button" class="bp-action" id="sme-hist-back" title="Undo layout edit (Ctrl+Z)" disabled>◀ Back</button>
+            <button type="button" class="bp-action" id="sme-hist-forward" title="Redo layout edit (Ctrl+Y)" disabled>Forward ▶</button>
+          </div>
           <div class="bp-btn-row">
             <button type="button" class="bp-action" id="sme-validate">Validate</button>
             <button type="button" class="bp-action" id="sme-reset">Reset draft</button>
@@ -530,7 +534,7 @@
             <pre class="sme-layout-output-body" id="sme-layout-output"></pre>
           </section>
         </div>
-        <p class="bp-hint sme-right-hint"><kbd>DRAG</kbd> move · <kbd>CLICK</kbd> rings/tiers · <kbd>SHIFT</kbd> snap tier · <kbd>ESC</kbd> back</p>
+        <p class="bp-hint sme-right-hint"><kbd>DRAG</kbd> move · <kbd>CLICK</kbd> select · <kbd>SHIFT</kbd> snap tier · <kbd>Ctrl+Z</kbd>/<kbd>Y</kbd> undo · <kbd>ESC</kbd> exit</p>
       </aside>
 
       <button id="sector-editor-back-btn" class="menu-btn panel-btn" type="button">Back</button>

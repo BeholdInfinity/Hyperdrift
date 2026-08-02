@@ -215,7 +215,7 @@ Hangar pad status boards still show display Mk stubs; modular catalog now define
 |---|----------|--------|
 | 9.1 | Move Jennings off world origin to an authored orbit slot? | **Resolved (2026-07-23):** yes — Jennings at ~480k u orbit; Planet Center at origin; nav persistence bumped to v4 |
 | 9.2 | Water-from-ice: cargo unit, consumable, or station commodity first? | Open — ties ice-rich outer rings to gameplay |
-| 9.3 | Full **Dev sector editor** (ring handles, POI drag, composition sliders) vs drawer-only? | **Partial (2026-07-25):** map editor MVP shipped — drag sites on LIVE sector map, site picker, tier/traffic overlays, live validator, bake; ring-handle drag + undo still open (`stage-2-editor-advanced`) |
+| 9.3 | Full **Dev sector editor** (ring handles, POI drag, composition sliders) vs drawer-only? | **Partial (2026-08):** map editor + ring/tier drag, site picker, overlays, validator, bake, geography tools, Back/Forward undo; further inspector polish still open (`stage-2-editor-advanced`) |
 
 ### 9.4 Asteroid streaming, taxonomy, and hero fields *(2026-08)*
 

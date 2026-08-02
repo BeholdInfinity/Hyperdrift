@@ -80,7 +80,7 @@ export function processSectorEditorInput(engine, input, view) {
     const result = endEditorPointer(view);
     engine._sectorEditorPointer = null;
     if (result.siteId && !result.moved) {
-      selectSite(result.siteId, engine);
+      selectSite(result.siteId, engine, { focus: false });
       if (typeof engine.onSectorEditorSelection === 'function') {
         engine.onSectorEditorSelection(result.siteId);
       }

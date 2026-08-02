@@ -7,6 +7,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 ## [Unreleased]
 
 ### Added
+- **Sector editor Back / Forward** — undo/redo for layout edits (◀ Back / Forward ▶ in the validator card; Ctrl+Z / Ctrl+Y); map drags commit as one step.
 - **Belt asteroid permanence + taxonomy** — catalogs store permanent `orbitR` / `orbitAngle0`; view-priority fill + backlog catch-up for speed-independent density; proc rocks follow `RingBeltVisual` sub-bands; seven size tiers with gen-time capacity/composition/`lootSeed`; mining shrink by tier; ammo ~25% yield (`AsteroidCatalog.js`).
 - **Hero asteroid fields** — charted `asteroid_field` POIs (seeded Iron Needle Cluster); `HeroFieldStream` + envelope suppress of proc rocks; Large/Very Large reserved for heroes.
 - **Fourth ring + shepherd moons** — `fringe_ice` annulus; three gap moons (charted POIs + flight discs); mid-belt example `subBelts` composition pockets.
@@ -15,6 +16,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 - **Settings controls sandbox** — wired like real flight: ship-up view rotation, full camera (lead offset + speed zoom), depth compositor parallax, forward-cone speed streaks; no gravity/world entities. SPD readout top-right outside viewport.
 
 ### Fixed
+- **Sector editor click-drag** — clicking a site no longer pans the camera onto the pointer (that remapped the click into a move). Map clicks select in place; objects only move after a real drag past a 4px threshold. Site-list picks still focus the camera.
 - **Speed streaks spawn cone** — forward-cone streaks were spawning on the aft (`vel + π`) axis instead of along velocity, so they only appeared behind the ship; spawn angle now uses the velocity heading so streaks rush past from ahead.
 - **Crane during player bay ops** — player arrival and departure no longer freeze the gantry; the crane keeps working other bays and only diverts away from the active pad (same as visitor ops).
 - **Belt asteroid clumping on speed/zoom changes** — per-frame spawn budget (100/frame), time-phased shell materialize, ring-detection hysteresis, visual-radius spawn shell (rocks enter viewport; 250 km retention unchanged), viewport-centered render cull; view-priority backlog catch-up further reduces speed-linked density.
@@ -22,9 +24,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 - **Dev Ring Bands panel** — space overworld dev submenu: independent **background fill** and **band layer** controls (edge feather, α min/max, colors); **Save** bakes to `src/world/data/ringBackdrop.js`; **Reset** restores code defaults (Save to write).
 
 ### Changed
+- **Thera sector layout bake** — expanded `fringe_ice` annulus + soft edge; repositioned shepherd moons and fringe landmarks; earlier: inner ring radius/density, mid/outer densities, softEdge from fringe geometry, inner warp gates re-synced.
 - **Dev Save → repo (game defaults)** — Ring Bands and Depth panel **Save** now bake to `src/world/data/ringBackdrop.js` and `depthCompositor.js` via `/dev/save` (same as sector map, title layout, hangar layout, blueprint mounts). Legacy browser `localStorage` tuning migrates to repo files on next load when the dev server is running. Initial ring band bake: bands-only (α 0.49–1, feather 0.22, base fill off).
 - **Station dock approach speed** — `STATION.DOCK_MAX_SPEED` raised from 120 → **200 u/s station-relative** (manual dock, auto-ingress, approach lights, occlusion hysteresis, SYNC match scoring).
-- **Thera sector layout bake** — inner ring inner radius + density (2→3), mid belt density 2.5→5, outer ice 3→8; `softEdgeRadius` tracks fringe geometry; inner warp gate orbits re-synced to the resized inner annulus.
 - **Ring backdrop (overworld)** — layered annulus fill: opaque dark-gray base (`RENDER.RING_BACKDROP_BASE`) plus shared sector-map band infill; each layer has its own edge feather and α min/max. Gated by `RENDER.RING_BACKDROP` (default off). Band layer α now scales directly per strip (fixes α max cliff from broken `destination-in` post-pass).
 
 ### Added

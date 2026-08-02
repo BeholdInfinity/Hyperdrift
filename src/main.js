@@ -58,6 +58,11 @@ import {
   selectTier,
   selectSubBelt,
   formatSectorLayoutModule,
+  undoSectorEditor,
+  redoSectorEditor,
+  canSectorEditorUndo,
+  canSectorEditorRedo,
+  notifySectorEditorChange,
 } from './dev/DevSectorEditor.js';
 import { selectSite } from './dev/SectorMapEditor.js';
 import {
@@ -944,6 +949,11 @@ function syncSectorEditorHud() {
       countEl.textContent = `${tierShown}/${tierTotal} tiers · ${ringShown}/${ringTotal} rings · ${siteShown}/${siteTotal} sites`;
     }
   }
+
+  const histBack = document.getElementById('sme-hist-back');
+  const histFwd = document.getElementById('sme-hist-forward');
+  if (histBack) histBack.disabled = !canSectorEditorUndo();
+  if (histFwd) histFwd.disabled = !canSectorEditorRedo();
 }
 
 /** Keep HUD chrome outside the sacred viewport circle (circle-aligned, not screen-edge). */
@@ -1848,6 +1858,17 @@ document.getElementById('sme-planet-r')?.addEventListener('input', (e) => {
   }
   syncSectorEditorHud();
 });
+document.getElementById('sme-planet-r')?.addEventListener('change', () => {
+  notifySectorEditorChange();
+  syncSectorEditorHud();
+});
+
+document.getElementById('sme-hist-back')?.addEventListener('click', () => {
+  if (undoSectorEditor()) syncSectorEditorHud();
+});
+document.getElementById('sme-hist-forward')?.addEventListener('click', () => {
+  if (redoSectorEditor()) syncSectorEditorHud();
+});
 
 document.getElementById('sme-traffic-preview')?.addEventListener('change', (e) => {
   sectorEditorUI.showTrafficPreview = !!e.target.checked;
@@ -2604,6 +2625,22 @@ document.addEventListener('keydown', (e) => {
   if (e.key === '`' && Settings.isDevMode() && isDevDrawerVisible(engine.mode)) {
     e.preventDefault();
     toggleDrawer();
+  }
+  if (engine.mode === 'sectorEditor' && (e.ctrlKey || e.metaKey)) {
+    const key = e.key.toLowerCase();
+    const inField =
+      e.target instanceof HTMLElement &&
+      (e.target.tagName === 'INPUT' ||
+        e.target.tagName === 'TEXTAREA' ||
+        e.target.tagName === 'SELECT' ||
+        e.target.isContentEditable);
+    if (!inField && key === 'z' && !e.shiftKey) {
+      e.preventDefault();
+      if (undoSectorEditor()) syncSectorEditorHud();
+    } else if (!inField && (key === 'y' || (key === 'z' && e.shiftKey))) {
+      e.preventDefault();
+      if (redoSectorEditor()) syncSectorEditorHud();
+    }
   }
   if (HangarLayoutEditor.isActive()) {
     if (e.key === 'Delete' || e.key === 'Backspace') {

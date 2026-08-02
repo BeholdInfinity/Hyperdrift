@@ -241,9 +241,9 @@ src/
 
 Full plan + todo list: [`WORLD_GEOGRAPHY_PLAN.md`](WORLD_GEOGRAPHY_PLAN.md) (code audit **2026-07-25**).
 
-**Shipped:** Stage 1 foundation; Stage 2 visuals core + **map editor MVP** (drag sites, validator, bake; Orbit lock; add ring/moon/field; sub-belt pockets); Stage 3 motion core (gravity, orbiting stations/gates, `worldPosition`, PRO/SYNC, corridors, Jennings ambient co-orbit v0.1.290); **ring-sector asteroid streaming** with permanent orbits, band density, taxonomy, hero fields, shepherd moons, fourth ring; Stage 4 systems core (warp gates, LIM/fines stub, chart zoom); Stage 5 Place registry (Jennings-clone + planetary stubs); **`InteriorSession`** hangar instancing.
+**Shipped:** Stage 1 foundation; Stage 2 visuals core + **map editor** (drag sites/rings/tiers, validator, bake, Back/Forward undo, Orbit lock, add ring/moon/field, sub-belt pockets); Stage 3 motion core (gravity, orbiting stations/gates, `worldPosition`, PRO/SYNC, corridors, Jennings ambient co-orbit v0.1.290); **ring-sector asteroid streaming** with permanent orbits, band density, taxonomy, hero fields, shepherd moons, fourth ring; Stage 4 systems core (warp gates, LIM/fines stub, chart zoom); Stage 5 Place registry (Jennings-clone + planetary stubs); **`InteriorSession`** hangar instancing.
 
-**Open (see plan todos):** sector editor advanced (ring handles, undo); trade block / broker / outlaw IFF wiring; fragment gravity; dev gravity μ slider.
+**Open (see plan todos):** sector editor inspector polish; trade block / broker / outlaw IFF wiring; fragment gravity; dev gravity μ slider.
 
 ### Polish / follow-ups
 - **Asteroid deferred systems** — impact damage / deflection from rock weight; full drop tables + science-seat readout; laser Mk yield polish; N-body shepherd physics. Radar hero-vs-proc contact-cap priority still open — [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) §9.4.

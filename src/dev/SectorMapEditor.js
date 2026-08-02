@@ -22,6 +22,8 @@ import {
   mapFilterFadeAlpha,
   isSiteListFilterActive,
   TIER_DISPLAY_NAMES,
+  beginSectorEditorDragHistory,
+  endSectorEditorDragHistory,
 } from './DevSectorEditor.js';
 import { editorMapTime } from './SectorEditorGeography.js';
 import {
@@ -88,6 +90,8 @@ function drawSubBeltOverlays(ctx, ring, cx, cy, scale) {
     }
   }
 }
+
+const DRAG_THRESHOLD_PX = 4;
 
 /** @type {{ siteId: string|null, ringId: string|null, tierId: string|null, ringEdge: string|null, moved: boolean, sx: number, sy: number }} */
 const _drag = {
@@ -256,7 +260,11 @@ function applyRingWorldRadius(ringId, edge, wx, wy, layout) {
   else setRingOuterR(ringId, rWorld);
 }
 
-export function selectSite(siteId, engine = null) {
+/**
+ * Select a site. Map clicks use `{ focus: false }` so the camera does not jump
+ * (jumping remaps the pointer and was treated as a drag). Site-list picks keep focus.
+ */
+export function selectSite(siteId, engine = null, { focus = true } = {}) {
   sectorEditorUI.selectedSiteId = siteId || null;
   if (siteId) {
     sectorEditorUI.selectedRingId = null;
@@ -264,19 +272,18 @@ export function selectSite(siteId, engine = null) {
     sectorEditorUI.selectedSubBeltId = null;
   }
   notifySectorEditorChange();
+  if (!focus || !siteId) return;
   const view =
     engine?.mode === 'sectorEditor'
       ? engine.getSectorEditorView?.()
       : engine?.sectorMapView;
-  if (view && siteId) {
-    const site = getSectorLayout().sites?.find((s) => s.id === siteId);
-    if (site) {
-      const pos = siteWorldXY(site, getSectorLayout(), editorMapTime(engine));
-      view.followShip = false;
-      view.panCenter.x = pos.x;
-      view.panCenter.y = pos.y;
-    }
-  }
+  if (!view) return;
+  const site = getSectorLayout().sites?.find((s) => s.id === siteId);
+  if (!site) return;
+  const pos = siteWorldXY(site, getSectorLayout(), editorMapTime(engine));
+  view.followShip = false;
+  view.panCenter.x = pos.x;
+  view.panCenter.y = pos.y;
 }
 
 export function beginEditorPointer(engine, sx, sy, mapBox, view) {
@@ -294,7 +301,8 @@ export function beginEditorPointer(engine, sx, sy, mapBox, view) {
     pickSiteAtScreen(engine, sx, sy, mapBox, view);
   if (site) {
     _drag.siteId = site.id;
-    selectSite(site.id, engine);
+    beginSectorEditorDragHistory();
+    selectSite(site.id, engine, { focus: false });
     return 'site';
   }
 
@@ -302,6 +310,7 @@ export function beginEditorPointer(engine, sx, sy, mapBox, view) {
   if (ring) {
     _drag.ringId = ring.id;
     _drag.ringEdge = ringEdgeAtScreen(sx, sy, ring, mapBox, view, layout);
+    beginSectorEditorDragHistory();
     selectRing(ring.id);
     return 'ring';
   }
@@ -309,6 +318,7 @@ export function beginEditorPointer(engine, sx, sy, mapBox, view) {
   const tierId = pickTierAtScreenEditor(sx, sy, mapBox, view, layout);
   if (tierId) {
     _drag.tierId = tierId;
+    beginSectorEditorDragHistory();
     selectTier(tierId);
     return 'tier';
   }
@@ -319,8 +329,15 @@ export function beginEditorPointer(engine, sx, sy, mapBox, view) {
 }
 
 export function moveEditorPointer(engine, sx, sy, mapBox, view, shiftKey) {
+  if (_drag.siteId || _drag.ringId || _drag.tierId) {
+    const dist = Math.hypot(sx - _drag.sx, sy - _drag.sy);
+    if (!_drag.moved) {
+      if (dist <= DRAG_THRESHOLD_PX) return true;
+      _drag.moved = true;
+    }
+  }
+
   if (_drag.siteId) {
-    if (Math.hypot(sx - _drag.sx, sy - _drag.sy) > 4) _drag.moved = true;
     const site = getSectorLayout().sites?.find((s) => s.id === _drag.siteId);
     const w = view.screenToWorld(sx, sy, mapBox);
     applySiteWorldPosition(site, w.x, w.y, getSectorLayout(), shiftKey);
@@ -328,13 +345,11 @@ export function moveEditorPointer(engine, sx, sy, mapBox, view, shiftKey) {
     return true;
   }
   if (_drag.ringId) {
-    if (Math.hypot(sx - _drag.sx, sy - _drag.sy) > 4) _drag.moved = true;
     const w = view.screenToWorld(sx, sy, mapBox);
     applyRingWorldRadius(_drag.ringId, _drag.ringEdge || 'outer', w.x, w.y, getSectorLayout());
     return true;
   }
   if (_drag.tierId) {
-    if (Math.hypot(sx - _drag.sx, sy - _drag.sy) > 4) _drag.moved = true;
     const layout = getSectorLayout();
     const cx = layout.planet?.center?.x ?? 0;
     const cy = layout.planet?.center?.y ?? 0;
@@ -356,6 +371,10 @@ export function endEditorPointer(view) {
   _drag.tierId = null;
   _drag.ringEdge = null;
   _drag.moved = false;
+
+  if (siteId || ringId || tierId) {
+    endSectorEditorDragHistory(moved);
+  }
 
   if (siteId) {
     return { siteId, ringId: null, tierId: null, moved, suppressClick: moved };
@@ -405,7 +424,7 @@ export function processSectorEditorPointer(engine, input, panels, zoomWheel) {
     const result = endEditorPointer(view);
     panels._sectorEditorTracking = false;
     if (result.siteId && !result.moved) {
-      selectSite(result.siteId, engine);
+      selectSite(result.siteId, engine, { focus: false });
     } else if (result.ringId && !result.moved) {
       selectRing(result.ringId);
     } else if (result.tierId && !result.moved) {

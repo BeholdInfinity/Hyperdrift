@@ -104,8 +104,8 @@ export const SECTOR_LAYOUT = {
     },
     {
       "id": "fringe_ice",
-      "innerR": 1400000,
-      "outerR": 1650000,
+      "innerR": 1525250.5390933151,
+      "outerR": 1961728.525710642,
       "warpPairId": null,
       "density": 4,
       "composition": {
@@ -124,7 +124,7 @@ export const SECTOR_LAYOUT = {
     "minOrbitalSep": 150000,
     "minFringeFromRing": 270000,
     "referenceTransitSpeed": 900,
-    "softEdgeRadius": 1920000,
+    "softEdgeRadius": 2462229,
     "siteExclusionRadius": 45000
   },
   "socialOrbitInner": {
@@ -560,12 +560,12 @@ export const SECTOR_LAYOUT = {
       "motion": "orbit",
       "trafficPolicy": "standard",
       "orbit": {
-        "orbitR": 1726000.0000000002,
+        "orbitR": 2462228.5257106423,
         "orbitAngle0": 0.12246105741734142,
-        "orbitOmega": 0.0005916638912831379
+        "orbitOmega": 0.00034725116775780973
       },
-      "x": 1713074.0048369279,
-      "y": 210839.87751839112,
+      "x": 2443788.9231534493,
+      "y": 300774.02131119376,
       "fringeClearance": 500500.00000000023
     },
     {
@@ -576,12 +576,12 @@ export const SECTOR_LAYOUT = {
       "motion": "orbit",
       "trafficPolicy": "standard",
       "orbit": {
-        "orbitR": 1726000,
+        "orbitR": 2462228.5257106423,
         "orbitAngle0": 2.7173982456860264,
-        "orbitOmega": 0.0005916638912831381
+        "orbitOmega": 0.00034725116775780973
       },
-      "x": -1573025.6550108725,
-      "y": 710398.6829081364,
+      "x": -2244002.6879736027,
+      "y": 1013420.5687622728,
       "fringeClearance": 500500
     },
     {
@@ -591,12 +591,12 @@ export const SECTOR_LAYOUT = {
       "iff": "blue",
       "motion": "orbit",
       "orbit": {
-        "orbitR": 521250,
-        "orbitAngle0": 0.3,
-        "orbitOmega": 0.00355
+        "orbitR": 514152.6824728074,
+        "orbitAngle0": -0.9174379250120871,
+        "orbitOmega": 0.003639134386594369
       },
-      "x": 498200,
-      "y": 153800,
+      "x": 312531.0793683184,
+      "y": -408261.31989555096,
       "radius": 7000,
       "shepherds": {
         "innerRingId": "inner_ore",
@@ -610,12 +610,12 @@ export const SECTOR_LAYOUT = {
       "iff": "blue",
       "motion": "orbit",
       "orbit": {
-        "orbitR": 889250,
-        "orbitAngle0": 1.8,
-        "orbitOmega": 0.00159
+        "orbitR": 889523.1616646653,
+        "orbitAngle0": 0.5273909215334932,
+        "orbitOmega": 0.001599191089463862
       },
-      "x": -202000,
-      "y": 866000,
+      "x": 768657.5195274856,
+      "y": 447679.6542302938,
       "radius": 9000,
       "shepherds": {
         "innerRingId": "mid_mixed",
@@ -629,12 +629,12 @@ export const SECTOR_LAYOUT = {
       "iff": "blue",
       "motion": "orbit",
       "orbit": {
-        "orbitR": 1312750,
-        "orbitAngle0": 3.5,
-        "orbitOmega": 0.00089
+        "orbitR": 1362730.6777094586,
+        "orbitAngle0": 2.5621858268681765,
+        "orbitOmega": 0.000843375932382807
       },
-      "x": -1228000,
-      "y": -461000,
+      "x": -1140316.1003979184,
+      "y": 746132.7570504897,
       "radius": 10000,
       "shepherds": {
         "innerRingId": "outer_ice",
@@ -650,10 +650,10 @@ export const SECTOR_LAYOUT = {
       "orbit": {
         "orbitR": 693000,
         "orbitAngle0": 0.8,
-        "orbitOmega": 0.002322
+        "orbitOmega": 0.002325607399784647
       },
-      "x": 483157.3,
-      "y": 496785.5,
+      "x": 482817.7495775856,
+      "y": 497127.7709933693,
       "fieldRadius": 2800,
       "rocks": [
         {
@@ -667,7 +667,11 @@ export const SECTOR_LAYOUT = {
           "radius": 107,
           "hp": 51,
           "seed": 23834,
-          "composition": { "iron": 0.55, "ice": 0.25, "silicate": 0.2 },
+          "composition": {
+            "iron": 0.55,
+            "ice": 0.25,
+            "silicate": 0.2
+          },
           "compositionTag": "iron",
           "lootSeed": 3098279049,
           "allowHeroTiers": true
@@ -683,7 +687,11 @@ export const SECTOR_LAYOUT = {
           "radius": 50,
           "hp": 35,
           "seed": 40037,
-          "composition": { "iron": 0.55, "ice": 0.25, "silicate": 0.2 },
+          "composition": {
+            "iron": 0.55,
+            "ice": 0.25,
+            "silicate": 0.2
+          },
           "compositionTag": "iron",
           "lootSeed": 3407198724,
           "allowHeroTiers": true
@@ -699,7 +707,11 @@ export const SECTOR_LAYOUT = {
           "radius": 22,
           "hp": 10,
           "seed": 82903,
-          "composition": { "iron": 0.55, "ice": 0.25, "silicate": 0.2 },
+          "composition": {
+            "iron": 0.55,
+            "ice": 0.25,
+            "silicate": 0.2
+          },
           "compositionTag": "iron",
           "lootSeed": 1921580354,
           "allowHeroTiers": true
@@ -715,7 +727,11 @@ export const SECTOR_LAYOUT = {
           "radius": 30,
           "hp": 16,
           "seed": 39915,
-          "composition": { "iron": 0.55, "ice": 0.25, "silicate": 0.2 },
+          "composition": {
+            "iron": 0.55,
+            "ice": 0.25,
+            "silicate": 0.2
+          },
           "compositionTag": "iron",
           "lootSeed": 1921883864,
           "allowHeroTiers": true
@@ -731,7 +747,11 @@ export const SECTOR_LAYOUT = {
           "radius": 40,
           "hp": 22,
           "seed": 74456,
-          "composition": { "iron": 0.55, "ice": 0.25, "silicate": 0.2 },
+          "composition": {
+            "iron": 0.55,
+            "ice": 0.25,
+            "silicate": 0.2
+          },
           "compositionTag": "iron",
           "lootSeed": 607560558,
           "allowHeroTiers": true
@@ -747,7 +767,11 @@ export const SECTOR_LAYOUT = {
           "radius": 15,
           "hp": 6,
           "seed": 89374,
-          "composition": { "iron": 0.55, "ice": 0.25, "silicate": 0.2 },
+          "composition": {
+            "iron": 0.55,
+            "ice": 0.25,
+            "silicate": 0.2
+          },
           "compositionTag": "iron",
           "lootSeed": 237674728,
           "allowHeroTiers": true
@@ -763,7 +787,11 @@ export const SECTOR_LAYOUT = {
           "radius": 28,
           "hp": 14,
           "seed": 4756,
-          "composition": { "iron": 0.55, "ice": 0.25, "silicate": 0.2 },
+          "composition": {
+            "iron": 0.55,
+            "ice": 0.25,
+            "silicate": 0.2
+          },
           "compositionTag": "iron",
           "lootSeed": 4163714360,
           "allowHeroTiers": true
@@ -779,7 +807,11 @@ export const SECTOR_LAYOUT = {
           "radius": 20,
           "hp": 9,
           "seed": 10761,
-          "composition": { "iron": 0.55, "ice": 0.25, "silicate": 0.2 },
+          "composition": {
+            "iron": 0.55,
+            "ice": 0.25,
+            "silicate": 0.2
+          },
           "compositionTag": "iron",
           "lootSeed": 3638443621,
           "allowHeroTiers": true

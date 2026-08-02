@@ -28,6 +28,25 @@ export const sectorEditorDraft = JSON.parse(JSON.stringify(SECTOR_LAYOUT));
 /** @type {(() => void) | null} */
 let _changeListener = null;
 
+const HISTORY_MAX = 60;
+
+/** @type {{ past: object[], future: object[], shadow: object|null, dragBase: object|null, applying: boolean }} */
+const _history = {
+  past: [],
+  future: [],
+  shadow: null,
+  dragBase: null,
+  applying: false,
+};
+
+function cloneLayout(layout) {
+  return JSON.parse(JSON.stringify(layout));
+}
+
+function layoutFingerprint(layout) {
+  return JSON.stringify(layout);
+}
+
 export const sectorEditorUI = {
   active: false,
   selectedSiteId: null,
@@ -168,8 +187,83 @@ export function setSectorEditorChangeListener(fn) {
   _changeListener = typeof fn === 'function' ? fn : null;
 }
 
+/** Reset undo/redo stacks to the current draft (call after editor open / hydrate). */
+export function initSectorEditorHistory() {
+  _history.past = [];
+  _history.future = [];
+  _history.dragBase = null;
+  _history.applying = false;
+  _history.shadow = cloneLayout(sectorEditorDraft);
+}
+
+/** Snapshot draft before a map drag so one gesture = one undo step. */
+export function beginSectorEditorDragHistory() {
+  if (_history.applying || _history.dragBase) return;
+  _history.dragBase = cloneLayout(sectorEditorDraft);
+}
+
+/** Commit or discard the drag checkpoint. */
+export function endSectorEditorDragHistory(moved) {
+  if (!_history.dragBase) return;
+  if (moved) {
+    _history.past.push(_history.dragBase);
+    if (_history.past.length > HISTORY_MAX) _history.past.shift();
+    _history.future.length = 0;
+  }
+  _history.dragBase = null;
+  _history.shadow = cloneLayout(sectorEditorDraft);
+}
+
+function applyLayoutSnapshot(snapshot) {
+  if (!snapshot) return;
+  _history.applying = true;
+  Object.keys(sectorEditorDraft).forEach((k) => delete sectorEditorDraft[k]);
+  Object.assign(sectorEditorDraft, cloneLayout(snapshot));
+  hydrateOrbitParams(sectorEditorDraft);
+  ensureSocialOrbitInner(sectorEditorDraft);
+  _history.shadow = cloneLayout(sectorEditorDraft);
+  _history.applying = false;
+  notifySectorEditorChange();
+}
+
+export function canSectorEditorUndo() {
+  return _history.past.length > 0;
+}
+
+export function canSectorEditorRedo() {
+  return _history.future.length > 0;
+}
+
+export function undoSectorEditor() {
+  if (!_history.past.length || _history.dragBase) return false;
+  _history.future.push(cloneLayout(sectorEditorDraft));
+  if (_history.future.length > HISTORY_MAX) _history.future.shift();
+  applyLayoutSnapshot(_history.past.pop());
+  return true;
+}
+
+export function redoSectorEditor() {
+  if (!_history.future.length || _history.dragBase) return false;
+  _history.past.push(cloneLayout(sectorEditorDraft));
+  if (_history.past.length > HISTORY_MAX) _history.past.shift();
+  applyLayoutSnapshot(_history.future.pop());
+  return true;
+}
+
 export function notifySectorEditorChange() {
   sectorEditorUI.revision += 1;
+  if (!_history.applying && !_history.dragBase) {
+    const nextFp = layoutFingerprint(sectorEditorDraft);
+    const shadowFp = _history.shadow ? layoutFingerprint(_history.shadow) : null;
+    if (shadowFp != null && nextFp !== shadowFp) {
+      _history.past.push(_history.shadow);
+      if (_history.past.length > HISTORY_MAX) _history.past.shift();
+      _history.future.length = 0;
+      _history.shadow = cloneLayout(sectorEditorDraft);
+    } else if (_history.shadow == null) {
+      _history.shadow = cloneLayout(sectorEditorDraft);
+    }
+  }
   _changeListener?.();
 }
 
@@ -283,6 +377,7 @@ export function setSectorEditorActive(active, engine = null) {
     syncAllWarpGatesFromRings(sectorEditorDraft, { silent: true });
     setSectorLayoutOverride(sectorEditorDraft);
     syncPlanetRadiusSlider();
+    initSectorEditorHistory();
     if (engine?.sectorMapView) {
       engine.sectorMapView.followShip = false;
       engine.sectorMapView.panCenter.x = 0;
