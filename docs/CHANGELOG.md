@@ -11,6 +11,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 - **Hero asteroid fields** — charted `asteroid_field` POIs (seeded Iron Needle Cluster); `HeroFieldStream` + envelope suppress of proc rocks; Large/Very Large reserved for heroes.
 - **Fourth ring + shepherd moons** — `fringe_ice` annulus; three gap moons (charted POIs + flight discs); mid-belt example `subBelts` composition pockets.
 - **Sector editor geography** — Orbit lock (t=0); Add ring / moon / field / Delete ring; moon radius; sub-belt inspector on selected ring (`SectorEditorGeography.js`).
+- **Sector editor geography polish** — sub-belt map overlay + θ0/θ1 edits; moon gap picker; Add warp pair for rings without gates; ring ice/iron/silicate % fields; mining size-tier shrink debris burst.
 - **Settings controls sandbox** — wired like real flight: ship-up view rotation, full camera (lead offset + speed zoom), depth compositor parallax, forward-cone speed streaks; no gravity/world entities. SPD readout top-right outside viewport.
 
 ### Fixed

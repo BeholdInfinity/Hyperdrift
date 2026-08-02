@@ -289,6 +289,73 @@ export function ringWarpPairId(ring) {
   return ring.warpPairId || RING_TO_PAIR_ID[ring.id] || null;
 }
 
+function uniqueWarpPairId(ringId, layout = sectorEditorDraft) {
+  let base = String(ringId || 'ring').replace(/_ice$|_ore$|_mixed$/i, '') || 'ring';
+  if (!base) base = String(ringId).split('_')[0] || 'ring';
+  let id = base;
+  let n = 2;
+  const used = new Set();
+  for (const r of layout.rings ?? []) {
+    const pid = r.warpPairId || RING_TO_PAIR_ID[r.id];
+    if (pid) used.add(pid);
+  }
+  for (const s of layout.sites ?? []) {
+    if (s.kind === 'warp_ring' && s.pairId) used.add(s.pairId);
+  }
+  while (used.has(id)) id = `${base}_${n++}`;
+  return id;
+}
+
+/** True if ring already has warp gates for its pair id. */
+export function ringHasWarpPair(ring, layout = sectorEditorDraft) {
+  const pid = ringWarpPairId(ring);
+  if (!pid) return false;
+  return (layout.sites ?? []).some((s) => s.kind === 'warp_ring' && s.pairId === pid);
+}
+
+/**
+ * Create a diametric warp gate pair for a ring that has none.
+ * Sets ring.warpPairId and two warp_ring sites.
+ */
+export function addWarpPair(ringId, layout = sectorEditorDraft) {
+  const ring = layout.rings?.find((r) => r.id === ringId);
+  if (!ring) return null;
+  if (ringHasWarpPair(ring, layout)) return null;
+  const pairId = ring.warpPairId || uniqueWarpPairId(ring.id, layout);
+  ring.warpPairId = pairId;
+  const gateR = warpGateOrbitR(ring, layout);
+  const idA = uniqueSiteId(`site.warp.ring.${pairId}.a`, layout);
+  const idB = uniqueSiteId(`site.warp.ring.${pairId}.b`, layout);
+  const mkGate = (id, side, angle, target) => {
+    const site = {
+      id,
+      kind: 'warp_ring',
+      name: `${ring.id} Gate ${side.toUpperCase()}`,
+      iff: 'blue',
+      motion: 'orbit',
+      trafficPolicy: 'standard',
+      orbit: {
+        orbitR: gateR,
+        orbitAngle0: angle,
+        orbitOmega: orbitOmegaFor(gateR, layout),
+      },
+      pairId,
+      pairSide: side,
+      pairTarget: target,
+    };
+    const pos = siteWorldPosition(site, 0, layout);
+    site.x = pos.x;
+    site.y = pos.y;
+    return site;
+  };
+  const a = mkGate(idA, 'a', 0, idB);
+  const b = mkGate(idB, 'b', Math.PI, idA);
+  layout.sites.push(a, b);
+  hydrateOrbitParams(layout);
+  notifySectorEditorChange();
+  return { pairId, gates: [a, b] };
+}
+
 export function uniqueSubBeltId(ring, base = 'pocket') {
   let id = base;
   let n = 2;

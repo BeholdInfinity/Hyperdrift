@@ -451,11 +451,15 @@
           <label class="dev-check"><input type="checkbox" id="sme-traffic-preview" checked /> Traffic shells</label>
           <label class="dev-check"><input type="checkbox" id="sme-tier-bands" /> Social tier bands</label>
           <label class="dev-check"><input type="checkbox" id="sme-orbit-lock" checked /> Orbit lock (t=0)</label>
-          <div class="sme-geo-actions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px">
+          <div class="sme-geo-actions" style="display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center">
             <button type="button" class="bp-action" id="sme-add-ring">Add ring</button>
+            <label class="sme-field" style="margin:0">Gap
+              <select id="sme-moon-gap" class="dev-num-input" style="min-width:10rem"></select>
+            </label>
             <button type="button" class="bp-action" id="sme-add-moon">Add moon</button>
             <button type="button" class="bp-action" id="sme-add-field">Add field</button>
             <button type="button" class="bp-action bp-warn hidden" id="sme-delete-ring">Delete ring</button>
+            <button type="button" class="bp-action hidden" id="sme-add-warp-pair">Add warp pair</button>
           </div>
         </section>
         <section class="bp-card sme-validator-card">
@@ -492,6 +496,9 @@
                 <label class="sme-field">Mid R <input type="number" id="sme-ring-mid" class="dev-num-input" step="1000" /></label>
                 <label class="sme-field">Width <input type="number" id="sme-ring-width" class="dev-num-input" step="1000" min="5000" /></label>
                 <label class="sme-field">Density <input type="number" id="sme-ring-density" class="dev-num-input" step="0.05" min="0" max="3" /></label>
+                <label class="sme-field">ice% <input type="number" id="sme-ring-ice" class="dev-num-input" step="5" min="0" max="100" /></label>
+                <label class="sme-field">iron% <input type="number" id="sme-ring-iron" class="dev-num-input" step="5" min="0" max="100" /></label>
+                <label class="sme-field">silicate% <input type="number" id="sme-ring-silicate" class="dev-num-input" step="5" min="0" max="100" /></label>
               </div>
               <div class="sme-field-row hidden" id="sme-subbelt-fields">
                 <p class="bp-meta sme-sel-line">Sub-belts (composition pockets)</p>

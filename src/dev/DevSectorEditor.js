@@ -33,6 +33,8 @@ export const sectorEditorUI = {
   selectedSiteId: null,
   selectedRingId: null,
   selectedTierId: null,
+  /** Highlighted sub-belt pocket on the selected ring (map overlay). */
+  selectedSubBeltId: null,
   showTrafficPreview: true,
   showTierBands: true,
   /** When true (default), sector editor map uses t=0 — not a full sim pause. */
@@ -309,6 +311,7 @@ export function clearEditorSelection() {
   sectorEditorUI.selectedSiteId = null;
   sectorEditorUI.selectedRingId = null;
   sectorEditorUI.selectedTierId = null;
+  sectorEditorUI.selectedSubBeltId = null;
   notifySectorEditorChange();
 }
 
@@ -317,6 +320,7 @@ export function selectTier(tierId) {
   if (tierId) {
     sectorEditorUI.selectedSiteId = null;
     sectorEditorUI.selectedRingId = null;
+    sectorEditorUI.selectedSubBeltId = null;
     sectorEditorUI.showTierBands = true;
   }
   notifySectorEditorChange();
@@ -334,12 +338,42 @@ export function getSelectedTier() {
 }
 
 export function selectRing(ringId) {
+  const prev = sectorEditorUI.selectedRingId;
   sectorEditorUI.selectedRingId = ringId || null;
   if (ringId) {
     sectorEditorUI.selectedSiteId = null;
     sectorEditorUI.selectedTierId = null;
   }
+  if (!ringId || ringId !== prev) sectorEditorUI.selectedSubBeltId = null;
   notifySectorEditorChange();
+}
+
+export function selectSubBelt(subBeltId) {
+  sectorEditorUI.selectedSubBeltId = subBeltId || null;
+  notifySectorEditorChange();
+}
+
+/** Set ring ice/iron/silicate weights (0..1); preserve other keys; renormalize mix. */
+export function setRingComposition(ringId, { ice = 0, iron = 0, silicate = 0 } = {}) {
+  const ring = sectorEditorDraft.rings?.find((r) => r.id === ringId);
+  if (!ring) return false;
+  const next = { ...(ring.composition || {}) };
+  next.ice = Math.max(0, Number(ice) || 0);
+  next.iron = Math.max(0, Number(iron) || 0);
+  next.silicate = Math.max(0, Number(silicate) || 0);
+  let sum = 0;
+  for (const v of Object.values(next)) sum += Math.max(0, Number(v) || 0);
+  if (sum <= 0) {
+    ring.composition = { silicate: 1 };
+  } else {
+    const out = {};
+    for (const [k, v] of Object.entries(next)) {
+      out[k] = Math.max(0, Number(v) || 0) / sum;
+    }
+    ring.composition = out;
+  }
+  notifySectorEditorChange();
+  return true;
 }
 
 export function getSelectedRing() {

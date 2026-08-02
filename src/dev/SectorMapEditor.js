@@ -31,12 +31,63 @@ import {
   stationTrafficZonesFor,
   stationTrafficOuterRadius,
 } from '../world/SectorLayout.js';
+import { compositionFillStyle } from '../systems/AsteroidCatalog.js';
 
 const FONT = "'Barlow Condensed', 'Segoe UI', sans-serif";
 const ACCENT = 'rgba(120, 200, 255, 0.9)';
 const RING_ACCENT = 'rgba(255, 154, 80, 0.95)';
 const COPPER = 'rgba(230, 171, 109, 0.92)';
 const TAU = Math.PI * 2;
+
+/** Draw composition pocket overlays for the selected ring. */
+function drawSubBeltOverlays(ctx, ring, cx, cy, scale) {
+  const list = ring?.subBelts;
+  if (!list?.length || !(ring.outerR > ring.innerR)) return;
+  const width = ring.outerR - ring.innerR;
+  const selId = sectorEditorUI.selectedSubBeltId;
+  for (const sb of list) {
+    const t0 = Math.max(0, Math.min(1, sb.t0 ?? 0));
+    const t1 = Math.max(0, Math.min(1, sb.t1 ?? 1));
+    const r0 = (ring.innerR + width * Math.min(t0, t1)) * scale;
+    const r1 = (ring.innerR + width * Math.max(t0, t1)) * scale;
+    if (r1 < 2) continue;
+    const selected = sb.id === selId;
+    const alpha = selected ? 0.38 : 0.2;
+    ctx.fillStyle = compositionFillStyle(sb.composition, alpha);
+    ctx.strokeStyle = compositionFillStyle(sb.composition, selected ? 0.85 : 0.45);
+    ctx.lineWidth = selected ? 2 : 1;
+    const th0 = sb.theta0;
+    const th1 = sb.theta1;
+    const fullCircle = th0 == null || th1 == null;
+    ctx.beginPath();
+    if (fullCircle) {
+      ctx.arc(cx, cy, r1, 0, TAU);
+      ctx.arc(cx, cy, r0, 0, TAU, true);
+      ctx.fill('evenodd');
+      ctx.beginPath();
+      ctx.arc(cx, cy, r1, 0, TAU);
+      ctx.stroke();
+      if (r0 >= 2) {
+        ctx.beginPath();
+        ctx.arc(cx, cy, r0, 0, TAU);
+        ctx.stroke();
+      }
+    } else {
+      let a0 = Number(th0);
+      let a1 = Number(th1);
+      if (a1 < a0) {
+        const tmp = a0;
+        a0 = a1;
+        a1 = tmp;
+      }
+      ctx.arc(cx, cy, r1, a0, a1);
+      ctx.arc(cx, cy, r0, a1, a0, true);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+}
 
 /** @type {{ siteId: string|null, ringId: string|null, tierId: string|null, ringEdge: string|null, moved: boolean, sx: number, sy: number }} */
 const _drag = {
@@ -210,6 +261,7 @@ export function selectSite(siteId, engine = null) {
   if (siteId) {
     sectorEditorUI.selectedRingId = null;
     sectorEditorUI.selectedTierId = null;
+    sectorEditorUI.selectedSubBeltId = null;
   }
   notifySectorEditorChange();
   const view =
@@ -426,6 +478,7 @@ export function drawSectorEditorOverlay(ctx, mapBox, engine, view, mapTime = nul
       ctx.beginPath();
       ctx.arc(ps.x, ps.y, ro, 0, TAU);
       ctx.stroke();
+      drawSubBeltOverlays(ctx, selRing, ps.x, ps.y, scale);
       const mid = formatOrbitStats((selRing.innerR + selRing.outerR) * 0.5, layout);
       ctx.font = `600 9px ${FONT}`;
       ctx.fillStyle = RING_ACCENT;

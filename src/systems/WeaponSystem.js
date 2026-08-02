@@ -157,8 +157,11 @@ export class WeaponSystem {
       if (typeof rock.mineExtract === 'function') {
         const laserMk = ship.miningLaserMk ?? ship.scannerMk ?? 1;
         const mined = rock.mineExtract(deltaTime, laserMk);
-        if (mined.extracted > 0 || mined.shrunk) {
-          this._createImpactEffect(hitX, hitY, mined.shrunk || mined.destroyed);
+        if (mined.extracted > 0 && !mined.shrunk) {
+          this._createImpactEffect(hitX, hitY, false);
+        }
+        if (mined.shrunk) {
+          this._createShrinkDebris(hitX, hitY, rock);
         }
         if (mined.destroyed) {
           this._createImpactEffect(hitX, hitY, true);
@@ -210,5 +213,15 @@ export class WeaponSystem {
     if (big) {
       this.particles.emitBurst(x, y, 12, 180, 0.4, 'rgba(255, 100, 50, 0.7)', 4);
     }
+  }
+
+  /** Size-tier stepdown burst — rock dust, distinct from laser tick sparks. */
+  _createShrinkDebris(x, y, rock) {
+    const tint =
+      typeof rock?.fillStyle === 'function'
+        ? rock.fillStyle()
+        : 'rgba(140, 130, 120, 0.9)';
+    this.particles.emitBurst(x, y, 28, 220, 0.55, tint, 4);
+    this.particles.emitBurst(x, y, 14, 140, 0.4, 'rgba(90, 85, 80, 0.75)', 3);
   }
 }
