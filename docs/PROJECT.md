@@ -265,7 +265,7 @@ Full plan + todo list: [`WORLD_GEOGRAPHY_PLAN.md`](WORLD_GEOGRAPHY_PLAN.md) (cod
 **Open (see plan todos):** sector editor inspector polish; trade block / broker / outlaw IFF wiring; fragment gravity; dev gravity μ slider.
 
 ### Polish / follow-ups
-- **Asteroid deferred systems** — impact damage / deflection from rock weight; full drop tables + science-seat readout; laser Mk yield polish; N-body shepherd physics. Radar hero-vs-proc contact-cap priority still open — [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) §9.4.
+- **Asteroid deferred systems** — impact damage / deflection from rock mass (volume × composition density); full drop tables + science-seat readout; laser Mk yield polish; N-body shepherd physics. Radar hero-vs-proc contact-cap priority still open — [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) §9.4.
 - **Space hangar presence / bay mouth traffic (needs more tuning)** — first pass shipped (`HangarPresence`, retrograde reservation spawns, beacon fix, stall retry). Still open: reliable door inbound while player co-orbits Jennings; visible elevator beacon cadence vs interior hangar; spawn speed/distance/geometry; reservation retry pacing; mouth mutex vs `MAX_SHIPS`. Touch `HangarPresence.js`, `AmbientTrafficSystem.spawnBayApproach` / `_tickBayMouth`, `BayTrafficManifest.js`, `Constants.js` (`AMBIENT.*`, `HANGAR.INBOUND_RESERVATION_STALL_SEC`).
 - **Thruster cup size** — tune via Blueprint Author sliders / `visualTuning.js` (still subjective)
 - **Hardpoint / plume mounts** — author in Blueprint + Dev Mode; bake to `mountLayouts.js`

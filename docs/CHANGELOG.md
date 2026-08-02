@@ -6,6 +6,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Changed
+- **Asteroid size taxonomy** — tier Fibonacci values are now **volume** (1–21); rock **weight** = composition base density × volume (`COMPOSITION_BASE_WEIGHT` in `AsteroidCatalog.js`). Hero field bakes use `volume`; legacy `weight` field still loads as volume.
+
 ### Added
 - **Sector editor Back / Forward** — undo/redo for layout edits (◀ Back / Forward ▶ in the validator card; Ctrl+Z / Ctrl+Y); map drags commit as one step.
 - **Belt asteroid permanence + taxonomy** — catalogs store permanent `orbitR` / `orbitAngle0`; view-priority fill + backlog catch-up for speed-independent density; proc rocks follow `RingBeltVisual` sub-bands; seven size tiers with gen-time capacity/composition/`lootSeed`; mining shrink by tier; ammo ~25% yield (`AsteroidCatalog.js`).

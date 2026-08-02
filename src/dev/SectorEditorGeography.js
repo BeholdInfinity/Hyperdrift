@@ -12,6 +12,7 @@ import {
   rollCapacity,
   rollRadius,
   hpForRock,
+  rockWeight,
 } from '../systems/AsteroidCatalog.js';
 import {
   sectorEditorDraft,
@@ -198,17 +199,19 @@ export function generateHeroFieldRocks(fieldOrbit, count = 12, opts = {}) {
     if (heroTier) {
       const t = getSizeTier(heroTier);
       stats.sizeTier = heroTier;
-      stats.weight = t.weight;
+      stats.volume = t.volume;
       stats.capacityMax = rollCapacity(rng, heroTier);
       stats.capacityRemaining = stats.capacityMax;
       stats.radius = rollRadius(rng, heroTier);
       stats.hp = hpForRock(stats.radius, stats.capacityMax);
+      stats.weight = rockWeight(stats.volume, stats.composition);
     }
     rocks.push({
       id: `r${i}`,
       orbitR: orbit.orbitR,
       orbitAngle0: orbit.orbitAngle0,
       sizeTier: stats.sizeTier,
+      volume: stats.volume,
       weight: stats.weight,
       capacityMax: stats.capacityMax,
       capacityRemaining: stats.capacityMax,

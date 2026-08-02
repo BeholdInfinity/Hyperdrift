@@ -1,6 +1,7 @@
 /**
- * Asteroid size tiers, weight, capacity, composition mixes, yield stubs.
+ * Asteroid size tiers, volume, capacity, composition mixes, yield stubs.
  * Single authority for proc + hero rock generation.
+ * Rock weight = composition base density × tier volume (Fibonacci 1–21).
  */
 
 /** @typedef {'very_small'|'small'|'small_medium'|'medium'|'large_medium'|'large'|'very_large'} SizeTierId */
@@ -9,7 +10,7 @@ export const SIZE_TIERS = [
   {
     id: 'very_small',
     label: 'Very Small',
-    weight: 1,
+    volume: 1,
     capacityMin: 0,
     capacityMax: 1,
     procWeight: 15,
@@ -20,7 +21,7 @@ export const SIZE_TIERS = [
   {
     id: 'small',
     label: 'Small',
-    weight: 2,
+    volume: 2,
     capacityMin: 0,
     capacityMax: 2,
     procWeight: 25,
@@ -31,7 +32,7 @@ export const SIZE_TIERS = [
   {
     id: 'small_medium',
     label: 'Small-Medium',
-    weight: 3,
+    volume: 3,
     capacityMin: 1,
     capacityMax: 3,
     procWeight: 40,
@@ -42,7 +43,7 @@ export const SIZE_TIERS = [
   {
     id: 'medium',
     label: 'Medium',
-    weight: 5,
+    volume: 5,
     capacityMin: 2,
     capacityMax: 5,
     procWeight: 15,
@@ -53,7 +54,7 @@ export const SIZE_TIERS = [
   {
     id: 'large_medium',
     label: 'Large-Medium',
-    weight: 8,
+    volume: 8,
     capacityMin: 3,
     capacityMax: 8,
     procWeight: 5,
@@ -64,7 +65,7 @@ export const SIZE_TIERS = [
   {
     id: 'large',
     label: 'Large',
-    weight: 13,
+    volume: 13,
     capacityMin: 5,
     capacityMax: 13,
     procWeight: 0,
@@ -75,7 +76,7 @@ export const SIZE_TIERS = [
   {
     id: 'very_large',
     label: 'Very Large',
-    weight: 21,
+    volume: 21,
     capacityMin: 8,
     capacityMax: 21,
     procWeight: 0,
@@ -177,6 +178,32 @@ const COMP_TINT = {
   rare: { r: 160, g: 150, b: 120 },
   titanium: { r: 140, g: 145, b: 155 },
 };
+
+/** Relative mass density per composition tag (silicate = 1). */
+export const COMPOSITION_BASE_WEIGHT = {
+  silicate: 1,
+  iron: 1.45,
+  carbonaceous: 0.85,
+  ice: 0.42,
+  rare: 1.25,
+  titanium: 1.55,
+};
+
+/** Weighted-average base density for a composition mix. */
+export function compositionBaseWeight(comp) {
+  const mix = normalizeComposition(comp);
+  let sum = 0;
+  for (const [k, w] of Object.entries(mix)) {
+    sum += w * (COMPOSITION_BASE_WEIGHT[k] ?? COMPOSITION_BASE_WEIGHT.silicate);
+  }
+  return sum > 0 ? sum : COMPOSITION_BASE_WEIGHT.silicate;
+}
+
+/** Rock mass taxonomy — tier volume × material base weight. */
+export function rockWeight(volume, comp) {
+  const v = Math.max(0, Number(volume) || 0);
+  return v * compositionBaseWeight(comp);
+}
 
 /** CSS fill color from composition mix. */
 export function compositionFillStyle(comp, alpha = 1) {
@@ -305,9 +332,11 @@ export function rollRockStats(opts) {
       ? normalizeComposition(opts.composition)
       : pickCompositionMix(rng, opts.ring, opts.sampleR, opts.theta);
   const seed = rng.int(1, 99999);
+  const volume = tier.volume;
   return {
     sizeTier: sizeTierId,
-    weight: tier.weight,
+    volume,
+    weight: rockWeight(volume, composition),
     capacityMax,
     capacityRemaining: capacityMax,
     radius,

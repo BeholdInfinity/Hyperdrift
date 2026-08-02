@@ -60,6 +60,7 @@ export function spawnBeltAsteroid(spec, gameTime, layout, streamId = null) {
   asteroid.orbitAngle0 = spec.orbitAngle0;
   asteroid.applyCatalogStats({
     sizeTier: spec.sizeTier,
+    volume: spec.volume,
     weight: spec.weight,
     capacityMax: spec.capacityMax,
     capacityRemaining: spec.capacityRemaining ?? spec.capacityMax,

@@ -10,6 +10,7 @@ import {
   normalizeComposition,
   primaryComposition,
   resolveDropTable,
+  rockWeight,
   tierForRemainingCapacity,
   hpForRock,
 } from '../systems/AsteroidCatalog.js';
@@ -25,7 +26,8 @@ export class Asteroid extends Entity {
     this.composition = normalizeComposition(composition);
     this.compositionTag = primaryComposition(this.composition);
     this.sizeTier = 'small_medium';
-    this.weight = 3;
+    this.volume = 3;
+    this.weight = rockWeight(3, this.composition);
     this.capacityMax = 0;
     this.capacityRemaining = 0;
     this.lootSeed = seed >>> 0;
@@ -49,7 +51,10 @@ export class Asteroid extends Entity {
   applyCatalogStats(stats) {
     if (!stats) return this;
     this.sizeTier = stats.sizeTier ?? this.sizeTier;
-    this.weight = stats.weight ?? getSizeTier(this.sizeTier).weight;
+    const tier = getSizeTier(this.sizeTier);
+    // Legacy bakes used `weight` for tier volume (Fibonacci 1–21).
+    this.volume =
+      stats.volume ?? stats.weight ?? tier.volume;
     this.capacityMax = stats.capacityMax ?? 0;
     this.capacityRemaining = stats.capacityRemaining ?? this.capacityMax;
     this.radius = stats.radius ?? this.radius;
@@ -58,6 +63,7 @@ export class Asteroid extends Entity {
     this.seed = stats.seed ?? this.seed;
     this.composition = normalizeComposition(stats.composition ?? this.composition);
     this.compositionTag = stats.compositionTag ?? primaryComposition(this.composition);
+    this.weight = rockWeight(this.volume, this.composition);
     this.lootSeed = stats.lootSeed ?? this.lootSeed;
     this.dropTable = stats.dropTable ?? null;
     this.allowHeroTiers = !!stats.allowHeroTiers;
@@ -106,7 +112,7 @@ export class Asteroid extends Entity {
   _generateVertices() {
     const verts = [];
     const tier = getSizeTier(this.sizeTier);
-    const profile = (this.seed + (tier.weight | 0) * 17) % 5;
+    const profile = (this.seed + (tier.volume | 0) * 17) % 5;
     const sides = 7 + profile + (this.seed % 3);
     for (let i = 0; i < sides; i++) {
       const angle = (i / sides) * Math.PI * 2;
@@ -183,9 +189,10 @@ export class Asteroid extends Entity {
     if (!next || next === this.sizeTier) return false;
     const cur = getSizeTier(this.sizeTier);
     const nxt = getSizeTier(next);
-    if (nxt.weight >= cur.weight) return false;
+    if (nxt.volume >= cur.volume) return false;
     this.sizeTier = next;
-    this.weight = nxt.weight;
+    this.volume = nxt.volume;
+    this.weight = rockWeight(this.volume, this.composition);
     const midR = (nxt.radiusMin + nxt.radiusMax) * 0.5;
     this.radius = midR;
     this.maxHp = hpForRock(this.radius, this.capacityRemaining);
