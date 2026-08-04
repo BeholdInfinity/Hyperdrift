@@ -312,15 +312,13 @@ Parametric silhouettes cover all classes; Generalist `a` keeps bell HQ draw with
 
 - Nose mount; aim clamped to a **limited forward arc** with slew; ship-relative (yaws with hull when pointer leaves circle)
 - Hold RMB while pointer in viewport: continuous beam along **clamped** aim even if mouse is past the arc
-- Damages asteroids and ship hulls (closest target along beam wins vs asteroids)
+- Targets the closest **module** along the beam; crack buildup → pop → ore drop. Pop time scales by module material and laser Mk. Cracks **cool down** if heat stops (slower than heat-up).
+- Damages ship hulls when no asteroid module wins the beam ray test
 
-### Future weapon roles (not built)
+### Ammo vs laser on rocks
 
-- **Guns** destroy faster but yield **fewer** resource drops
-- **Mining lasers** destroy slower but yield **more** resources
-- Loot / drop-rate code deferred
-
-Asteroids have HP and destroy with effect (fragmentation deferred).
+- **Guns** still HP-destroy whole rocks (~25% wasteful yield stub on destroy)
+- **Mining laser** pops modules individually with full ore drops per module
 ---
 
 ## Environment
@@ -337,12 +335,13 @@ Three depth layers (far / mid / near) plus stream-placed world nebulae (`NebulaS
 
 - **Ring belts** — four Thera rings (`inner_ore` → `fringe_ice`); `BeltStream` angular sectors; proc density follows shared `RingBeltVisual` sub-bands (gaps nearly empty); kinematic prograde orbit from permanent `orbitR` / `orbitAngle0` (μ-derived). In-viewport fill uses view-priority + backlog catch-up so density is not ship-speed dependent.
 - **Shepherd moons** — `shepherd_moon` sites in inter-ring gaps (charted POIs); simple disc in the flight viewport; clear proc rocks via site exclusion.
-- **Rock taxonomy** — seven size tiers (Fibonacci **volume** 1–21); proc belts never roll Large / Very Large. Gen-time fields: `sizeTier`, `volume`, `weight` (material density × volume), `capacityMax` / `capacityRemaining`, composition mix, `lootSeed`. Mining laser extracts over time and shrinks the rock by size-tier when remaining capacity no longer fits; ammo destroy is wasteful (~25% yield).
-- **Composition** — ring default mix + authored `subBelts[]` pockets (most-specific overlap wins). Appearance tint from mix.
+- **Rock taxonomy** — seven size tiers (Fibonacci **volume** 1–21); volume = count of **very-small modules** smashed together. Hybrid composition (~30% pocket re-rolls). Procedural textures + shape profiles; subtle per-rock spin (some static). Orbit velocity ±1% of circular prograde at spawn.
+- **Mining** — laser targets one module; heat cracks build then pop (time scales by material + laser Mk). Popped module only — rest of asteroid stays. Ore drops inherit parent velocity; ship gravity + proximity pickup; optional MMB grapple reel-in. Ore tallies in **COMMS → Message Log** (`[COMPUTER]` stub until cargo grid).
+- **Composition** — ring default mix + authored `subBelts[]` pockets (most-specific overlap wins). Per-module tint from mix.
 - **Hero fields** — charted `asteroid_field` POIs with authored child rocks (may include Large / Very Large); stream IDs `hero:{siteId}:{rockId}`; proc rocks suppressed inside the field envelope.
 - **Open space** — sparse/dense clusters via `OpenSpaceStream` field cells (outside ring bands; 50% reduced vs legacy baseline).
 - Live rocks materialize in the shell between the **visual viewport** (~75 km at max zoom-out) and `STREAM_SPAWN_RADIUS` (300 km); retention/despawn still use `STREAM_VIEW_RADIUS` (250 km) and `STREAM_DESPAWN_RADIUS` (360 km).
-- **Deferred:** impact damage / deflection from weight, full drop tables + science-seat UI, laser Mk yield curve polish, N-body shepherd physics.
+- **Deferred:** impact damage / deflection from weight, science-seat UI, hangar cargo grid for ore, N-body shepherd physics.
 
 ### Speed streaks
 

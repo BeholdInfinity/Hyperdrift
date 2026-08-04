@@ -4,6 +4,15 @@
  * Rock weight = composition base density × tier volume (Fibonacci 1–21).
  */
 
+import { SeededRandom } from '../utils/SeededRandom.js';
+import {
+  boundingRadiusFromModules,
+  compositeOutlineVertices,
+  generateRockVertices,
+  generateSurfaceAnchors,
+  rollShapeProfile,
+} from './AsteroidSurface.js';
+
 /** @typedef {'very_small'|'small'|'small_medium'|'medium'|'large_medium'|'large'|'very_large'} SizeTierId */
 
 export const SIZE_TIERS = [
@@ -296,13 +305,170 @@ export function tierForRemainingCapacity(remaining, allowHeroTiers = false) {
   return list[list.length - 1].id;
 }
 
-/** Expand concrete drop table later — hook from lootSeed + composition. */
+const ORE_BY_TAG = {
+  silicate: 'stoneOre',
+  iron: 'ironOre',
+  ice: 'waterIce',
+  carbonaceous: 'carbonOre',
+  rare: 'rareOre',
+  titanium: 'titaniumOre',
+};
+
+/** Pop duration baseline (seconds at laser Mk1) by primary tag. */
+export const POP_BASE_SECONDS = {
+  silicate: 2.8,
+  iron: 3.6,
+  ice: 2.0,
+  carbonaceous: 2.5,
+  rare: 3.2,
+  titanium: 3.8,
+};
+
+export function basePopSeconds(compositionTag) {
+  return POP_BASE_SECONDS[compositionTag] ?? POP_BASE_SECONDS.silicate;
+}
+
+/** Laser Mk speeds crack→pop (Mk5 ≈ 0.55× duration). */
+export function laserMkPopFactor(laserMk = 1) {
+  const mk = Math.max(1, Math.min(5, laserMk | 0));
+  return 0.75 + ((mk - 1) / 4) * 0.25;
+}
+
+/** Signed rad/s; ~5–10% land at zero for visual variety. */
+export function rollSpinSpeed(rng, seed = 0) {
+  const r = rng ?? new SeededRandom((seed >>> 0) || 1);
+  if (r.next() < 0.08) return 0;
+  return r.range(-0.14, 0.14);
+}
+
+/** Hybrid module composition — ~30% pocket re-roll from ring context. */
+export function rollModuleComposition(rng, parentMix, parentTag, moduleIndex, ctx = {}) {
+  const { ring, sampleR, theta } = ctx;
+  if (ring && rng.next() < 0.3) {
+    return pickCompositionMix(rng, ring, sampleR, theta);
+  }
+  const mix = normalizeComposition(parentMix);
+  const bleedTags = Object.keys(COMPOSITION_BASE_WEIGHT).filter((k) => k !== parentTag);
+  if (rng.next() < 0.35 && bleedTags.length) {
+    const other = rng.pick(bleedTags);
+    const bleed = rng.range(0.08, 0.22);
+    return normalizeComposition({ ...mix, [other]: (mix[other] ?? 0) + bleed, [parentTag]: Math.max(0.05, (mix[parentTag] ?? 0.7) - bleed * 0.5) });
+  }
+  return mix;
+}
+
+/** Resolve drop table from lootSeed + module composition. */
 export function resolveDropTable(lootSeed, composition) {
+  const mix = normalizeComposition(composition);
+  const tag = primaryComposition(mix);
+  const oreType = ORE_BY_TAG[tag] ?? ORE_BY_TAG.silicate;
+  const rng = new SeededRandom((lootSeed >>> 0) || 1);
+  const entries = [{ oreType, weight: 1, amount: 1 }];
+  if (rng.next() < 0.12) {
+    const secondary = Object.keys(mix).find((k) => k !== tag && mix[k] >= 0.15);
+    if (secondary) {
+      entries.push({
+        oreType: ORE_BY_TAG[secondary] ?? ORE_BY_TAG.silicate,
+        weight: 0.35,
+        amount: 1,
+      });
+    }
+  }
   return {
-    resolved: false,
+    resolved: true,
     lootSeed,
-    composition: normalizeComposition(composition),
-    entries: null,
+    composition: mix,
+    entries,
+  };
+}
+
+/**
+ * Build modular very-small cells for a rock (module count = Fibonacci volume).
+ * @param {object} stats Gen-time rock stats
+ * @param {object} [ctx] ring / rng context for pocket rolls
+ */
+export function buildModularRock(stats, ctx = {}) {
+  const volume = Math.max(1, stats.volume ?? getSizeTier(stats.sizeTier).volume | 0);
+  const parentRadius = stats.radius ?? 12;
+  const seed = stats.seed ?? 1;
+  const lootSeed = stats.lootSeed ?? seed;
+  const parentMix = normalizeComposition(stats.composition);
+  const parentTag = stats.compositionTag ?? primaryComposition(parentMix);
+  const rng =
+    ctx.rng ??
+    new SeededRandom((lootSeed ^ (seed * 2654435761)) >>> 0 || 1);
+  const shapeProfile = stats.shapeProfile ?? rollShapeProfile(rng, seed);
+  const spinSpeed = stats.spinSpeed ?? rollSpinSpeed(rng, seed);
+
+  const modules = [];
+  const moduleCount = volume;
+
+  if (moduleCount === 1) {
+    const modSeed = (seed * 17 + 1) >>> 0;
+    const modLoot = (lootSeed + 1) >>> 0;
+    const comp = rollModuleComposition(rng, parentMix, parentTag, 0, ctx);
+    const modR = parentRadius;
+    modules.push({
+      id: 0,
+      active: true,
+      seed: modSeed,
+      lootSeed: modLoot,
+      composition: comp,
+      compositionTag: primaryComposition(comp),
+      dropTable: resolveDropTable(modLoot, comp),
+      ox: 0,
+      oy: 0,
+      radius: modR,
+      vertices: generateRockVertices(modSeed, modR, shapeProfile, 0),
+      anchors: generateSurfaceAnchors(modLoot, modR, 2),
+      mineState: 'idle',
+      crackProgress: 0,
+      crackLines: null,
+    });
+  } else {
+    const packR = parentRadius * 0.82;
+    const cellR = parentRadius * Math.max(0.22, 0.52 / Math.sqrt(moduleCount));
+    for (let i = 0; i < moduleCount; i++) {
+      const golden = Math.PI * (3 - Math.sqrt(5));
+      const t = i * golden;
+      const distFrac = Math.sqrt((i + 0.5) / moduleCount) * 0.92;
+      const ox = Math.cos(t) * packR * distFrac;
+      const oy = Math.sin(t) * packR * distFrac;
+      const modSeed = (seed * 17 + i * 131) >>> 0;
+      const modLoot = (lootSeed + i * 9973) >>> 0;
+      const comp = rollModuleComposition(rng, parentMix, parentTag, i, ctx);
+      const modR = cellR * (0.88 + rng.range(0, 0.18));
+      modules.push({
+        id: i,
+        active: true,
+        seed: modSeed,
+        lootSeed: modLoot,
+        composition: comp,
+        compositionTag: primaryComposition(comp),
+        dropTable: resolveDropTable(modLoot, comp),
+        ox,
+        oy,
+        radius: modR,
+        vertices: generateRockVertices(modSeed, modR, shapeProfile, i),
+        anchors: generateSurfaceAnchors(modLoot, modR, 1 + (i % 2)),
+        mineState: 'idle',
+        crackProgress: 0,
+        crackLines: null,
+      });
+    }
+  }
+
+  const outline = compositeOutlineVertices(modules);
+  const boundR = boundingRadiusFromModules(modules);
+
+  return {
+    modules,
+    shapeProfile,
+    spinSpeed,
+    vertices: outline.length >= 3 ? outline : generateRockVertices(seed, parentRadius, shapeProfile),
+    radius: Math.max(parentRadius * 0.85, boundR),
+    capacityMax: moduleCount,
+    capacityRemaining: moduleCount,
   };
 }
 
@@ -333,7 +499,8 @@ export function rollRockStats(opts) {
       : pickCompositionMix(rng, opts.ring, opts.sampleR, opts.theta);
   const seed = rng.int(1, 99999);
   const volume = tier.volume;
-  return {
+  const lootSeed = (seed * 1103515245 + (rng.int(1, 1e6) | 0)) >>> 0;
+  const base = {
     sizeTier: sizeTierId,
     volume,
     weight: rockWeight(volume, composition),
@@ -344,7 +511,16 @@ export function rollRockStats(opts) {
     seed,
     composition,
     compositionTag: primaryComposition(composition),
-    lootSeed: (seed * 1103515245 + (rng.int(1, 1e6) | 0)) >>> 0,
+    lootSeed,
     dropTable: null,
+    spinSpeed: rollSpinSpeed(rng, seed),
+    orbitSpeedMul: rng.range(0.99, 1.01),
   };
+  const ctx = {
+    rng,
+    ring: opts.ring,
+    sampleR: opts.sampleR,
+    theta: opts.theta,
+  };
+  return { ...base, ...buildModularRock(base, ctx) };
 }

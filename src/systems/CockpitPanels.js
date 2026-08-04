@@ -79,7 +79,9 @@ function fitTextFs(ctx, text, maxW, preferFs, weight, minFs = 7) {
 
 export class CockpitPanels {
   constructor() {
-    this.tabs = { destination: 0, power: 0, sector: 0 };
+    this.tabs = { destination: 0, power: 0, sector: 0, comms: 0 };
+    /** @type {'live'|'log'} */
+    this.commsView = 'live';
     this._mapDragTracking = false;
     this._sectorEditorTracking = false;
     /** @type {Array<{x:number,y:number,w:number,h:number,action:Function}>} */
@@ -694,6 +696,62 @@ export class CockpitPanels {
 
   // ---- 2 COMMS -----------------------------------------------------------
   _comms(ctx, box, engine) {
+    const btnH = 18;
+    const footerPad = 2;
+    const body = { x: box.x, y: box.y, w: box.w, h: box.h - btnH - footerPad };
+    const logOpen = this.commsView === 'log';
+
+    if (logOpen) {
+      this._drawShipMessageLog(ctx, body, engine);
+    } else {
+      this._drawLiveComms(ctx, body, engine);
+    }
+
+    const footerY = box.y + box.h - btnH;
+    this._drawFooterToggle(
+      ctx,
+      box.x,
+      footerY,
+      88,
+      btnH,
+      'MESSAGE LOG',
+      logOpen,
+      () => {
+        this.commsView = logOpen ? 'live' : 'log';
+      }
+    );
+    this._drawFooterToggle(
+      ctx,
+      box.x + 96,
+      footerY,
+      88,
+      btnH,
+      'LIVE COMMS',
+      !logOpen,
+      () => {
+        this.commsView = 'live';
+      }
+    );
+  }
+
+  _drawShipMessageLog(ctx, box, engine) {
+    const lines = engine.shipLog ?? [];
+    this._text(ctx, 'SHIP COMPUTER LOG', box.x, box.y + 14, { size: 12, color: COPPER, weight: 700 });
+    const maxLines = 10;
+    const start = Math.max(0, lines.length - maxLines);
+    let y = box.y + 32;
+    if (!lines.length) {
+      this._text(ctx, 'No system messages.', box.x, y, { size: 11, color: DIM, weight: 400 });
+      return;
+    }
+    for (let i = start; i < lines.length; i++) {
+      this._text(ctx, lines[i], box.x, y, { size: 10, color: TXT, weight: 400 });
+      y += 14;
+      if (y > box.y + box.h - 4) break;
+    }
+  }
+
+  _drawLiveComms(ctx, box, engine) {
     const c = engine.radarSystem.getSelected();
     const inRange = c && (c.state === 'visual' || c.state === 'in');
     if (!inRange) {
@@ -705,7 +763,6 @@ export class CockpitPanels {
       });
       return;
     }
-    // Caller "video" placeholder.
     const av = { x: box.x, y: box.y, w: Math.min(48, box.h - 24), h: Math.min(48, box.h - 24) };
     ctx.fillStyle = 'rgba(20, 40, 60, 0.8)';
     ctx.fillRect(av.x, av.y, av.w, av.h);
@@ -723,7 +780,6 @@ export class CockpitPanels {
       color: TXT,
       weight: 400,
     });
-    // Action buttons.
     const btns = ['HAIL', 'DOCK', 'TRADE', 'END'];
     const bw = (box.w - 6 * 3) / 4;
     const by = box.y + box.h - 20;

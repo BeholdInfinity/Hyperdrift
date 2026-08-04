@@ -61,7 +61,11 @@ src/
     Renderer.js           Circular viewport, multi-section ship, thrusters, entities
     WeaponSystem.js       Dorsal turret + mining laser, collisions, impacts
     AsteroidSystem.js     Ring-sector + open-space streaming orchestrator
-    AsteroidCatalog.js    Size tiers, capacity, composition, sub-belt pick, mining yield stubs
+    AsteroidCatalog.js    Size tiers, modular rock build, drop tables, spin/orbit variance
+    AsteroidSurface.js    Procedural module textures, shape profiles, crack draw
+    MiningDropSystem.js   Ore drops, ship gravity pickup, oreHold
+    MiningLootCatalog.js  Ore types and drop rolls
+    GrappleSystem.js      MMB grapple reel-in for remote pickup
     BeltStream.js         Belt angular-sector catalogs + reconcile (permanent orbits, band density)
     HeroFieldStream.js    Authored asteroid_field hero rock stream
     OpenSpaceStream.js    Sparse open-space field cells
@@ -81,7 +85,7 @@ src/
     PipLoadoutPanel.js    POWER LOADOUTS tab (apply, hover diff, delete modal)
   entities/
     Ship.js, ShipController.js, ShipHardpoints.js (legacy mount fallback; starter matches)
-    Projectile.js, Asteroid.js, Particle.js, Entity.js, EntityManager.js
+    Projectile.js, Asteroid.js, MiningDrop.js, Particle.js, Entity.js, EntityManager.js
   combat/
     CombatSystem.js       Spaceflight combat orchestration (targets, hits, breakup, death FX)
     CombatTarget.js, CombatResolver.js, CombatSpatialIndex.js, ShipBreakupSystem.js

@@ -2,6 +2,8 @@ import { BLUEPRINT } from '../core/Constants.js';
 import { drawModularShip } from '../ships/ShipRenderer.js';
 import { emitMountExhaust } from '../ships/PlumeDraw.js';
 import { topDownView } from '../ships/ShipViews.js';
+import { drawModuleSurface, drawCrackOverlay } from './AsteroidSurface.js';
+import { oreFillStyle } from './MiningLootCatalog.js';
 
 export class Renderer {
   constructor(canvas) {
@@ -262,22 +264,79 @@ export class Renderer {
         wctx.translate(asteroid.position.x, asteroid.position.y);
         wctx.rotate(asteroid.angle);
 
-        wctx.fillStyle = asteroid.fillStyle?.() ?? '#3a3a3a';
-        wctx.strokeStyle = asteroid.strokeStyle?.() ?? '#5a5a5a';
-        wctx.lineWidth = 1 / zoom;
+        const modules = asteroid.modules?.length
+          ? asteroid.activeModules?.() ?? asteroid.modules.filter((m) => m.active !== false)
+          : null;
 
-        wctx.beginPath();
-        const verts = asteroid.vertices;
-        wctx.moveTo(verts[0].x, verts[0].y);
-        for (let i = 1; i < verts.length; i++) {
-          wctx.lineTo(verts[i].x, verts[i].y);
+        if (modules?.length) {
+          const detail = zoom > 0.15;
+          for (const mod of modules) {
+            drawModuleSurface(wctx, mod, zoom, detail);
+            if (mod.mineState === 'cracking' && (mod.crackProgress ?? 0) > 0) {
+              drawCrackOverlay(wctx, mod, mod.crackProgress, zoom);
+            }
+          }
+        } else {
+          wctx.fillStyle = asteroid.fillStyle?.() ?? '#3a3a3a';
+          wctx.strokeStyle = asteroid.strokeStyle?.() ?? '#5a5a5a';
+          wctx.lineWidth = 1 / zoom;
+
+          wctx.beginPath();
+          const verts = asteroid.vertices;
+          if (verts?.length) {
+            wctx.moveTo(verts[0].x, verts[0].y);
+            for (let i = 1; i < verts.length; i++) {
+              wctx.lineTo(verts[i].x, verts[i].y);
+            }
+            wctx.closePath();
+            wctx.fill();
+            wctx.stroke();
+          }
         }
-        wctx.closePath();
-        wctx.fill();
-        wctx.stroke();
 
         wctx.restore();
       }
+    }, camera);
+  }
+
+  renderMiningDrops(drops, camera) {
+    if (!drops?.size && !Array.isArray(drops)) return;
+    const list = drops instanceof Set ? drops : drops;
+    const zoom = Math.max(camera.effectiveZoom, 0.001);
+    this.renderWorldLayer((ctx) => {
+      for (const drop of list) {
+        if (!drop?.active) continue;
+        const r = drop.radius ?? 5;
+        ctx.save();
+        ctx.translate(drop.position.x, drop.position.y);
+        ctx.fillStyle = oreFillStyle(drop.oreType);
+        ctx.strokeStyle = 'rgba(255, 220, 140, 0.55)';
+        ctx.lineWidth = 1 / zoom;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.restore();
+      }
+    }, camera);
+  }
+
+  renderGrappleCable(cable, camera) {
+    if (!cable) return;
+    const zoom = Math.max(camera.effectiveZoom, 0.001);
+    this.renderWorldLayer((ctx) => {
+      ctx.save();
+      ctx.strokeStyle = 'rgba(180, 200, 220, 0.85)';
+      ctx.lineWidth = 1.5 / zoom;
+      ctx.beginPath();
+      ctx.moveTo(cable.x1, cable.y1);
+      ctx.lineTo(cable.x2, cable.y2);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(255, 200, 80, 0.95)';
+      ctx.beginPath();
+      ctx.arc(cable.x2, cable.y2, 3 / zoom, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
     }, camera);
   }
 

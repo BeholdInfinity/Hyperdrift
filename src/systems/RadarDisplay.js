@@ -371,9 +371,10 @@ export class RadarDisplay {
 
   _shapeAsteroid(ctx, c) {
     const color = IFF[c.iff] || IFF.object;
-    const verts = c.ref?.vertices;
-    const radius = c.ref?.radius || 1;
+    const ref = c.ref;
+    const radius = ref?.radius || 1;
     const heading = c.heading != null ? c.heading : 0;
+    const modules = ref?.activeModules?.() ?? ref?.modules?.filter((m) => m.active !== false);
     ctx.save();
     ctx.translate(c.screenX, c.screenY);
     ctx.rotate(heading);
@@ -384,28 +385,44 @@ export class RadarDisplay {
     ctx.lineWidth = Math.max(0.8, 1.2 / s);
     ctx.shadowColor = color;
     ctx.shadowBlur = 3;
-    ctx.beginPath();
-    if (verts?.length) {
+
+    const drawPoly = (verts, ox = 0, oy = 0) => {
+      if (!verts?.length) return;
+      ctx.beginPath();
       for (let i = 0; i < verts.length; i++) {
         const v = verts[i];
-        if (i === 0) ctx.moveTo(v.x, v.y);
-        else ctx.lineTo(v.x, v.y);
+        if (i === 0) ctx.moveTo(ox + v.x, oy + v.y);
+        else ctx.lineTo(ox + v.x, oy + v.y);
       }
       ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+    };
+
+    if (modules?.length) {
+      for (const mod of modules) {
+        drawPoly(mod.vertices, mod.ox ?? 0, mod.oy ?? 0);
+      }
     } else {
-      const n = 6;
-      for (let i = 0; i < n; i++) {
-        const a = (i / n) * TWO_PI;
-        const rr = radius * (0.7 + ((i * 37) % 5) * 0.06);
-        const px = Math.cos(a) * rr;
-        const py = Math.sin(a) * rr;
-        if (i === 0) ctx.moveTo(px, py);
-        else ctx.lineTo(px, py);
+      const verts = ref?.vertices;
+      if (verts?.length) {
+        drawPoly(verts);
+      } else {
+        const n = 6;
+        ctx.beginPath();
+        for (let i = 0; i < n; i++) {
+          const a = (i / n) * TWO_PI;
+          const rr = radius * (0.7 + ((i * 37) % 5) * 0.06);
+          const px = Math.cos(a) * rr;
+          const py = Math.sin(a) * rr;
+          if (i === 0) ctx.moveTo(px, py);
+          else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
       }
-      ctx.closePath();
     }
-    ctx.fill();
-    ctx.stroke();
     ctx.restore();
   }
 

@@ -1,10 +1,11 @@
 import { Projectile } from '../entities/Projectile.js';
 import { SHIP } from '../core/Constants.js';
 import { Vec2, clamp, angleDifference, normalizeAngle } from '../utils/MathUtils.js';
+import { compositionFillStyle } from './AsteroidCatalog.js';
 import {
   checkProjectileHits,
   applyMiningLaserShipHit,
-  closestAsteroidLaserHit,
+  closestModuleLaserHit,
 } from '../combat/CombatResolver.js';
 import { consumeTurretAmmo, hasTurretAmmo } from '../combat/AmmoSystem.js';
 import { turretMuzzleWorld } from '../combat/WeaponHelpers.js';
@@ -16,9 +17,10 @@ function slewAngle(current, target, maxRate, deltaTime) {
 }
 
 export class WeaponSystem {
-  constructor(entityManager, particleSystem) {
+  constructor(entityManager, particleSystem, miningDropSystem = null) {
     this.entityManager = entityManager;
     this.particles = particleSystem;
+    this.miningDropSystem = miningDropSystem;
     /** @type {object|null} */
     this._combatCallbacks = null;
   }
@@ -123,7 +125,7 @@ export class WeaponSystem {
     const range = SHIP.MINING_LASER_RANGE;
     const damage = SHIP.MINING_LASER_DPS * deltaTime;
 
-    const ast = closestAsteroidLaserHit(
+    const ast = closestModuleLaserHit(
       origin.x, origin.y, dir.x, dir.y, range, asteroids, spatialIndex
     );
     const shipHit = applyMiningLaserShipHit(
@@ -154,9 +156,26 @@ export class WeaponSystem {
       const hitX = origin.x + dir.x * astDist;
       const hitY = origin.y + dir.y * astDist;
       ship.miningLaserBeamLength = astDist;
-      if (typeof rock.mineExtract === 'function') {
-        const laserMk = ship.miningLaserMk ?? ship.scannerMk ?? 1;
-        const mined = rock.mineExtract(deltaTime, laserMk);
+      const laserMk = ship.miningLaserMk ?? ship.scannerMk ?? 1;
+      if (typeof rock.mineModuleLaser === 'function' && ast.module) {
+        const mined = rock.mineModuleLaser(
+          ast.module.id,
+          deltaTime,
+          laserMk,
+          ast.hitWorld ?? { x: hitX, y: hitY }
+        );
+        if (mined.cracking && !mined.popped) {
+          this._createImpactEffect(hitX, hitY, false);
+        }
+        if (mined.popped) {
+          this.miningDropSystem?.spawnFromModule(rock, ast.module, { x: hitX, y: hitY });
+          this._createModulePopDebris(hitX, hitY, ast.module, rock);
+          if (mined.destroyed) {
+            this._createImpactEffect(hitX, hitY, true);
+          }
+        }
+      } else if (typeof rock.mineExtract === 'function') {
+        const mined = rock.mineExtract(deltaTime, laserMk, ast.module?.id, ast.hitWorld);
         if (mined.extracted > 0 && !mined.shrunk) {
           this._createImpactEffect(hitX, hitY, false);
         }
@@ -221,7 +240,35 @@ export class WeaponSystem {
       typeof rock?.fillStyle === 'function'
         ? rock.fillStyle()
         : 'rgba(140, 130, 120, 0.9)';
-    this.particles.emitBurst(x, y, 28, 220, 0.55, tint, 4);
-    this.particles.emitBurst(x, y, 14, 140, 0.4, 'rgba(90, 85, 80, 0.75)', 3);
+    this._emitDebrisBurst(x, y, tint, rock);
+  }
+
+  /** Module pop — composition-tinted burst inheriting parent velocity. */
+  _createModulePopDebris(x, y, mod, rock) {
+    const tint = compositionFillStyle(mod.composition ?? mod.compositionTag, 0.95);
+    this._emitDebrisBurst(x, y, tint, rock);
+  }
+
+  _emitDebrisBurst(x, y, tint, rock) {
+    const pvx = rock?.velocity?.x ?? 0;
+    const pvy = rock?.velocity?.y ?? 0;
+    const burst = (count, speed, life, color, size) => {
+      for (let i = 0; i < count; i++) {
+        const angle = (i / count) * Math.PI * 2 + (Math.random() - 0.5) * 0.3;
+        const spd = speed * (0.5 + Math.random() * 0.5);
+        this.particles.emit(
+          x,
+          y,
+          Math.cos(angle) * spd + pvx,
+          Math.sin(angle) * spd + pvy,
+          life * (0.5 + Math.random() * 0.5),
+          color,
+          size * (0.5 + Math.random()),
+          'burst'
+        );
+      }
+    };
+    burst(28, 220, 0.55, tint, 4);
+    burst(14, 140, 0.4, 'rgba(90, 85, 80, 0.75)', 3);
   }
 }

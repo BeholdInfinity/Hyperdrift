@@ -6,6 +6,13 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Added
+- **Modular asteroids** — Fibonacci volume = very-small module count; hybrid composition pockets (~30% re-roll); procedural material textures, shape profiles (potato / spinning top / bilobed / rubble pile), surface anchor craters; subtle per-rock spin (`AsteroidSurface.js`, `AsteroidCatalog.buildModularRock`).
+- **Module mining** — laser targets individual modules; heat-crack buildup then pop (duration by composition + laser Mk); cracks **cool down** when laser heat stops (~2.2× slower than heat-up); only the hit module removes; debris inherits parent velocity.
+- **Mining drops** — ore chunks spawn on pop with ship gravity pull + proximity pickup; abstract `oreHold` counters on the player ship.
+- **COMMS Message Log** — footer tabs (Live Comms / Message Log); ore pickups log as `[COMPUTER]` lines.
+- **Grapple arm** — MMB in viewport when no contact under cursor; reels drops for instant pickup (optional; ~5× hull length cable).
+
 ### Changed
 - **Asteroid size taxonomy** — tier Fibonacci values are now **volume** (1–21); rock **weight** = composition base density × volume (`COMPOSITION_BASE_WEIGHT` in `AsteroidCatalog.js`). Hero field bakes use `volume`; legacy `weight` field still loads as volume.
 

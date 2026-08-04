@@ -29,10 +29,14 @@ export class AsteroidSystem {
     this._listDirty = true;
   }
 
-  _syncKinematicAsteroids(gameTime = 0) {
+  _syncKinematicAsteroids(gameTime = 0, deltaTime = 0) {
     const layout = getSectorLayout();
     for (const asteroid of this.activeAsteroids) {
       if (asteroid.kinematic) asteroid.syncOrbit(gameTime, layout);
+      const spin = asteroid.spinSpeed ?? asteroid.rotationSpeed ?? 0;
+      if (spin && deltaTime > 0) {
+        asteroid.angle += spin * deltaTime;
+      }
     }
   }
 
@@ -103,6 +107,7 @@ export class AsteroidSystem {
 
   update(playerX, playerY, gameTime = 0, opts = {}) {
     this._gameTime = gameTime;
+    const deltaTime = opts.deltaTime ?? 0;
     const layout = getSectorLayout();
     const playable = isInsidePlayableSector(playerX, playerY, layout);
 
@@ -130,7 +135,7 @@ export class AsteroidSystem {
       streamViewRadius()
     );
 
-    this._syncKinematicAsteroids(gameTime);
+    this._syncKinematicAsteroids(gameTime, deltaTime);
     this._collectDestroyed();
     this._cullDistantRocks(playerX, playerY);
   }

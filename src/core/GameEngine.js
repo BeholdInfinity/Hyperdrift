@@ -10,6 +10,7 @@ import { RadarSystem } from '../systems/RadarSystem.js';
 import {
   contactScreenAabb,
   drawCornerBrackets,
+  pickContactAtScreen,
 } from '../systems/ContactSelectionDraw.js';
 import { renderViewportTelemetry } from '../systems/ViewportTelemetry.js';
 import { CockpitFrame } from '../systems/CockpitFrame.js';
@@ -46,6 +47,8 @@ import {
   formatTurretAmmoStatus,
 } from '../combat/AmmoSystem.js';
 import { AsteroidSystem } from '../systems/AsteroidSystem.js';
+import { MiningDropSystem } from '../systems/MiningDropSystem.js';
+import { GrappleSystem } from '../systems/GrappleSystem.js';
 import { PhysicsSystem } from '../systems/PhysicsSystem.js';
 import { Starfield } from '../world/Starfield.js';
 import { NebulaField } from '../world/NebulaField.js';
@@ -177,9 +180,16 @@ export class GameEngine {
     this.camera = new CameraSystem();
     this.entityManager = new EntityManager();
     this.particleSystem = new ParticleSystem();
+    this.miningDropSystem = new MiningDropSystem(this.entityManager);
+    this.grappleSystem = new GrappleSystem();
+    this.shipLog = [];
     this.shipController = new ShipController();
     this.physics = new PhysicsSystem();
-    this.weaponSystem = new WeaponSystem(this.entityManager, this.particleSystem);
+    this.weaponSystem = new WeaponSystem(
+      this.entityManager,
+      this.particleSystem,
+      this.miningDropSystem
+    );
     this.asteroidSystem = new AsteroidSystem(this.entityManager);
     this.starfield = new Starfield();
     this.nebulaField = new NebulaField();
@@ -3747,6 +3757,10 @@ export class GameEngine {
       },
     });
 
+    for (const ast of asteroids) {
+      ast.tickCrackCooldown?.(deltaTime);
+    }
+
     this.combat.updateSpaceflight({
       ship: this.ship,
       weaponSystem: this.weaponSystem,
@@ -3767,6 +3781,15 @@ export class GameEngine {
         this.input.paused = false;
       },
     });
+
+    const logHooks = { pushShipLog: (m) => this.pushShipLog(m) };
+    this.miningDropSystem.update(this.ship, deltaTime, logHooks);
+    this.grappleSystem.update(
+      this.ship,
+      deltaTime,
+      this.miningDropSystem,
+      logHooks
+    );
 
     // Interior crew sim only while the player is inside the vessel graph (not during spaceflight).
     if (this.interiorActive && this.ship?.interiorPlaceId) {
@@ -3797,6 +3820,7 @@ export class GameEngine {
         shipSpeed: speedForStream,
         shipVx: this.ship.velocity.x,
         shipVy: this.ship.velocity.y,
+        deltaTime,
       })
     );
     this._frameAsteroids = this.asteroidSystem.getActiveAsteroids();
@@ -4307,6 +4331,12 @@ export class GameEngine {
       this.camera
     );
 
+    this.renderer.renderMiningDrops(this.miningDropSystem.getDrops(), this.camera);
+    this.renderer.renderGrappleCable(
+      this.grappleSystem.cableSegment(this.ship),
+      this.camera
+    );
+
     this.renderer.renderWorldLayer((ctx) => {
       this.ambientTraffic.render(ctx, { only: ambientOccluded });
     }, this.camera);
@@ -4439,6 +4469,17 @@ export class GameEngine {
   /** Flip the cockpit VIEW between the ship viewport and the full radar scope. */
   toggleScanView() {
     this.scanView = this.scanView === 'scan' ? 'ship' : 'scan';
+  }
+
+  /** Append a ship-computer line to the COMMS message log. */
+  pushShipLog(message) {
+    if (!message) return;
+    if (!this.shipLog) this.shipLog = [];
+    this.shipLog.push(String(message));
+    const max = 48;
+    if (this.shipLog.length > max) {
+      this.shipLog.splice(0, this.shipLog.length - max);
+    }
   }
 
   /** Extra opts for asteroid streaming (viewport trim, teleport fill, debug speed). */
@@ -4592,8 +4633,30 @@ export class GameEngine {
     if (this.cockpitPanels.trySectorMapMiddleClick(this, x, y)) return;
 
     if (this.scanView !== 'scan' && distC <= this.renderer.viewportRadius) {
-      this._selectContactViewportClick(x, y);
-      return;
+      const hit = pickContactAtScreen(
+        this.radarSystem.contacts,
+        this.camera,
+        this.renderer.centerX,
+        this.renderer.centerY,
+        x,
+        y,
+        (c) => this.radarSystem.passesContactFilter(c)
+      );
+      if (hit) {
+        this.radarSystem.selectedId = hit.id;
+        return;
+      }
+      if (this.mode === 'playing' && this.ship) {
+        const aimWorld = this.camera.screenToWorld(
+          x,
+          y,
+          this.renderer.centerX,
+          this.renderer.centerY
+        );
+        if (this.grappleSystem.tryFire(this.ship, aimWorld, this.miningDropSystem)) {
+          return;
+        }
+      }
     }
 
     if (distC <= this.renderer.radarOuterRadius) {

@@ -71,6 +71,10 @@ export function spawnBeltAsteroid(spec, gameTime, layout, streamId = null) {
     compositionTag: spec.compositionTag,
     lootSeed: spec.lootSeed,
     allowHeroTiers: !!spec.allowHeroTiers,
+    modules: spec.modules,
+    shapeProfile: spec.shapeProfile,
+    spinSpeed: spec.spinSpeed,
+    orbitSpeedMul: spec.orbitSpeedMul,
   });
   asteroid.syncOrbit(gameTime, layout);
   if (streamId) asteroid.streamId = streamId;
