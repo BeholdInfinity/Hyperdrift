@@ -9,6 +9,7 @@
  */
 
 import { IFF, PIPS } from '../core/Constants.js';
+import { compositionLabel } from './AsteroidCatalog.js';
 import { drawModularShip } from '../ships/ShipRenderer.js';
 import { topDownView } from '../ships/ShipViews.js';
 import {
@@ -79,7 +80,7 @@ function fitTextFs(ctx, text, maxW, preferFs, weight, minFs = 7) {
 
 export class CockpitPanels {
   constructor() {
-    this.tabs = { destination: 0, power: 0, sector: 0, comms: 0 };
+    this.tabs = { destination: 0, power: 0, sector: 0, comms: 0, status: 0 };
     /** @type {'live'|'log'} */
     this.commsView = 'live';
     this._mapDragTracking = false;
@@ -531,15 +532,24 @@ export class CockpitPanels {
     const c = engine.radarSystem.getSelected();
     if (!c) {
       this._text(ctx, 'NO CONTACT SELECTED', box.x, box.y + 16, { color: DIM, size: 13 });
-      this._text(ctx, 'LMB/MMB blip or list; MMB hull', box.x, box.y + 34, {
+      this._text(ctx, 'MMB select · Mouse fwd scan · Mouse back grapple', box.x, box.y + 34, {
         color: DIM,
-        size: 12,
+        size: 11,
         weight: 400,
       });
       return;
     }
     const color = IFF[c.iff] || IFF.yellow;
+    const blocked = engine.radarSystem.isSelectedBlocked?.() ?? false;
     this._text(ctx, c.name.toUpperCase(), box.x, box.y + 14, { color, size: 16, weight: 700 });
+    if (blocked) {
+      this._text(ctx, 'SIGNAL BLOCKED', box.x + box.w, box.y + 14, {
+        color: IFF.red,
+        size: 11,
+        align: 'right',
+        weight: 700,
+      });
+    }
     const km = (c.dist / 100).toFixed(1);
     const relSpd =
       c.type === 'station' && engine.station
@@ -555,7 +565,7 @@ export class CockpitPanels {
     const rows = [
       `TYPE  ${c.type.toUpperCase()}`,
       `IFF   ${c.iff.toUpperCase()}`,
-      `RANGE ${km} km`,
+      blocked ? `RANGE ${km} km (last)` : `RANGE ${km} km`,
       c.type === 'station'
         ? `REL V ${relSpd.toFixed(0)} stn`
         : `REL V ${relSpd.toFixed(0)}`,
@@ -581,15 +591,62 @@ export class CockpitPanels {
       });
     }
 
-    // Forward Looking Scanner pip gates cargo detail.
+    // Forward scanner: progressive detail by scan %; CARGO unlocks with scan.
+    const scan = engine.forwardScanSystem?.scanState(c.id);
+    const scanPct = scan?.scanPct ?? 0;
+    const fullyScanned = scan?.fullyScanned ?? false;
     const scannerPips = engine.pipSystem.get('scanner');
     const y = box.y + box.h - 4;
-    if (scannerPips > 0) {
-      const cargo = c.type === 'civilian' ? 'ORE, ALLOY (est.)' : c.type === 'station' ? 'TRADE HUB' : '—';
+    const y2 = y - 15;
+
+    if (scannerPips <= 0) {
+      this._text(ctx, 'SCAN — scanner offline', box.x, y, { size: 11, color: DIM, weight: 400 });
+    } else if (fullyScanned || scanPct >= 100) {
+      const cargo =
+        c.type === 'civilian' || c.type === 'patrol'
+          ? 'ORE, ALLOY (est.)'
+          : c.type === 'station'
+            ? 'TRADE HUB'
+            : c.type === 'ore'
+              ? `${c.name.toUpperCase()} x${c.ref?.amount ?? 1}`
+              : c.type === 'asteroid'
+                ? `${compositionLabel(c.ref?.composition).toUpperCase()} (est.)`
+                : '—';
       this._text(ctx, `CARGO ${cargo}`, box.x, y, { size: 12, color: ACCENT, weight: 500 });
+      this._text(ctx, 'FULLY SCANNED', box.x + box.w, y, {
+        size: 10,
+        align: 'right',
+        color: STATUS_OK,
+        weight: 700,
+      });
+    } else if (scanPct > 0) {
+      this._text(ctx, `SCANNING ${Math.floor(scanPct)}%`, box.x, y, {
+        size: 11,
+        color: IFF.yellow,
+        weight: 500,
+      });
     } else {
-      this._text(ctx, 'CARGO — scanner offline', box.x, y, { size: 11, color: DIM, weight: 400 });
+      this._text(ctx, 'SCAN — hold Mouse fwd', box.x, y, { size: 11, color: DIM, weight: 400 });
     }
+
+    // Progressive mid-scan rows by type.
+    const midRows = [];
+    if (scanPct >= 25 && c.type === 'asteroid') {
+      const mods = c.ref?.capacityMax ?? c.ref?.modules?.length;
+      if (mods != null) midRows.push(`MODULES ${mods}`);
+    }
+    if (scanPct >= 50) {
+      if (c.type === 'asteroid') midRows.push(`COMP ${compositionLabel(c.ref?.composition).toUpperCase()}`);
+      if (c.type === 'ore' && c.ref?.amount != null) midRows.push(`AMOUNT ${c.ref.amount}`);
+      if (c.type === 'station') midRows.push('SERVICES DOCK · TRADE');
+      if (c.type === 'civilian' || c.type === 'patrol') midRows.push(`IFF ${c.iff.toUpperCase()}`);
+    }
+    if (scanPct >= 75 && (c.type === 'civilian' || c.type === 'patrol')) {
+      midRows.push('HULL (est.) OK');
+    }
+    midRows.forEach((s, i) => {
+      this._text(ctx, s, box.x, y2 - i * 13, { size: 10, color: DIM, weight: 500 });
+    });
   }
 
   // ---- 1 CONTACTS --------------------------------------------------------
@@ -1716,8 +1773,15 @@ export class CockpitPanels {
   _shipStatusCorner(ctx, engine) {
     const s = engine.cockpitFrame?.cornerScreen('STATUS');
     if (!s) return;
-    const box = { x: s.x + 2, y: s.y + 14, w: s.w - 4, h: s.h - 16 };
-    this._shipStatus(ctx, box, engine, { compact: true });
+    const tabH = 18;
+    const body = { x: s.x + 2, y: s.y + 14, w: s.w - 4, h: s.h - 16 - tabH };
+    const tabs = { x: s.x + 2, y: s.y + s.h - tabH - 2, w: s.w - 4, h: tabH };
+    this._clip(ctx, body, () => {
+      this._shipStatus(ctx, body, engine, { compact: true });
+    });
+    this._tabBar(ctx, tabs, ['SYS', 'WPN', 'VIT'], this.tabs.status, (i) => {
+      this.tabs.status = i;
+    });
   }
 
   /** TELEMETRY corner — SPD, HDG/CRS, POS. */
@@ -1835,60 +1899,75 @@ export class CockpitPanels {
 
     const systems = st.systems || [];
     const weapons = st.weapons || [];
-    const barRows = 2;
-    const rowCount = systems.length + weapons.length + barRows;
+    const tab = this.tabs?.status ?? 0;
+    const rows =
+      tab === 0 ? systems : tab === 1 ? weapons : null; // VIT = meters only
+    const barRows = tab === 2 ? 2 : 0;
+    const rowCount = (rows?.length ?? 0) + barRows;
     const padTop = compact ? 2 : 4;
+    const minStep = compact ? 8 : 10;
     const rowStep = Math.max(
-      compact ? 11 : 13,
+      minStep,
       Math.min(compact ? 16 : 18, Math.floor((box.h - padTop) / Math.max(1, rowCount)))
     );
-    const rowSize = Math.max(compact ? 9 : 10, Math.min(compact ? 11 : 12, rowStep - 2));
+    const rowSize = Math.max(7, Math.min(compact ? 11 : 12, rowStep - 2));
     const meterBarH = Math.max(compact ? 6 : 7, Math.min(10, rowStep - 3));
     const meterLabelW = compact ? 28 : 34;
+    const maxRows = Math.max(1, Math.floor((box.h - padTop) / minStep));
 
     let y = box.y + padTop + rowSize;
+    let drawn = 0;
 
-    for (const sys of systems) {
-      const col = this._statusStateColor(sys.state);
-      this._text(ctx, sys.name.toUpperCase(), box.x, y, { size: rowSize, weight: 600 });
-      this._text(ctx, sys.state.toUpperCase(), box.x + box.w, y, {
-        size: rowSize,
-        align: 'right',
-        color: col,
-        weight: 700,
-      });
-      y += rowStep;
+    if (rows) {
+      for (const row of rows) {
+        if (drawn >= maxRows) break;
+        if (tab === 1) {
+          this._drawStatusWeaponRow(ctx, box, y, row, rowSize);
+        } else {
+          const col = this._statusStateColor(row.state);
+          this._text(ctx, row.name.toUpperCase(), box.x, y, { size: rowSize, weight: 600 });
+          this._text(ctx, row.state.toUpperCase(), box.x + box.w, y, {
+            size: rowSize,
+            align: 'right',
+            color: col,
+            weight: 700,
+          });
+        }
+        y += rowStep;
+        drawn++;
+      }
     }
 
-    for (const w of weapons) {
-      this._drawStatusWeaponRow(ctx, box, y, w, rowSize);
-      y += rowStep;
+    if (tab === 2) {
+      if (drawn < maxRows) {
+        this._drawStatusMeterRow(
+          ctx,
+          box,
+          y,
+          'FUEL',
+          meterLabelW,
+          rowSize,
+          meterBarH,
+          st.fuel ?? 0,
+          (frac) => this._statusMeterColor(frac)
+        );
+        y += rowStep;
+        drawn++;
+      }
+      if (drawn < maxRows) {
+        this._drawStatusMeterRow(
+          ctx,
+          box,
+          y,
+          'HULL',
+          meterLabelW,
+          rowSize,
+          meterBarH,
+          st.hull ?? st.fuel ?? 1,
+          (frac) => this._statusMeterColor(frac)
+        );
+      }
     }
-
-    y += compact ? 1 : 2;
-    y = this._drawStatusMeterRow(
-      ctx,
-      box,
-      y,
-      'FUEL',
-      meterLabelW,
-      rowSize,
-      meterBarH,
-      st.fuel ?? 0,
-      (frac) => this._statusMeterColor(frac)
-    );
-    y += rowStep;
-    this._drawStatusMeterRow(
-      ctx,
-      box,
-      y,
-      'HULL',
-      meterLabelW,
-      rowSize,
-      meterBarH,
-      st.hull ?? st.fuel ?? 1,
-      (frac) => this._statusMeterColor(frac)
-    );
   }
 
   _statusStateColor(state) {

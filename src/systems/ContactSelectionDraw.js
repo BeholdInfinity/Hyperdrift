@@ -78,6 +78,16 @@ export function contactScreenAabb(contact, camera, screenCx, screenCy, pad = 8) 
       [-r, -r],
       [-r, r],
     ];
+  } else if (contact.type === 'ore') {
+    wx = ref.position?.x ?? ref.x;
+    wy = ref.position?.y ?? ref.y;
+    const r = (ref.radius || 5) + 2;
+    corners = [
+      [r, r],
+      [r, -r],
+      [-r, -r],
+      [-r, r],
+    ];
   } else {
     wx = ref.x ?? ref.position?.x;
     wy = ref.y ?? ref.position?.y;

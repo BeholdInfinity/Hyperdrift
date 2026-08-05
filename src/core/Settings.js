@@ -11,6 +11,8 @@ const DEFAULTS = {
   showFps: true,
   /** Live ship sandbox beside Controls tab in Settings. */
   controlsSandbox: true,
+  /** Contact occlusion (LOS visibility gates, viewport umbra, SCAN wedges). */
+  occlusion: false,
 };
 
 function load() {
@@ -71,5 +73,13 @@ export const Settings = {
 
   setControlsSandbox(on) {
     return this.set('controlsSandbox', !!on);
+  },
+
+  isOcclusion() {
+    return !!_state.occlusion;
+  },
+
+  setOcclusion(on) {
+    return this.set('occlusion', !!on);
   },
 };

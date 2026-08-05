@@ -1,4 +1,3 @@
-import { Vec2 } from '../utils/MathUtils.js';
 import { PICKUP_COLLECT_RADIUS } from './MiningDropSystem.js';
 
 /** Catch radius while the hook is flying (world units). */
@@ -29,14 +28,10 @@ export class GrappleSystem {
   }
 
   originWorld(ship) {
-    if (typeof ship.getMiningLaserOrigin === 'function') {
-      return ship.getMiningLaserOrigin();
+    if (typeof ship.getGrappleOrigin === 'function') {
+      return ship.getGrappleOrigin();
     }
-    const fwd = Vec2.fromAngle(ship.angle ?? 0);
-    return {
-      x: ship.position.x + fwd.x * 18,
-      y: ship.position.y + fwd.y * 18,
-    };
+    return { x: ship.position.x, y: ship.position.y };
   }
 
   _shipVel(ship) {

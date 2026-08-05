@@ -585,11 +585,16 @@ export const RADAR = {
   BLIP_BEARING_EPS: 0.04,
   /** Asteroids/objects on by default (dev drawer can disable). */
   INCLUDE_ASTEROIDS: true,
-  /**
-   * Temporary test gate: asteroid contacts only within this tier's range (R1),
-   * even when the live radar tier is higher. Bump to widen later.
-   */
-  ASTEROID_RANGE_TIER: 1,
+  /** Visibility below this → partial detect (dim/UNKNOWN blip). */
+  OCCLUSION_FULL: 0.35,
+  /** Sample bearings across target extent for LOS visibility. */
+  OCCLUSION_SAMPLES: 8,
+  /** Max occluders tested per frame (nearest first). */
+  OCCLUSION_CANDIDATES_MAX: 24,
+  /** Max occluders that cast viewport umbra / SCAN wedge shadows (nearest first). */
+  OCCLUSION_SHADOW_MAX: 64,
+  /** Seconds an occluded selected contact shows SIGNAL BLOCKED before drop. */
+  SIGNAL_BLOCKED_TIMEOUT: 5,
   /**
    * Tier rows indexed by effectiveTier (0 = off). `range` = world units
    * (strictly increasing). Display km = range / KM_SCALE.
@@ -602,6 +607,31 @@ export const RADAR = {
     { range: 20000 }, // 4 — 200 km
     { range: 25000 }, // 5 — 250 km (Mk5 / 5 pips)
   ],
+};
+
+/** Forward-looking scanner (FLS) — nose cone, Mouse 4 hold. */
+export const FLS = {
+  /**
+   * Tier rows indexed by effective scanner tier (0 = off).
+   * 1 pip = 2× mining laser range; 5 pips = 200 km (radar outer ring).
+   */
+  TIERS: [
+    { range: 0 }, // 0 — off
+    { range: 2 * SHIP.MINING_LASER_RANGE }, // 1 — 560 u
+    { range: 5420 }, // 2 — ~5.4 km
+    { range: 10280 }, // 3 — ~10.3 km
+    { range: 15140 }, // 4 — ~15.1 km
+    { range: 20000 }, // 5 — 200 km (radar outer ring)
+  ],
+  /** Seconds to full scan at visibility 1, per contact type. */
+  SCAN_DURATION: {
+    asteroid: 3,
+    ore: 2,
+    civilian: 10,
+    patrol: 10,
+    station: 10,
+    default: 5,
+  },
 };
 
 /** Furthest radar world range (highest TIERS.range). */

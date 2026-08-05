@@ -152,6 +152,20 @@
         <button type="button" class="hangar-dev-btn" id="dev-gen-save">Save generator default</button>
         <span id="dev-scan-readout" class="dev-drawer-status">tier — · — km</span>
       </div>
+      <div id="dev-panel-occlusion" class="dev-bay-panel hidden">
+        <div class="dev-bay-panel-head">
+          <span>OCCLUSION</span>
+          <button type="button" class="dev-bay-close dev-panel-close" data-panel="dev-panel-occlusion" title="Close">×</button>
+        </div>
+        <p class="dev-title-hint">LOS gating + shadows · Enabled mirrors Settings → Display</p>
+        <label class="dev-check"><input type="checkbox" id="dev-occ-enabled" /> Enabled</label>
+        <label class="dev-title-slider">Shadow casters <input type="range" id="dev-occ-shadow-max" min="8" max="128" step="1" /><span data-for="dev-occ-shadow-max">64</span></label>
+        <label class="dev-title-slider">Visibility occluders <input type="range" id="dev-occ-candidates" min="4" max="64" step="1" /><span data-for="dev-occ-candidates">24</span></label>
+        <label class="dev-title-slider">LOS samples <input type="range" id="dev-occ-samples" min="1" max="16" step="1" /><span data-for="dev-occ-samples">8</span></label>
+        <button type="button" class="hangar-dev-btn" id="dev-occ-save">Save</button>
+        <button type="button" class="hangar-dev-btn" id="dev-occ-reset">Reset defaults</button>
+        <span id="dev-occ-status" class="dev-drawer-status"></span>
+      </div>
       <div id="dev-panel-ring-bands" class="dev-bay-panel hidden">
         <div class="dev-bay-panel-head">
           <span>RING BANDS</span>
@@ -570,6 +584,13 @@
                   </span>
                   <input type="checkbox" class="settings-switch" id="show-fps-toggle" />
                 </label>
+                <label class="settings-row settings-toggle-row">
+                  <span class="settings-row-label">
+                    <span class="settings-row-name">Contact occlusion</span>
+                    <span class="settings-row-hint">Line-of-sight radar gating, viewport shadows, SCAN darkening — off is faster</span>
+                  </span>
+                  <input type="checkbox" class="settings-switch" id="occlusion-toggle" />
+                </label>
                 <div class="settings-row settings-row-action">
                   <span class="settings-row-label">
                     <span class="settings-row-name">Fullscreen</span>
@@ -609,6 +630,8 @@
               <div class="settings-bind-grid">
                 <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>LMB</kbd></span><span class="settings-bind-desc">Dorsal turret — pointer must be inside viewport</span></div>
                 <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>RMB</kbd></span><span class="settings-bind-desc">Mining laser</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>Mouse back</kbd></span><span class="settings-bind-desc">Grapple arm — click ore drop in viewport to reel it in</span></div>
+                <div class="settings-bind-row"><span class="settings-bind-keys"><kbd>Mouse fwd</kbd></span><span class="settings-bind-desc">Hold — forward-looking scanner cone</span></div>
               </div>
 
               <h2 class="settings-section-title">Cockpit &amp; HUD</h2>

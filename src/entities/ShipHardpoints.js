@@ -13,6 +13,8 @@ export const SHIP_EXTENT = {
 export const HARDPOINTS = {
   /** Dorsal combat turret pivot — ship rotation center */
   dorsalTurret: { x: 0, y: 0, angle: 0 },
+  /** Grapple arm — unseen belly port, aligned with turret centerline */
+  grappleArm: { x: 0, y: 0, angle: Math.PI / 2 },
   /** Forward mining laser — under-bridge chin; tip past nose */
   miningLaser: { x: 18, y: 0, angle: 0 },
   mainEngine: { x: -19.6, y: 0, angle: Math.PI },

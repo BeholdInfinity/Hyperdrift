@@ -7,9 +7,23 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 ## [Unreleased]
 
 ### Planned
-- **Contact Occlusion and Cockpit UX** — shared line-of-sight for radar, forward scanner, viewport shadows, and full-disc SCAN darkening; input remap (Mouse back = grapple click, Mouse forward = hold FLS, MMB = selection only); FLS on all contact types with tiered scan times; STATUS corner tabs (SYSTEMS | WEAPONS | VITALS) + Grapple row; ore as radar OTHER contacts; full asteroid pip range (drop `ASTEROID_RANGE_TIER` cap). Decisions locked in workspace plan `contact_occlusion_and_cockpit_ux_a9b4a670.plan.md` — **not yet implemented**.
+- _(none queued — next slice TBD)_
+
+## [0.1.292] — 2026-08-05
+
+### Fixed
+- **CONTACT panel crash on scanned asteroids** — `TypeError: toUpperCase is not a function` when a scanned asteroid hit 50%+ (COMP row) or 100% (CARGO row); asteroid `composition` is a mix object (`{silicate: 0.7, …}`), not a string — now rendered via `compositionLabel()` (e.g. `SILICATE-IRON`).
+- **Occlusion FPS collapse** — `computeVisibility` rebuilt the full occluder list (incl. per-vertex world transforms) **per contact per frame** (~contacts² work + GC churn). Occluder list is now built once per frame in `ContactOcclusion._prepareOccluders` and shared by radar visibility, FLS, and both shadow passes; each occluder also caches its **bearing + angular half-extent** so contacts whose vectors never overlap the target are skipped before any ray work. Back to 75 FPS (display cap) in live play.
 
 ### Added
+- **Occlusion settings toggle (default OFF)** — Settings → Display → **Contact occlusion**. When off, no occluder logic runs at all (no `computeVisibility`, no shadow passes, visibility stays 1 — simpler pre-slice logic). Persists in `hyperdrift.settings`.
+- **Dev Occlusion submenu** (space dev drawer) — Enabled (mirrors Settings), **Shadow casters** (8–128, default 64), **Visibility occluders** (4–64, default 24), **LOS samples** (1–16, default 8); **Save** bakes to `src/core/Constants.js`, **Reset** restores code defaults. New: `DevOcclusion.js`.
+- **More shadow casters** — viewport umbra / SCAN wedges now use their own cap (`RADAR.OCCLUSION_SHADOW_MAX`, 64) instead of sharing the 24-occluder visibility budget; AABB/ship-box prefilters use true corner bounds (`boundR`).
+
+### Added
+- **Contact Occlusion and Cockpit UX** — shared line-of-sight for radar, forward scanner, viewport shadows, and full-disc SCAN darkening; input remap (Mouse back = grapple click, Mouse forward = hold FLS, MMB = selection only); FLS on all contact types with tiered scan times (asteroid 3 s / ore 2 s / ship+station 10 s); ore as radar OTHER contacts at full pip range; full asteroid pip range (`ASTEROID_RANGE_TIER` cap dropped); CONTACT progressive scan detail + CARGO unlock at 100%; STATUS corner tabs (SYS | WPN | VIT) + Grapple Arm row; occluded selected contact shows last-known RANGE + SIGNAL BLOCKED (5 s grace). New modules: `ContactOcclusion.js`, `ForwardScanSystem.js`, `OcclusionShadowPass.js`, `ScanVisual.js`. Decisions in workspace plan `contact_occlusion_and_cockpit_ux_a9b4a670.plan.md`.
+
+
 - **Sector editor Back / Forward** — undo/redo for layout edits (◀ Back / Forward ▶ in the validator card; Ctrl+Z / Ctrl+Y); map drags commit as one step.
 - **Belt asteroid permanence + taxonomy** — catalogs store permanent `orbitR` / `orbitAngle0`; view-priority fill + backlog catch-up for speed-independent density; proc rocks follow `RingBeltVisual` sub-bands; seven size tiers with gen-time capacity/composition/`lootSeed`; mining shrink by tier; ammo ~25% yield (`AsteroidCatalog.js`).
 - **Hero asteroid fields** — charted `asteroid_field` POIs (seeded Iron Needle Cluster); `HeroFieldStream` + envelope suppress of proc rocks; Large/Very Large reserved for heroes.

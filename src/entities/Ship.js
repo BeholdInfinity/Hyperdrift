@@ -99,6 +99,18 @@ export class Ship extends Entity {
     };
   }
 
+  /**
+   * Grapple arm origin — unseen belly port on hull centerline, aligned with
+   * the dorsal turret pivot. No muzzle offset (cable exits below the hull).
+   */
+  getGrappleOrigin() {
+    const hp =
+      this.getHardpoint('grappleArm') ||
+      this.getHardpoint('dorsalTurret') ||
+      HARDPOINTS.dorsalTurret;
+    return this._localToWorld(hp.x, hp.y);
+  }
+
   update(deltaTime) {
     if (this.fireCooldown > 0) this.fireCooldown -= deltaTime;
     if (this.muzzleFlash > 0) this.muzzleFlash -= deltaTime;

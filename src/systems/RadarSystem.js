@@ -26,6 +26,7 @@
 
 import { RADAR } from '../core/Constants.js';
 import { pickContactAtScreen } from './ContactSelectionDraw.js';
+import { oreLabel } from './MiningLootCatalog.js';
 
 const TWO_PI = Math.PI * 2;
 
@@ -50,10 +51,10 @@ function shortestArc(a, b) {
   return Math.abs(d);
 }
 
-/** CONTACTS chip bucket: station | other (asteroids) | ship (everything else). */
+/** CONTACTS chip bucket: station | other (asteroids, ore) | ship (everything else). */
 export function contactFilterBucket(type) {
   if (type === 'station') return 'station';
-  if (type === 'asteroid') return 'other';
+  if (type === 'asteroid' || type === 'ore') return 'other';
   return 'ship';
 }
 
@@ -72,6 +73,8 @@ export class RadarSystem {
     this.contacts = [];
     /** id → last painted { r, worldBearing, worldAngle, pingAt } */
     this._display = new Map();
+    /** Selected-id occlusion: world time when it became fully blocked (for SIGNAL BLOCKED). */
+    this._blockedSince = new Map();
     /** Ring geometry signature; a change forces a blip drop (view hand-off). */
     this._geoKey = '';
     /** Live model summary for the renderer/panels. */
@@ -267,11 +270,7 @@ export class RadarSystem {
     const px = ship.position.x;
     const py = ship.position.y;
     const plotMax = this.plotRange || this.range;
-
-    // Temporary test gate: asteroids only within R1.
-    const asteroidMaxR = this.tierWorldRange(
-      Math.min(RADAR.ASTEROID_RANGE_TIER || 1, this.tier)
-    );
+    ctx.occlusion?.nextFrame?.();
 
     const raw = [];
     if (station) {
@@ -324,6 +323,24 @@ export class RadarSystem {
         });
       }
     }
+    if (ctx.miningDrops) {
+      for (const drop of ctx.miningDrops) {
+        if (drop.active === false) continue;
+        raw.push({
+          id: `ore${drop.id}`,
+          ref: drop,
+          x: drop.position.x,
+          y: drop.position.y,
+          vx: drop.velocity?.x || 0,
+          vy: drop.velocity?.y || 0,
+          angle: drop.angle || 0,
+          type: 'ore',
+          iff: 'object',
+          name: oreLabel(drop.oreType),
+          priority: 1,
+        });
+      }
+    }
 
     const pad = ctx.plotPad ?? 0.28;
     const innerPlot = ctx.innerR + ctx.band * pad;
@@ -370,8 +387,17 @@ export class RadarSystem {
       const dist = Math.hypot(dx, dy);
       if (dist < 1e-3) continue;
 
-      if (c.type === 'asteroid' && dist > asteroidMaxR) continue;
       if (dist > this.range) continue;
+
+      // Shared occlusion: nearer contacts block farther ones. When the
+      // occlusion setting is off, visibility stays 1 (simpler logic:
+      // no blip gate/dim, no SIGNAL BLOCKED, no scan cap).
+      c.visibility =
+        ctx.occlusion && ctx.occlusionOn
+          ? ctx.occlusion.computeVisibility({ x: px, y: py }, c, raw, {
+              sensorRange: this.range,
+            })
+          : 1;
 
       liveIds.add(c.id);
 
@@ -387,6 +413,8 @@ export class RadarSystem {
       const frac = Math.min(1, this.distToPlotFrac(dist));
       const wantR = state === 'visual' ? ctx.innerR : innerPlot + (outerPlot - innerPlot) * frac;
       const prev = this._display.get(c.id);
+      const occluded = (c.visibility ?? 1) <= 0;
+      const partial = !occluded && (c.visibility ?? 1) < (RADAR.OCCLUSION_FULL ?? 0.35);
       const crossedTruth = this._sweepCrossed(screenBearing);
       const crossedDisp =
         prev != null && this._sweepCrossed(prev.worldBearing + rot);
@@ -394,7 +422,12 @@ export class RadarSystem {
       let paint = false;
       let clear = false;
 
-      if (state === 'visual') {
+      if (occluded) {
+        // Fully blocked — no paint; existing ghost fades on sweep rules below.
+        if (prev && c.id !== this.selectedId) {
+          if (crossedDisp) clear = true;
+        }
+      } else if (state === 'visual') {
         // In viewing distance (inner ring): live track — no sweep gate.
         paint = true;
       } else if (prev && prev.state === 'visual') {
@@ -476,7 +509,15 @@ export class RadarSystem {
       // Selected contacts stay locked bright between sweep refreshes.
       let alpha =
         state === 'visual' ? 1 : Math.min(ageAlpha, state === 'edge' ? 0.5 : 1);
-      if (c.id === this.selectedId) alpha = 1;
+      if (partial) alpha *= 0.5;
+      if (c.id === this.selectedId) alpha = occluded ? 0 : 1;
+
+      // Track when the selected contact becomes fully occluded (SIGNAL BLOCKED).
+      if (occluded) {
+        if (!this._blockedSince.has(c.id)) this._blockedSince.set(c.id, this._time);
+      } else {
+        this._blockedSince.delete(c.id);
+      }
 
       const dispBearing = dispWorldBearing + rot;
       const tWorld = Math.min(1, dist / (this.range || 1));
@@ -647,12 +688,30 @@ export class RadarSystem {
     const ref = entry.ref;
     if (!ref) return entry.id === 'station' || entry.type === 'station';
     if (entry.type === 'asteroid') return ref.active !== false;
+    if (entry.type === 'ore') return ref.active !== false;
     if (ref.combatDestroyed) return false;
     return true;
   }
 
+  /** True if the selected contact is fully occluded (within blocked timeout). */
+  isSelectedBlocked() {
+    if (!this.selectedId) return false;
+    return this._blockedSince.has(this.selectedId);
+  }
+
   getSelected() {
     if (!this.selectedId) return null;
+    // Drop the selection after the occluded-contact grace period.
+    const blockedAt = this._blockedSince.get(this.selectedId);
+    if (blockedAt != null) {
+      const timeout = RADAR.SIGNAL_BLOCKED_TIMEOUT ?? 5;
+      if (this._time - blockedAt > timeout) {
+        this._blockedSince.delete(this.selectedId);
+        this._display.delete(this.selectedId);
+        this.selectedId = null;
+        return null;
+      }
+    }
     const c = this.contacts.find((x) => x.id === this.selectedId) || null;
     if (c && !this.passesContactFilter(c)) {
       this.selectedId = null;
@@ -660,6 +719,7 @@ export class RadarSystem {
     }
     if (c && !this._contactRefLive(c)) {
       this._display.delete(this.selectedId);
+      this._blockedSince.delete(this.selectedId);
       this.selectedId = null;
       return null;
     }

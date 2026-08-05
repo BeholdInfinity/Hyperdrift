@@ -49,6 +49,10 @@ export class InputSystem {
     this._rightClickPos = null;
     /** Space cockpit: last MMB-up screen point (consumed via consumeMiddleClickPos). */
     this._middleClickPos = null;
+    /** Space cockpit: last Mouse 3 (back) up screen point (consumed via consumeGrappleClickPos). */
+    this._grappleClickPos = null;
+    /** True while Mouse 4 (forward) is held — forward scanner. */
+    this.mouse4Down = false;
     /** When true, keydown feeds modal rename queue instead of flight / pause. */
     this.modalTextCapture = false;
     /** @type {Array<{type:'char'|'backspace'|'enter'|'escape', char?:string}>} */
@@ -84,7 +88,9 @@ export class InputSystem {
       this._taps.clear();
       this.mouseDown = false;
       this.mouseRightDown = false;
+      this.mouse4Down = false;
       this._middleClickPos = null;
+      this._grappleClickPos = null;
       this._resetPan();
       this._clearBurstArms();
       // Keep zero-hold latch across app/window focus changes.
@@ -107,6 +113,8 @@ export class InputSystem {
     this.hangarPanEnabled = false;
     this._clickPos = null;
     this._middleClickPos = null;
+    this._grappleClickPos = null;
+    this.mouse4Down = false;
     this._taps.clear();
     this._resetPan();
     this._clearBurstArms();
@@ -267,6 +275,11 @@ export class InputSystem {
     }
     if (e.button === 2) this.mouseRightDown = true;
     if (e.button === 1) e.preventDefault();
+    // Side buttons: Mouse 3 back (grapple), Mouse 4 forward (scanner hold).
+    if (e.button === 3 || e.button === 4) {
+      e.preventDefault();
+      if (e.button === 4) this.mouse4Down = true;
+    }
   }
 
   _onMouseUp(e) {
@@ -286,6 +299,16 @@ export class InputSystem {
     }
     if (e.button === 1 && this.enabled && !this.paused) {
       this._middleClickPos = { x: e.clientX, y: e.clientY };
+    }
+    if (e.button === 3) {
+      e.preventDefault();
+      if (this.enabled && !this.paused) {
+        this._grappleClickPos = { x: e.clientX, y: e.clientY };
+      }
+    }
+    if (e.button === 4) {
+      e.preventDefault();
+      this.mouse4Down = false;
     }
   }
 
@@ -396,6 +419,18 @@ export class InputSystem {
     const v = this._middleClickPos;
     this._middleClickPos = null;
     return v;
+  }
+
+  /** Space cockpit: consume the last Mouse 3 (back) up screen point (or null). */
+  consumeGrappleClickPos() {
+    const v = this._grappleClickPos;
+    this._grappleClickPos = null;
+    return v;
+  }
+
+  /** True while Mouse 4 (forward) is held. */
+  isMouse4Held() {
+    return this.enabled && !this.paused && this.mouse4Down;
   }
 
   /** True if the current/last LMB gesture was a pan drag. */

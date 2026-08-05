@@ -49,6 +49,9 @@ import {
 import { AsteroidSystem } from '../systems/AsteroidSystem.js';
 import { MiningDropSystem } from '../systems/MiningDropSystem.js';
 import { GrappleSystem } from '../systems/GrappleSystem.js';
+import { ContactOcclusion } from '../systems/ContactOcclusion.js';
+import { ForwardScanSystem } from '../systems/ForwardScanSystem.js';
+import { OcclusionShadowPass } from '../systems/OcclusionShadowPass.js';
 import { PhysicsSystem } from '../systems/PhysicsSystem.js';
 import { Starfield } from '../world/Starfield.js';
 import { NebulaField } from '../world/NebulaField.js';
@@ -182,6 +185,9 @@ export class GameEngine {
     this.particleSystem = new ParticleSystem();
     this.miningDropSystem = new MiningDropSystem(this.entityManager);
     this.grappleSystem = new GrappleSystem();
+    this.contactOcclusion = new ContactOcclusion();
+    this.forwardScanSystem = new ForwardScanSystem();
+    this.occlusionShadowPass = new OcclusionShadowPass();
     this.shipLog = [];
     this.shipController = new ShipController();
     this.physics = new PhysicsSystem();
@@ -3635,6 +3641,7 @@ export class GameEngine {
     this._processCockpitClicks();
     this._processCockpitMiddleClicks();
     this._processCockpitRightClicks();
+    this._processGrappleClick();
 
     this._syncStationWorldFrame();
 
@@ -3900,6 +3907,9 @@ export class GameEngine {
         stationName: placeRegistry.getActive()?.label || 'Station',
         ambientTraffic: this.ambientTraffic,
         asteroids,
+        miningDrops: this.miningDropSystem.getDrops(),
+        occlusion: this.contactOcclusion,
+        occlusionOn: Settings.isOcclusion(),
         camera: this.camera,
         gameTime: this.gameTime || 0,
         radarPips: this.pipSystem.get('radar'),
@@ -3911,6 +3921,20 @@ export class GameEngine {
         plotPad: geo.plotPad,
         fullScope: geo.fullScope,
       });
+
+      // Forward scanner consumes this frame's fresh radar contacts.
+      if (this.mode === 'playing' && this.radarSystem.contacts.length) {
+        this.forwardScanSystem.update(deltaTime, {
+          ship: this.ship,
+          contacts: this.radarSystem.contacts,
+          occlusion: this.contactOcclusion,
+          input: this.input,
+          pipSystem: this.pipSystem,
+          radarSystem: this.radarSystem,
+          scanView: this.scanView,
+          gameTime: this.gameTime || 0,
+        });
+      }
     }
 
     const stationFull = this.station.allBaysBlocked(this.ship);
@@ -4212,8 +4236,10 @@ export class GameEngine {
     const hudBursting = this.combat.hudBursting(this.ship);
 
     this.renderer.setupCircularClip();
-    if (this.scanView === 'scan') this._renderScanBackdrop();
-    else this._renderPlayWorld();
+    if (this.scanView === 'scan') {
+      this._renderScanBackdrop();
+      this._renderScanScopeShadow();
+    } else this._renderPlayWorld();
     this.renderer.endCircularClip();
 
     this._renderRadar();
@@ -4337,10 +4363,6 @@ export class GameEngine {
     );
 
     this.renderer.renderMiningDrops(this.miningDropSystem.getDrops(), this.camera);
-    this.renderer.renderGrappleCable(
-      this.grappleSystem.cableSegment(this.ship),
-      this.camera
-    );
 
     this.renderer.renderWorldLayer((ctx) => {
       this.ambientTraffic.render(ctx, { only: ambientOccluded });
@@ -4373,6 +4395,15 @@ export class GameEngine {
     this.renderer.renderWorldLayer((ctx) => {
       this.ambientTraffic.render(ctx, { only: ambientClear });
     }, this.camera);
+
+    // Occlusion umbra — pitch-black shadows behind nearer contacts (SHIP view only).
+    if (this.scanView !== 'scan') this._renderWorldOcclusionShadow();
+
+    // Grapple cable below the ship hull — belly port.
+    this.renderer.renderGrappleCable(
+      this.grappleSystem.cableSegment(this.ship),
+      this.camera
+    );
 
     if (this.ship && !playerOccluded && !this.combat.playerDead(this.ship)) {
       this.renderer.renderShip(this.ship, this.camera);
@@ -4425,9 +4456,79 @@ export class GameEngine {
     this._renderSelectedContactViewport();
   }
 
+  /** Radar-sourced contacts as raw occlusion candidates (world x/y top level). */
+  _occlusionCandidates() {
+    const out = [];
+    for (const c of this.radarSystem?.contacts || []) {
+      const x = c.ref?.position?.x ?? c.ref?.x ?? c.wx;
+      const y = c.ref?.position?.y ?? c.ref?.y ?? c.wy;
+      if (x == null || y == null) continue;
+      out.push({ id: c.id, type: c.type, ref: c.ref, x, y, angle: c.ref?.angle ?? 0 });
+    }
+    return out;
+  }
+
+  /** Pitch-black umbra behind nearer contacts (SHIP viewport). */
+  _renderWorldOcclusionShadow() {
+    if (!Settings.isOcclusion()) return;
+    if (!this.ship || !this.radarSystem?.contacts?.length) return;
+    const zoom = this.camera.effectiveZoom || 1;
+    const vr = this.renderer.viewportRadius / zoom;
+    const origin = { x: this.ship.position.x, y: this.ship.position.y };
+    const polys = this.contactOcclusion.buildShadowPolygons(
+      origin,
+      this._occlusionCandidates(),
+      {
+        minX: origin.x - vr * 1.2,
+        minY: origin.y - vr * 1.2,
+        maxX: origin.x + vr * 1.2,
+        maxY: origin.y + vr * 1.2,
+      },
+      { sensorRange: this.radarSystem.range }
+    );
+    if (!polys.length) return;
+    this.renderer.renderWorldLayer((ctx) => {
+      this.occlusionShadowPass.renderWorldShadow(ctx, polys);
+    }, this.camera);
+  }
+
+  /** Darkened occluded wedges on the full-disc SCAN backdrop. */
+  _renderScanScopeShadow() {
+    if (!Settings.isOcclusion()) return;
+    if (!this.ship || !this.radarSystem?.contacts?.length) return;
+    const geo = this._radarGeometry();
+    const origin = { x: this.ship.position.x, y: this.ship.position.y };
+    const polys = this.contactOcclusion.buildShadowPolygons(
+      origin,
+      this._occlusionCandidates(),
+      {
+        minX: origin.x - this.radarSystem.plotRange,
+        minY: origin.y - this.radarSystem.plotRange,
+        maxX: origin.x + this.radarSystem.plotRange,
+        maxY: origin.y + this.radarSystem.plotRange,
+      },
+      { sensorRange: this.radarSystem.range }
+    );
+    if (!polys.length) return;
+    const wedges = this.contactOcclusion.shadowPolysToScopeWedges(
+      polys,
+      origin,
+      geo.outerR,
+      this.radarSystem.plotRange,
+      this.camera.rotation || 0
+    );
+    this.occlusionShadowPass.renderScopeShadow(
+      this.renderer.ctx,
+      wedges,
+      this.renderer.centerX,
+      this.renderer.centerY,
+      geo.outerR,
+      0.7
+    );
+  }
+
   /** Corner brackets on the in-viewport hull when a contact is in visual range. */
-  _renderSelectedContactViewport() {
-    if (this.scanView === 'scan' || !this.radarSystem?.on) return;
+  _renderSelectedContactViewport() {    if (this.scanView === 'scan' || !this.radarSystem?.on) return;
     const sel = this.radarSystem.getSelected();
     if (!sel || sel.state !== 'visual') return;
     if (sel.type === 'asteroid' && sel.ref && !sel.ref.active) return;
@@ -4573,6 +4674,7 @@ export class GameEngine {
       weapons: [
         { name: 'Turret', ammo: '100%', state: 'ready' },
         { name: 'Mining Laser', ammo: '\u221E', state: 'ready' },
+        { name: 'Grapple Arm', ammo: '—', state: 'ready' },
       ],
     };
   }
@@ -4584,6 +4686,13 @@ export class GameEngine {
     if (turret) {
       turret.ammo = formatTurretAmmoLabel(this.ship);
       turret.state = formatTurretAmmoStatus(this.ship);
+    }
+    const grapple = this.ship.status.weapons.find((w) => w.name === 'Grapple Arm');
+    if (grapple && this.grappleSystem) {
+      const st = this.grappleSystem.state;
+      grapple.state =
+        st === 'idle' ? 'ready' : st === 'reelingEmpty' ? 'reeling' : st;
+      grapple.ammo = st === 'idle' ? '—' : 'CABLE';
     }
     if (this.ship.hull != null) this.ship.status.hull = this.ship.hull;
   }
@@ -4626,8 +4735,7 @@ export class GameEngine {
   }
 
   /** Middle-click — contacts list rows + viewport hull + radar blips. */
-  _processCockpitMiddleClicks() {
-    const click = this.input.consumeMiddleClickPos();
+  _processCockpitMiddleClicks() {    const click = this.input.consumeMiddleClickPos();
     if (!click) return;
     const { x, y } = click;
     const dx = x - this.renderer.centerX;
@@ -4652,22 +4760,29 @@ export class GameEngine {
         this.radarSystem.selectedId = hit.id;
         return;
       }
-      if (this.mode === 'playing' && this.ship) {
-        const aimWorld = this.camera.screenToWorld(
-          x,
-          y,
-          this.renderer.centerX,
-          this.renderer.centerY
-        );
-        if (this.grappleSystem.tryFire(this.ship, aimWorld, this.miningDropSystem)) {
-          return;
-        }
-      }
     }
 
     if (distC <= this.renderer.radarOuterRadius) {
       this._selectContactRadarClick(x, y);
     }
+  }
+
+  /** Mouse 3 (back) — grapple arm click in the play viewport. */
+  _processGrappleClick() {
+    const click = this.input.consumeGrappleClickPos();
+    if (!click) return;
+    if (this.mode !== 'playing' || !this.ship) return;
+    if (this.scanView === 'scan') return;
+    const dx = click.x - this.renderer.centerX;
+    const dy = click.y - this.renderer.centerY;
+    if (Math.hypot(dx, dy) > this.renderer.viewportRadius) return;
+    const aimWorld = this.camera.screenToWorld(
+      click.x,
+      click.y,
+      this.renderer.centerX,
+      this.renderer.centerY
+    );
+    this.grappleSystem.tryFire(this.ship, aimWorld, this.miningDropSystem);
   }
 
   _selectContactRadarClick(sx, sy) {

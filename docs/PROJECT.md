@@ -65,7 +65,7 @@ src/
     AsteroidSurface.js    Procedural module textures, shape profiles, crack draw
     MiningDropSystem.js   Ore drops, ship gravity pickup, oreHold
     MiningLootCatalog.js  Ore types and drop rolls
-    GrappleSystem.js      MMB viewport grapple reel-in for remote ore pickup (planned: Mouse back click)
+    GrappleSystem.js      Mouse back (M3) viewport grapple reel-in for remote ore pickup (belly origin, cable under hull)
     BeltStream.js         Belt angular-sector catalogs + reconcile (permanent orbits, band density)
     HeroFieldStream.js    Authored asteroid_field hero rock stream
     OpenSpaceStream.js    Sparse open-space field cells
@@ -73,6 +73,10 @@ src/
     StreamRadii.js        Stream distance / spawn budget helpers
     StreamSpawn.js        Shared rock spawn from catalog stats
     RadarSystem.js          Radar model: contacts, sweep-gated paints, piecewise pip range + SCAN plot-zoom, age fade, selection
+    ContactOcclusion.js     Shared line-of-sight: computeVisibility (circle prefilter + poly/AABB/circle), shadow polygons + scope wedges
+    ForwardScanSystem.js    FLS passive nose-cone scanner (M4 hold): per-type durations, auto-select closest, session scan DB
+    OcclusionShadowPass.js  Viewport umbra polygons + SCAN disc darkened wedges from ContactOcclusion
+    ScanVisual.js           Scan-line stroke helpers (viewport + CONTACT header)
     RadarDisplay.js         Radar ring/scope renderer (silhouettes, IFF, sweep, nose/tail, chevrons)
     ViewportTelemetry.js  Viewport speed + contact/POI/nav distance labels (collision-aware layout)
     CockpitFrame.js       Cached 16:9 steel/copper HUD chrome + POI rim dots + corners (TL ZOOM · TR TELEMETRY · BL MODES · BR STATUS)
@@ -96,7 +100,7 @@ src/
     data/visualTuning.js, data/mountLayouts.js   Dev bake targets
     index.js              Modular ship public API
   dev/
-    DevTools.js, DevSave.js, DevOverlay.js, DevPanelDrag.js, DevMenu.js, DevSimSpeed.js, DevDepth.js, BlueprintAuthoring.js, HangarLayoutEditor.js, DevSectorEditor.js
+    DevTools.js, DevSave.js, DevOverlay.js, DevPanelDrag.js, DevMenu.js, DevSimSpeed.js, DevDepth.js, DevOcclusion.js, BlueprintAuthoring.js, HangarLayoutEditor.js, DevSectorEditor.js
     SectorEditorGeography.js  Add ring/moon/field, Orbit lock, sub-belts, hero rock gen
   world/
     hangar-layout.js      Flavor props / linger / gossip (Dev bake target)
@@ -190,7 +194,7 @@ src/
 | Dev Mode drawer + hangar layout editor + bake-back | Done (v0.1.159); Bay Options panel (v0.1.160); bay unit spacing drag (v0.1.173); unified prop categories (v0.1.174); **Title Layout** panel (v0.1.243) |
 | Procedural asteroids + nebulae | Done |
 | Modular asteroid mining (per-module laser pop, drops, oreHold, COMMS Message Log) | Done (v0.1.291) |
-| Grapple arm (MMB viewport; ship-relative hook + auto-reel) | Done (v0.1.291) |
+| Grapple arm (Mouse back M3 viewport; belly origin, cable under hull, ship-relative hook + auto-reel) | Done (v0.1.292) |
 | 7-layer starfield, 3-layer nebulae | Done |
 | Speed streaks (velocity-opposed, screen-space) | Done |
 | Camera lead offset + scroll zoom + speed zoom | Done |
@@ -271,7 +275,7 @@ Full plan + todo list: [`WORLD_GEOGRAPHY_PLAN.md`](WORLD_GEOGRAPHY_PLAN.md) (cod
 **Open (see plan todos):** sector editor inspector polish; trade block / broker / outlaw IFF wiring; fragment gravity; dev gravity μ slider.
 
 ### Polish / follow-ups
-- **Contact Occlusion and Cockpit UX (planned next slice)** — shared `ContactOcclusion.js` for radar / forward scanner / viewport shadows / SCAN darkening; input remap (Mouse back = grapple, Mouse forward = hold FLS, MMB = selection only); FLS passive cone on all contact types; STATUS tabs + Grapple row; ore radar OTHER contacts; full asteroid pip range. Decisions locked in workspace plan `contact_occlusion_and_cockpit_ux_a9b4a670.plan.md` — **not implemented yet**.
+- **Contact Occlusion and Cockpit UX (shipped v0.1.292, opt-in)** — shared `ContactOcclusion.js` for radar / forward scanner / viewport shadows / SCAN darkening; input remap (Mouse back = grapple, Mouse forward = hold FLS, MMB = selection only); FLS passive cone on all contact types; STATUS tabs + Grapple Arm row; ore radar OTHER contacts; full asteroid pip range. **Off by default** (Settings → Display → Contact occlusion; when off, no occluder logic runs); dev drawer → **Occlusion** submenu tunes caster/occluder counts + samples (Save bakes `Constants.js`); shadows use a separate 64-caster cap; angular prefilter skips non-overlapping pairs. Decisions in workspace plan `contact_occlusion_and_cockpit_ux_a9b4a670.plan.md`.
 - **Asteroid deferred systems** — impact damage / deflection from rock mass (volume × composition density); full drop tables + science-seat readout; laser Mk yield polish; N-body shepherd physics. Radar hero-vs-proc contact-cap priority still open — [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) §9.4.
 - **Space hangar presence / bay mouth traffic (needs more tuning)** — first pass shipped (`HangarPresence`, retrograde reservation spawns, beacon fix, stall retry). Still open: reliable door inbound while player co-orbits Jennings; visible elevator beacon cadence vs interior hangar; spawn speed/distance/geometry; reservation retry pacing; mouth mutex vs `MAX_SHIPS`. Touch `HangarPresence.js`, `AmbientTrafficSystem.spawnBayApproach` / `_tickBayMouth`, `BayTrafficManifest.js`, `Constants.js` (`AMBIENT.*`, `HANGAR.INBOUND_RESERVATION_STALL_SEC`).
 - **Thruster cup size** — tune via Blueprint Author sliders / `visualTuning.js` (still subjective)
@@ -301,6 +305,7 @@ Cosmetic / lower priority:
 **Not yet exercised live end-to-end:** clicking an in-world/band blip to select (ship kept leaving range), comms target population, and the fire/alert overlay (needs `ship.status.fires` populated). Recommended manual pass: hover near Jennings at low speed, select a band blip + a POI-rim dot, exercise pip loadouts (save/apply/partial apply via dev Generator at 3), and temporarily push a fake fire into `ship.status.fires` to verify the alert banner. Plan of record: `.cursor/plans/scanner_subsystem_roadmap_fe068679.plan.md` (do **not** edit the plan file).
 
 ### Shipped recently (context)
+- **v0.1.292** Contact Occlusion + Cockpit UX: shared LOS (radar gate/dim, FLS cap, viewport umbra, SCAN wedges); input remap (M3 grapple belly-origin, M4 hold FLS, MMB select-only); FLS all types w/ tiered durations + auto-select + session scan DB; ore radar OTHER @ full range; asteroid pip-range cap removed; CONTACT progressive scan + CARGO @100% + SIGNAL BLOCKED; STATUS SYS|WPN|VIT tabs + Grapple Arm row; occlusion opt-in (Settings, default off) + dev Occlusion submenu + angular prefilter + 64-caster shadows; per-frame occluder cache + compositionLabel crash fix
 - **v0.1.291** Modular asteroids + per-module mining laser; ore drops + ship gravity pickup; COMMS Message Log; MMB grapple (ship-relative hook, auto-reel); composite single-outline render; mining/grapple/radar/stream stability fixes (kinematic sync, sticky module target, destroyed-rock reconcile, selection hygiene)
 - **v0.1.287** Thera system geography v2; `InteriorSession` hangar instancing; traffic law stubs; orbit assists (PRO/SYNC); runtime error panel; hangar launch handoff + perf polish
 - **v0.1.286** Radar/display/hangar scanner nomenclature alignment

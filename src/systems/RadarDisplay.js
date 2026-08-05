@@ -305,9 +305,27 @@ export class RadarDisplay {
       case 'asteroid':
         this._shapeAsteroid(ctx, c);
         break;
+      case 'ore':
+        this._shapeOre(ctx, c, color);
+        break;
       default:
         this._shapeShip(ctx, c, color);
     }
+    ctx.restore();
+  }
+
+  _shapeOre(ctx, c, color) {
+    const s = Math.max(3, c.size * 0.6);
+    ctx.save();
+    ctx.translate(c.screenX, c.screenY);
+    ctx.rotate(Math.PI / 4);
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 4;
+    ctx.fillStyle = color;
+    ctx.fillRect(-s * 0.5, -s * 0.5, s, s);
+    ctx.strokeStyle = shadeHex(color, -30);
+    ctx.lineWidth = 0.9;
+    ctx.strokeRect(-s * 0.5, -s * 0.5, s, s);
     ctx.restore();
   }
 

@@ -7,6 +7,7 @@ import { DevTools } from './dev/DevTools.js';
 import { migrateLegacyDevBakesFromStorage } from './dev/DevConfigBake.js';
 import { syncRingBandsPanelContent, wireRingBandsDevPanel } from './dev/DevRingBands.js';
 import { syncDepthPanelContent, wireDepthDevPanel, bindDepthDevEngine } from './dev/DevDepth.js';
+import { syncOcclusionPanelContent, wireOcclusionDevPanel } from './dev/DevOcclusion.js';
 import {
   contextForMode,
   isDevDrawerVisible,
@@ -123,6 +124,7 @@ const controlsBackBtn = document.getElementById('controls-back-btn');
 const blueprintBackBtn = document.getElementById('blueprint-back-btn');
 const devModeToggle = document.getElementById('dev-mode-toggle');
 const showFpsToggle = document.getElementById('show-fps-toggle');
+const occlusionToggle = document.getElementById('occlusion-toggle');
 const settingsFullscreenBtn = document.getElementById('settings-fullscreen-btn');
 const settingsFullscreenInlineBtn = document.getElementById('settings-fullscreen-inline-btn');
 const settingsClearNavBtn = document.getElementById('settings-clear-nav-btn');
@@ -290,6 +292,7 @@ function syncSettingsSandbox() {
 
 function syncSettingsUi() {
   if (showFpsToggle) showFpsToggle.checked = Settings.isShowFps();
+  if (occlusionToggle) occlusionToggle.checked = Settings.isOcclusion();
   syncFpsCounterVisibility();
   syncSettingsAbout();
   syncSettingsSandbox();
@@ -307,6 +310,13 @@ function wireSettingsPanel() {
     showFpsToggle.addEventListener('change', () => {
       Settings.setShowFps(showFpsToggle.checked);
       syncFpsCounterVisibility();
+    });
+  }
+
+  if (occlusionToggle) {
+    occlusionToggle.addEventListener('change', () => {
+      Settings.setOcclusion(occlusionToggle.checked);
+      syncOcclusionPanelContent();
     });
   }
 
@@ -1729,6 +1739,7 @@ setDevMenuSyncUi(() => {
   syncBayOptionsPanelContent();
   syncRingBandsPanelContent();
   syncDepthPanelContent();
+  syncOcclusionPanelContent();
 });
 
 setDevMenuActionHandler((action) => {
@@ -2275,6 +2286,7 @@ const DEV_POPUP_IDS = [
   'dev-panel-radar',
   'dev-panel-ring-bands',
   'dev-panel-depth',
+  'dev-panel-occlusion',
   'dev-panel-vessel',
   'dev-panel-hangar',
   'dev-title-panel',
@@ -2287,6 +2299,7 @@ restoreDevPanelPositions();
 wireRingBandsDevPanel();
 wireDepthDevPanel();
 bindDepthDevEngine(engine);
+wireOcclusionDevPanel();
 
 migrateLegacyDevBakesFromStorage().then((res) => {
   if (res.ringBaked || res.depthBaked) {
