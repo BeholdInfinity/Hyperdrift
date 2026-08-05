@@ -2,7 +2,7 @@ import { BLUEPRINT } from '../core/Constants.js';
 import { drawModularShip } from '../ships/ShipRenderer.js';
 import { emitMountExhaust } from '../ships/PlumeDraw.js';
 import { topDownView } from '../ships/ShipViews.js';
-import { drawModuleSurface, drawCrackOverlay } from './AsteroidSurface.js';
+import { drawModuleSurface, drawCrackOverlay, getMaterialPattern } from './AsteroidSurface.js';
 import { oreFillStyle } from './MiningLootCatalog.js';
 
 export class Renderer {
@@ -270,10 +270,44 @@ export class Renderer {
 
         if (modules?.length) {
           const detail = zoom > 0.15;
-          for (const mod of modules) {
-            drawModuleSurface(wctx, mod, zoom, detail);
-            if (mod.mineState === 'cracking' && (mod.crackProgress ?? 0) > 0) {
-              drawCrackOverlay(wctx, mod, mod.crackProgress, zoom);
+          if (modules.length > 1) {
+            // Draw as a single composite outline to hide module seams and present
+            // the rock as one large, oddly-shaped asteroid.
+            const verts = asteroid.vertices;
+            const tag = asteroid.compositionTag ?? (typeof asteroid.composition === 'string' ? asteroid.composition : null);
+            const seed = asteroid.lootSeed ?? asteroid.seed ?? 0;
+            const pattern = detail && zoom > 0.35 ? getMaterialPattern(tag, seed) : null;
+
+            if (verts?.length) {
+              wctx.beginPath();
+              wctx.moveTo(verts[0].x, verts[0].y);
+              for (let i = 1; i < verts.length; i++) wctx.lineTo(verts[i].x, verts[i].y);
+              wctx.closePath();
+
+              if (pattern) {
+                wctx.fillStyle = pattern;
+              } else {
+                wctx.fillStyle = asteroid.fillStyle?.() ?? '#3a3a3a';
+              }
+              wctx.fill();
+
+              wctx.strokeStyle = asteroid.strokeStyle?.() ?? '#5a5a5a';
+              wctx.lineWidth = Math.max(0.6, 1.1 / Math.max(zoom, 0.001));
+              wctx.stroke();
+            }
+
+            // Still show crack overlays for modules being mined.
+            for (const mod of modules) {
+              if (mod.mineState === 'cracking' && (mod.crackProgress ?? 0) > 0) {
+                drawCrackOverlay(wctx, mod, mod.crackProgress, zoom);
+              }
+            }
+          } else {
+            for (const mod of modules) {
+              drawModuleSurface(wctx, mod, zoom, detail);
+              if (mod.mineState === 'cracking' && (mod.crackProgress ?? 0) > 0) {
+                drawCrackOverlay(wctx, mod, mod.crackProgress, zoom);
+              }
             }
           }
         } else {
