@@ -20,6 +20,7 @@ import {
   boundingRadiusFromModules,
   compositeOutlineVertices,
   generateCrackLines,
+  assignModuleHitVertices,
 } from '../systems/AsteroidSurface.js';
 import { worldToAsteroidLocal } from '../combat/CombatResolver.js';
 
@@ -77,6 +78,7 @@ export class Asteroid extends Entity {
     const outline = compositeOutlineVertices(active);
     this.vertices = outline.length >= 3 ? outline : active[0].vertices;
     this.radius = boundingRadiusFromModules(active);
+    assignModuleHitVertices(active);
     this.volume = active.length;
     this.weight = rockWeight(this.volume, this.composition);
     this.mass = this.radius * this.radius * 0.01;
@@ -199,6 +201,7 @@ export class Asteroid extends Entity {
 
   /**
    * Mining laser on one module — crack buildup then pop.
+   * Marks the module heated so {@link tickCrackCooldown} skips it this frame.
    * @returns {{ extracted: number, shrunk: boolean, destroyed: boolean, yieldStub: object[], cracking: boolean, popped: boolean }}
    */
   mineModuleLaser(moduleId, deltaTime, laserMk = 1, hitWorld = null) {
@@ -214,6 +217,9 @@ export class Asteroid extends Entity {
     this.ensureModules();
     const mod = this.modules.find((m) => m.id === moduleId && m.active !== false);
     if (!mod) return result;
+
+    mod._laserHeated = true;
+    this._laserStickyModuleId = moduleId;
 
     if (!mod.crackLines?.length && hitWorld) {
       const local = worldToAsteroidLocal(this, hitWorld.x, hitWorld.y);
@@ -237,6 +243,7 @@ export class Asteroid extends Entity {
         dropTable: mod.dropTable,
         from: this.streamId || this.id,
       });
+      this._laserStickyModuleId = null;
       this.refreshFromModules();
       if (!this.activeModules().length) {
         this.destroy();
@@ -247,13 +254,17 @@ export class Asteroid extends Entity {
   }
 
   /**
-   * Decay crack heat on modules not actively lasered this frame.
-   * Call before mining laser apply so lasered module still net-heats.
+   * Decay crack heat on modules not lasered this frame.
+   * Call after mining laser apply; skips modules marked `_laserHeated`.
    */
   tickCrackCooldown(deltaTime) {
     if (!this.modules?.length || deltaTime <= 0) return;
     for (const mod of this.modules) {
       if (mod.active === false) continue;
+      if (mod._laserHeated) {
+        mod._laserHeated = false;
+        continue;
+      }
       const progress = mod.crackProgress ?? 0;
       if (progress <= 0) {
         if (mod.mineState === 'cracking') {

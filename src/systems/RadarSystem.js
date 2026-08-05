@@ -503,10 +503,25 @@ export class RadarSystem {
       candidates.push(c);
     }
 
+    // Selected asteroid fully mined / destroyed — drop lock immediately (don't
+    // ghost at zero velocity while the ship keeps moving).
+    if (this.selectedId && !liveIds.has(this.selectedId)) {
+      const prev = this._display.get(this.selectedId);
+      if (prev && !this._contactRefLive(prev)) {
+        this._display.delete(this.selectedId);
+        this.selectedId = null;
+      }
+    }
+
     // Ghost paints: contact left range / despawned — keep the blip until the
     // sweep arm clears its last painted bearing (no instant pop-off).
     for (const [id, prev] of [...this._display.entries()]) {
       if (liveIds.has(id)) continue;
+      if (!this._contactRefLive(prev)) {
+        this._display.delete(id);
+        if (this.selectedId === id) this.selectedId = null;
+        continue;
+      }
       const dispScreen = prev.worldBearing + rot;
       if (this._sweepCrossed(dispScreen)) {
         this._display.delete(id);
@@ -626,10 +641,25 @@ export class RadarSystem {
     return t >= a || t <= b;
   }
 
+  /** Whether a radar paint's backing entity is still a valid target. */
+  _contactRefLive(entry) {
+    if (!entry) return false;
+    const ref = entry.ref;
+    if (!ref) return entry.id === 'station' || entry.type === 'station';
+    if (entry.type === 'asteroid') return ref.active !== false;
+    if (ref.combatDestroyed) return false;
+    return true;
+  }
+
   getSelected() {
     if (!this.selectedId) return null;
     const c = this.contacts.find((x) => x.id === this.selectedId) || null;
     if (c && !this.passesContactFilter(c)) {
+      this.selectedId = null;
+      return null;
+    }
+    if (c && !this._contactRefLive(c)) {
+      this._display.delete(this.selectedId);
       this.selectedId = null;
       return null;
     }

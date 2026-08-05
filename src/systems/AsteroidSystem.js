@@ -29,7 +29,11 @@ export class AsteroidSystem {
     this._listDirty = true;
   }
 
-  _syncKinematicAsteroids(gameTime = 0, deltaTime = 0) {
+  /**
+   * Advance kinematic orbits + spin to `gameTime`.
+   * Call once per frame before combat so laser hits match rendered rock poses.
+   */
+  syncKinematics(gameTime = 0, deltaTime = 0) {
     const layout = getSectorLayout();
     for (const asteroid of this.activeAsteroids) {
       if (asteroid.kinematic) asteroid.syncOrbit(gameTime, layout);
@@ -38,6 +42,10 @@ export class AsteroidSystem {
         asteroid.angle += spin * deltaTime;
       }
     }
+  }
+
+  _syncKinematicAsteroids(gameTime = 0, deltaTime = 0) {
+    this.syncKinematics(gameTime, deltaTime);
   }
 
   _collectDestroyed() {
@@ -121,6 +129,10 @@ export class AsteroidSystem {
       return;
     }
 
+    // Permanently retire mined-out rocks *before* stream fill, otherwise catalogs
+    // see an inactive live slot as empty and respawn the full template.
+    this._collectDestroyed();
+
     const spawnBudget = { left: streamSpawnBudget() };
     const ctx = this._streamCtx(playerX, playerY, gameTime, { ...opts, spawnBudget });
     // Heroes first so preferential budget / fill wins over proc belts.
@@ -135,8 +147,9 @@ export class AsteroidSystem {
       streamViewRadius()
     );
 
-    this._syncKinematicAsteroids(gameTime, deltaTime);
-    this._collectDestroyed();
+    if (!opts.skipKinematicSync) {
+      this._syncKinematicAsteroids(gameTime, deltaTime);
+    }
     this._cullDistantRocks(playerX, playerY);
   }
 

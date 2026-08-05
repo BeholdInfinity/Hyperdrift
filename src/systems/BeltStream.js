@@ -422,7 +422,16 @@ export class BeltStream {
       for (let i = 0; i < catalog.length; i++) {
         const template = catalog[i];
         const id = beltRockId(ring.id, sectorIdx, i);
-        if (this._live.get(id)?.active) continue;
+        const liveAst = this._live.get(id);
+        if (liveAst?.active) continue;
+        if (liveAst && !liveAst.active) {
+          // Mined out but not yet retired — never refill from catalog.
+          destroyedIds.add(id);
+          system.despawnRock(liveAst);
+          this._live.delete(id);
+          stats.skipDestroyed++;
+          continue;
+        }
         if (destroyedIds.has(id)) {
           stats.skipDestroyed++;
           continue;

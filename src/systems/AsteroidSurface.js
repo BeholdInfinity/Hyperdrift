@@ -217,6 +217,82 @@ export function compositeOutlineVertices(modules) {
   return convexHull(pts);
 }
 
+/** Sample a closed polyline so long edges get intermediate points. */
+function densifyClosedPolyline(verts, maxEdge = 4) {
+  if (!verts?.length) return [];
+  const out = [];
+  const n = verts.length;
+  const step = Math.max(1.5, maxEdge);
+  for (let i = 0; i < n; i++) {
+    const a = verts[i];
+    const b = verts[(i + 1) % n];
+    out.push({ x: a.x, y: a.y });
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len = Math.hypot(dx, dy);
+    const segs = Math.max(1, Math.ceil(len / step));
+    for (let s = 1; s < segs; s++) {
+      const t = s / segs;
+      out.push({ x: a.x + dx * t, y: a.y + dy * t });
+    }
+  }
+  return out;
+}
+
+/**
+ * Expand each active module's collision polygon so their union fills the
+ * composite rock outline (no laser gaps between visual lobes).
+ * `hitVertices` are module-local (same space as `vertices`).
+ * @param {object[]} modules
+ */
+export function assignModuleHitVertices(modules) {
+  const active = (modules || []).filter((m) => m.active !== false);
+  if (!active.length) return;
+
+  if (active.length === 1) {
+    const m = active[0];
+    m.hitVertices = m.vertices ? m.vertices.map((v) => ({ x: v.x, y: v.y })) : [];
+    return;
+  }
+
+  const outline = compositeOutlineVertices(active);
+  const samples = densifyClosedPolyline(outline, 3.5);
+
+  for (const m of active) {
+    const ox = m.ox ?? 0;
+    const oy = m.oy ?? 0;
+    const pts = (m.vertices || []).map((v) => ({ x: v.x, y: v.y }));
+
+    for (const p of samples) {
+      let nearest = m;
+      let bestD = Infinity;
+      for (const o of active) {
+        const d = Math.hypot(p.x - (o.ox ?? 0), p.y - (o.oy ?? 0));
+        if (d < bestD) {
+          bestD = d;
+          nearest = o;
+        }
+      }
+      if (nearest === m) {
+        pts.push({ x: p.x - ox, y: p.y - oy });
+      }
+    }
+
+    // Slight radial pad so neighboring hitboxes overlap at seams.
+    const pad = Math.max(0.6, (m.radius ?? 4) * 0.06);
+    for (let i = 0; i < pts.length; i++) {
+      const v = pts[i];
+      const d = Math.hypot(v.x, v.y);
+      if (d > 1e-6) {
+        const s = (d + pad) / d;
+        pts[i] = { x: v.x * s, y: v.y * s };
+      }
+    }
+
+    m.hitVertices = pts.length >= 3 ? convexHull(pts) : pts;
+  }
+}
+
 /** @param {{ x: number, y: number }[]} points */
 function convexHull(points) {
   const pts = points.slice().sort((a, b) => a.x - b.x || a.y - b.y);

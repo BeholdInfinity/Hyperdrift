@@ -312,7 +312,7 @@ Parametric silhouettes cover all classes; Generalist `a` keeps bell HQ draw with
 
 - Nose mount; aim clamped to a **limited forward arc** with slew; ship-relative (yaws with hull when pointer leaves circle)
 - Hold RMB while pointer in viewport: continuous beam along **clamped** aim even if mouse is past the arc
-- Targets the closest **module** along the beam; crack buildup → pop → ore drop. Pop time scales by module material and laser Mk. Cracks **cool down** if heat stops (slower than heat-up).
+- Targets the closest **module** along the beam; crack buildup → pop → ore drop. Pop time scales by module material and laser Mk (Mk1 = authored baseline; Mk5 ≈ 0.55×). Cracks **cool down** when the laser leaves that module (~2.2× slower than heat-up); active heat is not cooled the same frame.
 - Damages ship hulls when no asteroid module wins the beam ray test
 
 ### Ammo vs laser on rocks
@@ -336,7 +336,7 @@ Three depth layers (far / mid / near) plus stream-placed world nebulae (`NebulaS
 - **Ring belts** — four Thera rings (`inner_ore` → `fringe_ice`); `BeltStream` angular sectors; proc density follows shared `RingBeltVisual` sub-bands (gaps nearly empty); kinematic prograde orbit from permanent `orbitR` / `orbitAngle0` (μ-derived). In-viewport fill uses view-priority + backlog catch-up so density is not ship-speed dependent.
 - **Shepherd moons** — `shepherd_moon` sites in inter-ring gaps (charted POIs); simple disc in the flight viewport; clear proc rocks via site exclusion.
 - **Rock taxonomy** — seven size tiers (Fibonacci **volume** 1–21); volume = count of **very-small modules** smashed together. Hybrid composition (~30% pocket re-rolls). Procedural textures + shape profiles; subtle per-rock spin (some static). Orbit velocity ±1% of circular prograde at spawn.
-- **Mining** — laser targets one module; heat cracks build then pop (time scales by material + laser Mk). Popped module only — rest of asteroid stays. Ore drops inherit parent velocity; ship gravity + proximity pickup; optional MMB grapple reel-in. Ore tallies in **COMMS → Message Log** (`[COMPUTER]` stub until cargo grid).
+- **Mining** — laser targets one module; heat cracks build then pop (time scales by material + laser Mk). Popped module only — rest of asteroid stays. Ore drops inherit parent velocity with a slight random outward drift; ship gravity + proximity pickup; optional **MMB grapple** in viewport (ship-relative shot, auto-reel on grab or max cable). Ore tallies in **COMMS → Message Log** (`[COMPUTER]` stub until cargo grid). **Planned (not shipped):** Mouse back = grapple click; Mouse forward = hold forward scanner; shared contact occlusion across radar/FLS/viewport; ore on radar OTHER chip.
 - **Composition** — ring default mix + authored `subBelts[]` pockets (most-specific overlap wins). Per-module tint from mix.
 - **Hero fields** — charted `asteroid_field` POIs with authored child rocks (may include Large / Very Large); stream IDs `hero:{siteId}:{rockId}`; proc rocks suppressed inside the field envelope.
 - **Open space** — sparse/dense clusters via `OpenSpaceStream` field cells (outside ring bands; 50% reduced vs legacy baseline).
@@ -417,7 +417,8 @@ Sandbox build order: narrative stub → ship interior slice → derelict slice �
 - [ ] Multiple ships
 - [ ] AI enemies
 - [ ] Trading economy
-- [ ] Mining
+- [x] **Mining (prototype slice)** — modular asteroids, per-module laser pop, drops, grapple, COMMS log (v0.1.291); cargo grid / science UI / full economy deferred
+- [ ] **Contact Occlusion and Cockpit UX** — shared LOS, FLS, input remap, STATUS tabs, ore radar (see `PROJECT.md` + workspace plan)
 - [ ] Missions / quests
 - [x] Home Base: launch from hangar into a run
 - [x] Home Base: extract / return to hangar

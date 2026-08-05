@@ -11,6 +11,7 @@ import {
   generateRockVertices,
   generateSurfaceAnchors,
   rollShapeProfile,
+  assignModuleHitVertices,
 } from './AsteroidSurface.js';
 
 /** @typedef {'very_small'|'small'|'small_medium'|'medium'|'large_medium'|'large'|'very_large'} SizeTierId */
@@ -328,10 +329,11 @@ export function basePopSeconds(compositionTag) {
   return POP_BASE_SECONDS[compositionTag] ?? POP_BASE_SECONDS.silicate;
 }
 
-/** Laser Mk speeds crack→pop (Mk5 ≈ 0.55× duration). */
+/** Laser Mk speeds crack→pop (Mk1 = 1×, Mk5 ≈ 0.55× Mk1 duration). */
 export function laserMkPopFactor(laserMk = 1) {
   const mk = Math.max(1, Math.min(5, laserMk | 0));
-  return 0.75 + ((mk - 1) / 4) * 0.25;
+  // duration = base / factor → Mk5 factor ≈ 1/0.55
+  return 1 / (1 - ((mk - 1) / 4) * 0.45);
 }
 
 /** Signed rad/s; ~5–10% land at zero for visual variety. */
@@ -460,6 +462,7 @@ export function buildModularRock(stats, ctx = {}) {
 
   const outline = compositeOutlineVertices(modules);
   const boundR = boundingRadiusFromModules(modules);
+  assignModuleHitVertices(modules);
 
   return {
     modules,

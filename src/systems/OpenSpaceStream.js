@@ -182,6 +182,12 @@ export class OpenSpaceStream {
           }
           continue;
         }
+        if (asteroid && !asteroid.active) {
+          destroyedIds.add(id);
+          system.despawnRock(asteroid);
+          this._live.delete(id);
+          continue;
+        }
 
         const rockDist = dist(spec.x, spec.y, playerX, playerY);
         const mayMaterialize = materializeInView

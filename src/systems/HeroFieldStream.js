@@ -109,6 +109,12 @@ export class HeroFieldStream {
           }
           continue;
         }
+        if (asteroid && !asteroid.active) {
+          destroyedIds.add(id);
+          system.despawnRock(asteroid);
+          this._live.delete(id);
+          continue;
+        }
 
         const entry = { id, rock, dist: rockDist };
         if (materializeInView) {

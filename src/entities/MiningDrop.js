@@ -20,8 +20,10 @@ export class MiningDrop extends Entity {
   }
 
   update(deltaTime) {
-    this.position.x += this.velocity.x * deltaTime;
-    this.position.y += this.velocity.y * deltaTime;
+    if (!this._grappled) {
+      this.position.x += this.velocity.x * deltaTime;
+      this.position.y += this.velocity.y * deltaTime;
+    }
     this.lifetime -= deltaTime;
     if (this.lifetime <= 0) this.destroy();
   }

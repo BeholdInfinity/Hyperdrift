@@ -65,7 +65,7 @@ src/
     AsteroidSurface.js    Procedural module textures, shape profiles, crack draw
     MiningDropSystem.js   Ore drops, ship gravity pickup, oreHold
     MiningLootCatalog.js  Ore types and drop rolls
-    GrappleSystem.js      MMB grapple reel-in for remote pickup
+    GrappleSystem.js      MMB viewport grapple reel-in for remote ore pickup (planned: Mouse back click)
     BeltStream.js         Belt angular-sector catalogs + reconcile (permanent orbits, band density)
     HeroFieldStream.js    Authored asteroid_field hero rock stream
     OpenSpaceStream.js    Sparse open-space field cells
@@ -189,6 +189,8 @@ src/
 | Blueprint (player Upgrade UI + Dev Author) | Done — always available; Dev Mode adds mount drag / tuning Save |
 | Dev Mode drawer + hangar layout editor + bake-back | Done (v0.1.159); Bay Options panel (v0.1.160); bay unit spacing drag (v0.1.173); unified prop categories (v0.1.174); **Title Layout** panel (v0.1.243) |
 | Procedural asteroids + nebulae | Done |
+| Modular asteroid mining (per-module laser pop, drops, oreHold, COMMS Message Log) | Done (v0.1.291) |
+| Grapple arm (MMB viewport; ship-relative hook + auto-reel) | Done (v0.1.291) |
 | 7-layer starfield, 3-layer nebulae | Done |
 | Speed streaks (velocity-opposed, screen-space) | Done |
 | Camera lead offset + scroll zoom + speed zoom | Done |
@@ -269,6 +271,7 @@ Full plan + todo list: [`WORLD_GEOGRAPHY_PLAN.md`](WORLD_GEOGRAPHY_PLAN.md) (cod
 **Open (see plan todos):** sector editor inspector polish; trade block / broker / outlaw IFF wiring; fragment gravity; dev gravity μ slider.
 
 ### Polish / follow-ups
+- **Contact Occlusion and Cockpit UX (planned next slice)** — shared `ContactOcclusion.js` for radar / forward scanner / viewport shadows / SCAN darkening; input remap (Mouse back = grapple, Mouse forward = hold FLS, MMB = selection only); FLS passive cone on all contact types; STATUS tabs + Grapple row; ore radar OTHER contacts; full asteroid pip range. Decisions locked in workspace plan `contact_occlusion_and_cockpit_ux_a9b4a670.plan.md` — **not implemented yet**.
 - **Asteroid deferred systems** — impact damage / deflection from rock mass (volume × composition density); full drop tables + science-seat readout; laser Mk yield polish; N-body shepherd physics. Radar hero-vs-proc contact-cap priority still open — [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) §9.4.
 - **Space hangar presence / bay mouth traffic (needs more tuning)** — first pass shipped (`HangarPresence`, retrograde reservation spawns, beacon fix, stall retry). Still open: reliable door inbound while player co-orbits Jennings; visible elevator beacon cadence vs interior hangar; spawn speed/distance/geometry; reservation retry pacing; mouth mutex vs `MAX_SHIPS`. Touch `HangarPresence.js`, `AmbientTrafficSystem.spawnBayApproach` / `_tickBayMouth`, `BayTrafficManifest.js`, `Constants.js` (`AMBIENT.*`, `HANGAR.INBOUND_RESERVATION_STALL_SEC`).
 - **Thruster cup size** — tune via Blueprint Author sliders / `visualTuning.js` (still subjective)
@@ -298,6 +301,7 @@ Cosmetic / lower priority:
 **Not yet exercised live end-to-end:** clicking an in-world/band blip to select (ship kept leaving range), comms target population, and the fire/alert overlay (needs `ship.status.fires` populated). Recommended manual pass: hover near Jennings at low speed, select a band blip + a POI-rim dot, exercise pip loadouts (save/apply/partial apply via dev Generator at 3), and temporarily push a fake fire into `ship.status.fires` to verify the alert banner. Plan of record: `.cursor/plans/scanner_subsystem_roadmap_fe068679.plan.md` (do **not** edit the plan file).
 
 ### Shipped recently (context)
+- **v0.1.291** Modular asteroids + per-module mining laser; ore drops + ship gravity pickup; COMMS Message Log; MMB grapple (ship-relative hook, auto-reel); composite single-outline render; mining/grapple/radar/stream stability fixes (kinematic sync, sticky module target, destroyed-rock reconcile, selection hygiene)
 - **v0.1.287** Thera system geography v2; `InteriorSession` hangar instancing; traffic law stubs; orbit assists (PRO/SYNC); runtime error panel; hangar launch handoff + perf polish
 - **v0.1.286** Radar/display/hangar scanner nomenclature alignment
 - **v0.1.284** Nav route queue; pip loadouts + PIPS/STATUS rework; MODES corner (PREC/ORIENT/VIEW); scanner sweep paints + full SCAN + Mk5 tiers; sector map / Travel Log drawers; boot error overlay; WT shared launch tabs

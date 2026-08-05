@@ -6,15 +6,8 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
-### Added
-- **Modular asteroids** — Fibonacci volume = very-small module count; hybrid composition pockets (~30% re-roll); procedural material textures, shape profiles (potato / spinning top / bilobed / rubble pile), surface anchor craters; subtle per-rock spin (`AsteroidSurface.js`, `AsteroidCatalog.buildModularRock`).
-- **Module mining** — laser targets individual modules; heat-crack buildup then pop (duration by composition + laser Mk); cracks **cool down** when laser heat stops (~2.2× slower than heat-up); only the hit module removes; debris inherits parent velocity.
-- **Mining drops** — ore chunks spawn on pop with ship gravity pull + proximity pickup; abstract `oreHold` counters on the player ship.
-- **COMMS Message Log** — footer tabs (Live Comms / Message Log); ore pickups log as `[COMPUTER]` lines.
-- **Grapple arm** — MMB in viewport when no contact under cursor; reels drops for instant pickup (optional; ~5× hull length cable).
-
-### Changed
-- **Asteroid size taxonomy** — tier Fibonacci values are now **volume** (1–21); rock **weight** = composition base density × volume (`COMPOSITION_BASE_WEIGHT` in `AsteroidCatalog.js`). Hero field bakes use `volume`; legacy `weight` field still loads as volume.
+### Planned
+- **Contact Occlusion and Cockpit UX** — shared line-of-sight for radar, forward scanner, viewport shadows, and full-disc SCAN darkening; input remap (Mouse back = grapple click, Mouse forward = hold FLS, MMB = selection only); FLS on all contact types with tiered scan times; STATUS corner tabs (SYSTEMS | WEAPONS | VITALS) + Grapple row; ore as radar OTHER contacts; full asteroid pip range (drop `ASTEROID_RANGE_TIER` cap). Decisions locked in workspace plan `contact_occlusion_and_cockpit_ux_a9b4a670.plan.md` — **not yet implemented**.
 
 ### Added
 - **Sector editor Back / Forward** — undo/redo for layout edits (◀ Back / Forward ▶ in the validator card; Ctrl+Z / Ctrl+Y); map drags commit as one step.
@@ -94,6 +87,32 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 - More hangar `decor` wall-art variants
 
 ---
+
+## [0.1.291] — 2026-08-05
+
+### Added
+- **Modular asteroids** — Fibonacci volume = very-small module count; hybrid composition pockets (~30% re-roll); procedural material textures, shape profiles (potato / spinning top / bilobed / rubble pile), surface anchor craters; subtle per-rock spin (`AsteroidSurface.js`, `AsteroidCatalog.buildModularRock`).
+- **Module mining** — laser targets individual modules; heat-crack buildup then pop (duration by composition + laser Mk); cracks **cool down** when laser heat stops (~2.2× slower than heat-up); only the hit module removes; debris inherits parent velocity.
+- **Mining drops** — ore chunks spawn on pop inheriting parent rock velocity plus a small random outward drift (0–18 u/s); ship gravity pull + proximity pickup; abstract `oreHold` counters on the player ship.
+- **COMMS Message Log** — footer tabs (Live Comms / Message Log); ore pickups log as `[COMPUTER]` lines.
+- **Grapple arm** — MMB in viewport when no contact under cursor; fires with ship velocity + muzzle speed, catches ore along the flight path, reels in on grab or full cable extension (~5× hull length).
+
+### Changed
+- **Asteroid size taxonomy** — tier Fibonacci values are now **volume** (1–21); rock **weight** = composition base density × volume (`COMPOSITION_BASE_WEIGHT` in `AsteroidCatalog.js`). Hero field bakes use `volume`; legacy `weight` field still loads as volume.
+- **Composite asteroid render** — multi-module rocks draw as one outlined hull so module seams don't show in the viewport (`Asteroid.js`).
+
+### Fixed
+- **Radar selection on mined-out asteroid** — lock now clears as soon as the rock is destroyed instead of ghosting at zero velocity (viewport brackets no longer slide past the ship).
+- **Grapple grab double-velocity** — after a catch, co-moving the ore *and* letting `MiningDrop.update` integrate ship+reel velocity kicked the hook past the nose; grappled drops skip free integration / gravity so reel owns motion once.
+- **Grapple empty reel** — miss / max-cable retract now co-moves with the ship then reels in ship-relative space (was world-only crawl, so the hull flew past and the hook never came home); attached ore reel uses the same path.
+- **Mining laser gaps through modular rocks** — each module now gets an expanded `hitVertices` poly that claims its share of the composite outline (plus a small pad), so the beam can't slip between visual lobes.
+- **Mined asteroids respawning** — destroyed rocks were collected *after* belt/open/hero stream fill, so an inactive live slot looked empty and the catalog respawned the full original; destructions are now retired before reconcile, with inactive-live guards in each stream.
+- **Radar asteroid silhouettes** — multi-module rocks use the same composite outline as the world draw (were still painted as separate small blobs per module).
+- **Grapple arm** — now fires without a pre-aimed drop; hook velocity is ship velocity + aim muzzle speed (was world-only, so it lagged aft); empty cable auto-reels at full extension; successful grab still reels the ore in.
+- **Mining drop eject direction** — pops used a fixed world-angle kick (+0.4 rad × 40 u/s), so ore always flew the same way; drops now match parent velocity with a gentle randomized outward drift.
+- **Mining laser contact lag / jiggle** — kinematic asteroids (orbit + spin) now sync *before* weapons so the beam tip matches the rock you see; open-space beams were already stable because length is fixed.
+- **Mining laser pop too slow** — crack cooldown was applied every frame *including* while heating (and Mk1's speed factor was <1), so modules took ~3× longer than authored; cooldown now skips the lasered module, and laser Mk scales pop time correctly (Mk1 = baseline, Mk5 ≈ 0.55×).
+- **Mining laser module flicker** — sticky target keeps cracking the same module while the beam still hits it (8% hysteresis) so overlapping front faces don't ping-pong.
 
 ## [0.1.290] — 2026-07-25
 

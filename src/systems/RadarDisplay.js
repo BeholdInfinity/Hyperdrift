@@ -399,7 +399,10 @@ export class RadarDisplay {
       ctx.stroke();
     };
 
-    if (modules?.length) {
+    if (modules?.length > 1 && ref?.vertices?.length) {
+      // Match world renderer: one composite outline, not per-module blobs.
+      drawPoly(ref.vertices);
+    } else if (modules?.length) {
       for (const mod of modules) {
         drawPoly(mod.vertices, mod.ox ?? 0, mod.oy ?? 0);
       }

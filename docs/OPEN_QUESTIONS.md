@@ -229,6 +229,8 @@ Hangar pad status boards still show display Mk stubs; modular catalog now define
 
 **Deferred:** impact damage / deflection, full drop tables + science UI, laser Mk curve polish, N-body shepherds.
 
+**Planned next prototype slice (decisions locked, not built):** Contact Occlusion and Cockpit UX — shared LOS for radar/FLS/viewport/SCAN; Mouse back/forward input remap; FLS on all contacts; STATUS tabs; ore radar OTHER; full asteroid radar range. See workspace plan `contact_occlusion_and_cockpit_ux_a9b4a670.plan.md` and `PROJECT.md` Known gaps.
+
 ---
 
 ## Notes
@@ -240,4 +242,4 @@ Hangar pad status boards still show display Mk stubs; modular catalog now define
 
 ---
 
-*Last updated: 2026-08-01*
+*Last updated: 2026-08-05*

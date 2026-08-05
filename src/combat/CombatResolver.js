@@ -6,6 +6,7 @@ import { circleCircle, rayCircle } from '../utils/CollisionUtils.js';
 import { COMBAT, SHIP } from '../core/Constants.js';
 import { applyHullDamage } from '../world/place/VesselInterior.js';
 import { hullDamageFraction } from './CombatTarget.js';
+import { assignModuleHitVertices } from '../systems/AsteroidSurface.js';
 
 /**
  * @param {object} proj
@@ -204,13 +205,14 @@ export function worldToAsteroidLocal(asteroid, wx, wy) {
   return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
 }
 
-/** Module polygon verts in world space. */
+/** Module polygon verts in world space (prefers expanded hitVertices). */
 export function moduleWorldVertices(asteroid, mod) {
   const cos = Math.cos(asteroid.angle);
   const sin = Math.sin(asteroid.angle);
   const px = asteroid.position.x;
   const py = asteroid.position.y;
-  return (mod.vertices || []).map((v) => {
+  const local = mod.hitVertices?.length ? mod.hitVertices : mod.vertices || [];
+  return local.map((v) => {
     const lx = (mod.ox ?? 0) + v.x;
     const ly = (mod.oy ?? 0) + v.y;
     return { x: px + lx * cos - ly * sin, y: py + lx * sin + ly * cos };
@@ -229,7 +231,7 @@ function raySegmentT(ox, oy, dx, dy, x1, y1, x2, y2) {
   return null;
 }
 
-/** Closest hit distance along ray through module convex polygons. */
+/** Closest hit distance along ray through module collision polygons. */
 export function rayModuleHitDist(ox, oy, dx, dy, maxRange, asteroid, mod) {
   const verts = moduleWorldVertices(asteroid, mod);
   if (verts.length < 2) return null;
@@ -245,6 +247,8 @@ export function rayModuleHitDist(ox, oy, dx, dy, maxRange, asteroid, mod) {
 
 /**
  * Closest module along mining laser.
+ * Prefers the rock's sticky module while the beam still intersects it (avoids
+ * front-face flicker between overlapping modules).
  * @returns {{ hitDist: number|null, asteroid: object|null, module: object|null, hitWorld: {x:number,y:number}|null }}
  */
 export function closestModuleLaserHit(ox, oy, dx, dy, range, asteroids, spatialIndex = null) {
@@ -260,6 +264,40 @@ export function closestModuleLaserHit(ox, oy, dx, dy, range, asteroids, spatialI
     if (!asteroid.active) continue;
     asteroid.ensureModules?.();
     const modules = asteroid.activeModules?.() ?? asteroid.modules ?? [];
+    if (modules.length && modules.some((m) => !m.hitVertices?.length)) {
+      assignModuleHitVertices(modules);
+    }
+
+    const stickyId = asteroid._laserStickyModuleId;
+    if (stickyId != null) {
+      const sticky = modules.find((m) => m.id === stickyId && m.active !== false);
+      if (sticky) {
+        const tSticky = rayModuleHitDist(ox, oy, dx, dy, range, asteroid, sticky);
+        if (tSticky != null && tSticky < bestDist) {
+          // Keep sticky unless another module is clearly closer (hysteresis).
+          let challengerDist = tSticky;
+          let challengerMod = sticky;
+          for (const mod of modules) {
+            if (mod === sticky) continue;
+            const t = rayModuleHitDist(ox, oy, dx, dy, challengerDist, asteroid, mod);
+            if (t != null && t < challengerDist * 0.92) {
+              challengerDist = t;
+              challengerMod = mod;
+            }
+          }
+          if (challengerDist < bestDist) {
+            bestDist = challengerDist;
+            bestAst = asteroid;
+            bestMod = challengerMod;
+          }
+          continue;
+        }
+        asteroid._laserStickyModuleId = null;
+      } else {
+        asteroid._laserStickyModuleId = null;
+      }
+    }
+
     for (const mod of modules) {
       const t = rayModuleHitDist(ox, oy, dx, dy, bestDist, asteroid, mod);
       if (t != null && t < bestDist) {

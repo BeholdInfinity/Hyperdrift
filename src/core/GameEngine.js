@@ -3736,6 +3736,9 @@ export class GameEngine {
 
     const asteroids = this._frameAsteroids || this.asteroidSystem.getActiveAsteroids();
 
+    // Pose rocks for this frame before weapons so laser contact matches render.
+    this.asteroidSystem.syncKinematics(this.gameTime || 0, deltaTime);
+
     if (this.hangarPresence.active) {
       this.hangarPresence.tick(deltaTime, this.gameTime || 0);
     }
@@ -3757,10 +3760,6 @@ export class GameEngine {
       },
     });
 
-    for (const ast of asteroids) {
-      ast.tickCrackCooldown?.(deltaTime);
-    }
-
     this.combat.updateSpaceflight({
       ship: this.ship,
       weaponSystem: this.weaponSystem,
@@ -3781,6 +3780,11 @@ export class GameEngine {
         this.input.paused = false;
       },
     });
+
+    // Cool cracks after laser heat so active modules aren't double-penalized.
+    for (const ast of asteroids) {
+      ast.tickCrackCooldown?.(deltaTime);
+    }
 
     const logHooks = { pushShipLog: (m) => this.pushShipLog(m) };
     this.miningDropSystem.update(this.ship, deltaTime, logHooks);
@@ -3821,6 +3825,7 @@ export class GameEngine {
         shipVx: this.ship.velocity.x,
         shipVy: this.ship.velocity.y,
         deltaTime,
+        skipKinematicSync: true,
       })
     );
     this._frameAsteroids = this.asteroidSystem.getActiveAsteroids();
@@ -4425,6 +4430,7 @@ export class GameEngine {
     if (this.scanView === 'scan' || !this.radarSystem?.on) return;
     const sel = this.radarSystem.getSelected();
     if (!sel || sel.state !== 'visual') return;
+    if (sel.type === 'asteroid' && sel.ref && !sel.ref.active) return;
 
     const r = this.renderer;
     const box = contactScreenAabb(sel, this.camera, r.centerX, r.centerY);
