@@ -10,8 +10,10 @@
 
 import { IFF, PIPS } from '../core/Constants.js';
 import { compositionLabel } from './AsteroidCatalog.js';
+import { oreFillStyle, oreLabel } from './MiningLootCatalog.js';
 import { drawModularShip } from '../ships/ShipRenderer.js';
 import { topDownView } from '../ships/ShipViews.js';
+import { drawScanLinesClipped, beginContactSilhouetteClip } from './ScanVisual.js';
 import {
   drawSectorMapPanel,
   sectorMapClick,
@@ -572,29 +574,52 @@ export class CockpitPanels {
     ];
     rows.forEach((s, i) => this._text(ctx, s, box.x, box.y + 34 + i * 15, { size: 12, weight: 500 }));
 
-    // Top-down render of the contact's hull (if any) in the lower half.
-    const shipDef = c.ref?.shipDef;
+    // Top-down / icon preview of the contact (right half) + FLS scan rasters.
     const renderBox = { x: box.x + box.w * 0.5, y: box.y + 20, w: box.w * 0.5, h: box.h - 40 };
-    if (shipDef && c.ref) {
+    const scan = engine.forwardScanSystem?.scanState(c.id);
+    const scanPct = scan?.scanPct ?? 0;
+    const fullyScanned = scan?.fullyScanned ?? false;
+    const maxScanPct = scan?.maxScanPct ?? 100;
+    const preview = this._drawContactPreview(ctx, renderBox, c, color, engine);
+    if (
+      preview &&
+      engine.forwardScanSystem?.isActivelyScanning?.(c.id)
+    ) {
+      const amp = Math.max(0.35, Math.min(1, scanPct / Math.max(1, maxScanPct) || 0.7));
       this._clip(ctx, renderBox, () => {
-        const fit = Math.min(renderBox.w, renderBox.h) / 90;
         ctx.save();
-        ctx.translate(renderBox.x + renderBox.w / 2, renderBox.y + renderBox.h / 2);
-        ctx.scale(fit, fit);
-        ctx.rotate(-Math.PI / 2);
-        try {
-          drawModularShip(ctx, c.ref, topDownView());
-        } catch (_) {
-          /* ignore render errors on exotic defs */
+        // Prefer true silhouette (asteroid verts / ellipse) over the panel AABB.
+        if (
+          beginContactSilhouetteClip(
+            ctx,
+            c,
+            {
+              cx: preview.cx,
+              cy: preview.cy,
+              angle: preview.angle,
+              halfLen: preview.halfLen,
+              halfBeam: preview.halfBeam,
+            },
+            { useVerts: false }
+          )
+        ) {
+          ctx.clip();
         }
+        drawScanLinesClipped(
+          ctx,
+          preview.cx,
+          preview.cy,
+          preview.halfLen,
+          preview.halfBeam,
+          preview.angle,
+          engine.forwardScanSystem?.clock ?? 0,
+          amp
+        );
         ctx.restore();
       });
     }
 
     // Forward scanner: progressive detail by scan %; CARGO unlocks with scan.
-    const scan = engine.forwardScanSystem?.scanState(c.id);
-    const scanPct = scan?.scanPct ?? 0;
-    const fullyScanned = scan?.fullyScanned ?? false;
     const scannerPips = engine.pipSystem.get('scanner');
     const y = box.y + box.h - 4;
     const y2 = y - 15;
@@ -602,16 +627,7 @@ export class CockpitPanels {
     if (scannerPips <= 0) {
       this._text(ctx, 'SCAN — scanner offline', box.x, y, { size: 11, color: DIM, weight: 400 });
     } else if (fullyScanned || scanPct >= 100) {
-      const cargo =
-        c.type === 'civilian' || c.type === 'patrol'
-          ? 'ORE, ALLOY (est.)'
-          : c.type === 'station'
-            ? 'TRADE HUB'
-            : c.type === 'ore'
-              ? `${c.name.toUpperCase()} x${c.ref?.amount ?? 1}`
-              : c.type === 'asteroid'
-                ? `${compositionLabel(c.ref?.composition).toUpperCase()} (est.)`
-                : '—';
+      const cargo = this._contactCargoLabel(c) || '—';
       this._text(ctx, `CARGO ${cargo}`, box.x, y, { size: 12, color: ACCENT, weight: 500 });
       this._text(ctx, 'FULLY SCANNED', box.x + box.w, y, {
         size: 10,
@@ -632,8 +648,8 @@ export class CockpitPanels {
     // Progressive mid-scan rows by type.
     const midRows = [];
     if (scanPct >= 25 && c.type === 'asteroid') {
-      const mods = c.ref?.capacityMax ?? c.ref?.modules?.length;
-      if (mods != null) midRows.push(`MODULES ${mods}`);
+      const drops = this._contactDropsCount(c);
+      if (drops != null) midRows.push(`MODULES ${drops}`);
     }
     if (scanPct >= 50) {
       if (c.type === 'asteroid') midRows.push(`COMP ${compositionLabel(c.ref?.composition).toUpperCase()}`);
@@ -647,6 +663,264 @@ export class CockpitPanels {
     midRows.forEach((s, i) => {
       this._text(ctx, s, box.x, y2 - i * 13, { size: 10, color: DIM, weight: 500 });
     });
+  }
+
+  /** Full-scan cargo string (CONTACT DETAILS + CONTACTS list) — known, not estimated. */
+  _contactCargoLabel(c) {
+    if (!c) return null;
+    if (c.type === 'civilian' || c.type === 'patrol') return 'ORE, ALLOY';
+    if (c.type === 'station') return 'TRADE HUB';
+    if (c.type === 'ore') return `${(c.name || 'ORE').toUpperCase()} x${c.ref?.amount ?? 1}`;
+    if (c.type === 'asteroid') {
+      return this._asteroidKnownDropsLabel(c.ref) || compositionLabel(c.ref?.composition).toUpperCase();
+    }
+    return null;
+  }
+
+  /**
+   * Aggregate known module drop yields after a full FLS scan.
+   * One primary ore unit per active module (matches mine-pop drop rolls).
+   */
+  _asteroidKnownDropsLabel(ref) {
+    if (!ref) return null;
+    const mods =
+      typeof ref.activeModules === 'function'
+        ? ref.activeModules()
+        : (ref.modules || []).filter((m) => m.active !== false);
+    if (!mods?.length) {
+      try {
+        const table = ref.ensureDropTable?.() || ref.dropTable;
+        const e = table?.entries?.[0];
+        if (e?.oreType) return `${oreLabel(e.oreType).toUpperCase()} x${e.amount ?? 1}`;
+      } catch (_) {
+        /* ignore */
+      }
+      return null;
+    }
+    /** @type {Map<string, number>} */
+    const counts = new Map();
+    for (const mod of mods) {
+      let table = mod.dropTable;
+      if (!table?.entries?.length && typeof ref.ensureDropTable === 'function') {
+        // Module tables are authored at build; fall back to rock table once.
+        table = ref.dropTable || ref.ensureDropTable();
+      }
+      const entry = table?.entries?.[0];
+      const oreType = entry?.oreType;
+      if (!oreType) continue;
+      counts.set(oreType, (counts.get(oreType) || 0) + (entry.amount ?? 1));
+    }
+    if (!counts.size) return null;
+    return [...counts.entries()]
+      .map(([oreType, n]) => `${oreLabel(oreType).toUpperCase()} x${n}`)
+      .join(' · ');
+  }
+
+  /** Module / drop / ore unit count when known. */
+  _contactDropsCount(c) {
+    if (!c) return null;
+    if (c.type === 'asteroid') {
+      const ref = c.ref;
+      if (typeof ref?.activeModules === 'function') {
+        const n = ref.activeModules()?.length;
+        if (n != null) return n;
+      }
+      return ref?.capacityMax ?? ref?.modules?.length ?? null;
+    }
+    if (c.type === 'ore') return c.ref?.amount ?? 1;
+    return null;
+  }
+
+  /**
+   * CONTACTS list scan extras for partial→full FLS (no type — name/context already implies it).
+   * @returns {{ detail: string, pct: number, full: boolean } | null}
+   */
+  _contactListScanInfo(c, engine) {
+    const scan = engine.forwardScanSystem?.scanState(c.id);
+    const pct = scan?.scanPct ?? 0;
+    if (pct <= 0) return null;
+    const full = !!(scan?.fullyScanned || pct >= 100);
+    const parts = [];
+    const drops = this._contactDropsCount(c);
+    if (full) {
+      const cargo = this._contactCargoLabel(c);
+      if (cargo) parts.push(cargo);
+      else if (drops != null) parts.push(`${drops} DROP${drops === 1 ? '' : 'S'}`);
+    } else {
+      if (pct >= 25 && drops != null) {
+        parts.push(`${drops} DROP${drops === 1 ? '' : 'S'}`);
+      }
+      if (pct >= 50 && c.type === 'asteroid') {
+        parts.push(compositionLabel(c.ref?.composition).toUpperCase());
+      } else if (pct >= 50 && c.type === 'station') {
+        parts.push('DOCK · TRADE');
+      }
+    }
+    return { detail: parts.join(' · '), pct, full };
+  }
+
+  /**
+   * Screen-space facing matching the viewport: world angle + camera rotation
+   * (SHIP-up counter-rotates the world; NORTH-up leaves camRot = 0).
+   */
+  _contactViewAngle(c, engine) {
+    const ref = c?.ref;
+    const worldAngle = ref?.angle ?? c?.heading ?? 0;
+    const camRot = engine?.camera?.rotation || 0;
+    return worldAngle + camRot;
+  }
+
+  /**
+   * Draw CONTACT panel silhouette / icon preview (viewport-matched rotation).
+   * @returns {{ cx, cy, halfLen, halfBeam, angle, clip, r?, halfW?, halfH? } | null}
+   */
+  _drawContactPreview(ctx, renderBox, c, iffColor, engine) {
+    if (!renderBox || renderBox.w < 8 || renderBox.h < 8) return null;
+    const cx = renderBox.x + renderBox.w / 2;
+    const cy = renderBox.y + renderBox.h / 2;
+    const ref = c.ref;
+    const shipDef = ref?.shipDef;
+    const viewAngle = this._contactViewAngle(c, engine);
+
+    if (shipDef && ref && (c.type === 'civilian' || c.type === 'patrol' || c.type === 'ship')) {
+      this._clip(ctx, renderBox, () => {
+        const fit = Math.min(renderBox.w, renderBox.h) / 90;
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.scale(fit, fit);
+        // Same composite as Renderer.renderShip: ship.angle + camera.rotation.
+        ctx.rotate(viewAngle);
+        try {
+          drawModularShip(ctx, ref, topDownView());
+        } catch (_) {
+          /* ignore render errors on exotic defs */
+        }
+        ctx.restore();
+      });
+      const half = Math.min(renderBox.w, renderBox.h) * 0.38;
+      return {
+        cx,
+        cy,
+        halfLen: half,
+        halfBeam: half * 0.55,
+        angle: viewAngle,
+        clip: 'rect',
+        halfW: half,
+        halfH: half * 0.7,
+      };
+    }
+
+    if (c.type === 'asteroid' && ref) {
+      const verts = ref.vertices;
+      const rWorld = ref.radius || 18;
+      const fit = (Math.min(renderBox.w, renderBox.h) * 0.38) / Math.max(8, rWorld);
+      this._clip(ctx, renderBox, () => {
+        ctx.save();
+        ctx.translate(cx, cy);
+        // World-layer asteroids already sit under camera.rotation; local rotate(angle)
+        // → screen = angle + camRot.
+        ctx.rotate(viewAngle);
+        ctx.scale(fit, fit);
+        ctx.beginPath();
+        if (verts?.length) {
+          ctx.moveTo(verts[0].x, verts[0].y);
+          for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i].x, verts[i].y);
+          ctx.closePath();
+        } else {
+          ctx.arc(0, 0, rWorld, 0, Math.PI * 2);
+        }
+        ctx.fillStyle = typeof ref.fillStyle === 'function' ? ref.fillStyle() : ref.fillStyle || '#3a3a3a';
+        ctx.fill();
+        ctx.strokeStyle =
+          typeof ref.strokeStyle === 'function' ? ref.strokeStyle() : ref.strokeStyle || '#5a5a5a';
+        ctx.lineWidth = 1.2 / fit;
+        ctx.stroke();
+        ctx.restore();
+      });
+      const half = Math.min(renderBox.w, renderBox.h) * 0.4;
+      return {
+        cx,
+        cy,
+        halfLen: half,
+        halfBeam: half,
+        angle: viewAngle,
+        clip: 'circle',
+        r: half,
+        halfW: half,
+        halfH: half,
+      };
+    }
+
+    if (c.type === 'ore') {
+      const oreType = ref?.oreType || 'stoneOre';
+      const fill = oreFillStyle(oreType);
+      const s = Math.min(renderBox.w, renderBox.h) * 0.28;
+      // Ore is a disc in-world; keep a mild diamond cue, still camera-aware.
+      this._clip(ctx, renderBox, () => {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(viewAngle + Math.PI / 4);
+        ctx.fillStyle = fill;
+        ctx.fillRect(-s * 0.5, -s * 0.5, s, s);
+        ctx.strokeStyle = 'rgba(220, 230, 240, 0.45)';
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(-s * 0.5, -s * 0.5, s, s);
+        ctx.restore();
+      });
+      const half = s * 0.75;
+      return {
+        cx,
+        cy,
+        halfLen: half,
+        halfBeam: half,
+        angle: viewAngle + Math.PI / 4,
+        clip: 'circle',
+        r: half,
+        halfW: half,
+        halfH: half,
+      };
+    }
+
+    if (c.type === 'station' || c.id === 'station') {
+      const r = Math.min(renderBox.w, renderBox.h) * 0.22;
+      const stroke = iffColor || IFF.blue;
+      this._clip(ctx, renderBox, () => {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(viewAngle);
+        ctx.strokeStyle = stroke;
+        ctx.fillStyle = 'rgba(40, 70, 100, 0.55)';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(0, 0, r, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 0.55, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(-r * 1.15, 0);
+        ctx.lineTo(r * 1.15, 0);
+        ctx.moveTo(0, -r * 1.15);
+        ctx.lineTo(0, r * 1.15);
+        ctx.stroke();
+        ctx.restore();
+      });
+      const half = r * 1.2;
+      return {
+        cx,
+        cy,
+        halfLen: half,
+        halfBeam: half,
+        angle: viewAngle,
+        clip: 'circle',
+        r: half,
+        halfW: half,
+        halfH: half,
+      };
+    }
+
+    return null;
   }
 
   // ---- 1 CONTACTS --------------------------------------------------------
@@ -710,33 +984,71 @@ export class CockpitPanels {
       return;
     }
     const rowH = 18;
-    const max = Math.floor(listH / rowH);
     const listBox = { x: box.x, y: listY, w: box.w, h: listH };
+    // Fixed right columns so % doesn't shift when km digit width changes.
+    ctx.font = `400 12px ${FONT}`;
+    const kmColW = ctx.measureText('9999.9km').width;
+    ctx.font = `600 11px ${FONT}`;
+    const pctColW = ctx.measureText('100%').width;
+    const colGap = 8;
+    const kmRight = box.x + box.w;
+    const pctRight = kmRight - kmColW - colGap;
     this._clip(ctx, listBox, () => {
-      for (let i = 0; i < Math.min(list.length, max); i++) {
+      let y = listY;
+      for (let i = 0; i < list.length; i++) {
+        if (y + rowH > listY + listH) break;
         const c = list[i];
-        const ry = listY + i * rowH;
+        const info = this._contactListScanInfo(c, engine);
         const sel = c.id === scan.selectedId;
         if (sel) {
           ctx.fillStyle = 'rgba(120, 200, 255, 0.14)';
-          ctx.fillRect(box.x - 4, ry, box.w + 8, rowH);
+          ctx.fillRect(box.x - 4, y, box.w + 8, rowH);
         }
         const color = IFF[c.iff] || IFF.yellow;
         ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.arc(box.x + 4, ry + rowH / 2, 3, 0, Math.PI * 2);
+        ctx.arc(box.x + 4, y + rowH / 2, 3, 0, Math.PI * 2);
         ctx.fill();
-        this._text(ctx, c.name, box.x + 14, ry + 13, { size: 12, weight: 500 });
-        this._text(ctx, `${(c.dist / 100).toFixed(1)}km`, box.x + box.w, ry + 13, {
+
+        const km = `${(c.dist / 100).toFixed(1)}km`;
+        this._text(ctx, km, kmRight, y + 13, {
           size: 12,
           align: 'right',
           color: DIM,
           weight: 400,
         });
+
+        if (info) {
+          const pctLabel = info.full ? '100%' : `${Math.floor(info.pct)}%`;
+          this._text(ctx, pctLabel, pctRight, y + 13, {
+            size: 11,
+            align: 'right',
+            color: info.full ? STATUS_OK : IFF.yellow,
+            weight: 600,
+          });
+        }
+
+        const nameX = box.x + 14;
+        const nameRight = info ? pctRight - pctColW - colGap : pctRight;
+        const maxW = Math.max(24, nameRight - nameX);
+        let name = c.name || '';
+        let detail = info?.detail ? ` · ${info.detail}` : '';
+        ctx.font = `500 12px ${FONT}`;
+        while (
+          (name.length > 1 || detail.length > 0) &&
+          ctx.measureText(name + detail).width > maxW
+        ) {
+          if (detail.length > 3) detail = `${detail.slice(0, -2)}…`;
+          else if (detail.length) detail = '';
+          else name = `${name.slice(0, -1)}…`;
+        }
+        this._text(ctx, name + detail, nameX, y + 13, { size: 12, weight: 500 });
+
         const id = c.id;
-        this._region(box.x - 4, ry, box.w + 8, rowH, (e) => e.toggleContact(id), {
+        this._region(box.x - 4, y, box.w + 8, rowH, (e) => e.toggleContact(id), {
           anyPointer: true,
         });
+        y += rowH;
       }
     });
     if (engine._syncAssistScore != null && scan.selectedId) {
@@ -810,14 +1122,26 @@ export class CockpitPanels {
 
   _drawLiveComms(ctx, box, engine) {
     const c = engine.radarSystem.getSelected();
-    const inRange = c && (c.state === 'visual' || c.state === 'in');
-    if (!inRange) {
+    const canComm =
+      c &&
+      (c.state === 'visual' || c.state === 'in') &&
+      c.type !== 'asteroid' &&
+      c.type !== 'ore';
+    if (!canComm) {
       this._text(ctx, 'NO COMMS TARGET', box.x, box.y + 16, { color: DIM, size: 13 });
-      this._text(ctx, 'Select an in-range contact', box.x, box.y + 34, {
-        color: DIM,
-        size: 11,
-        weight: 400,
-      });
+      this._text(
+        ctx,
+        c?.type === 'asteroid' || c?.type === 'ore'
+          ? 'No voice channel on this contact'
+          : 'Select an in-range ship or station',
+        box.x,
+        box.y + 34,
+        {
+          color: DIM,
+          size: 11,
+          weight: 400,
+        }
+      );
       return;
     }
     const av = { x: box.x, y: box.y, w: Math.min(48, box.h - 24), h: Math.min(48, box.h - 24) };

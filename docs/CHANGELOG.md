@@ -6,6 +6,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Added
+- **FLS look/feel + cockpit scan UX** — Mouse-forward FLS modes: **SEEK** (6 desynced nose beams) → **ACQUIRE** (beams lerp onto target) → **SCAN** (hangar rasters + beams) → **RELEASE** (fan back to SEEK). Soft cone removed; fully scanned contacts skipped for new focus. CONTACT DETAILS: type previews (ship/rock/ore/station) with viewport-matched rotation; rasters only while that contact is actively scanning. Asteroid scan time maps **1 s → 15 s** across all `SIZE_TIERS` (proc + hero); ore/ship/station keep type base × size scale. Full-scan cargo is **known** (no `(est.)`); asteroids list primary ore yields per module. **CONTACTS** list: one-row scan extras (drops/cargo · fixed-column `%` / green **100%** left of range). **COMMS** live channel is ships/stations only (asteroids/ore → NO COMMS TARGET).
+
 ### Planned
 - _(none queued — next slice TBD)_
 

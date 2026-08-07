@@ -74,9 +74,9 @@ src/
     StreamSpawn.js        Shared rock spawn from catalog stats
     RadarSystem.js          Radar model: contacts, sweep-gated paints, piecewise pip range + SCAN plot-zoom, age fade, selection
     ContactOcclusion.js     Shared line-of-sight: computeVisibility (circle prefilter + poly/AABB/circle), shadow polygons + scope wedges
-    ForwardScanSystem.js    FLS passive nose-cone scanner (M4 hold): per-type durations, auto-select closest, session scan DB
+    ForwardScanSystem.js    FLS ±45° nose cone (M4 hold): SEEK→ACQUIRE→SCAN→RELEASE; 1–15 s rock scan by SIZE_TIERS; session scan DB
     OcclusionShadowPass.js  Viewport umbra polygons + SCAN disc darkened wedges from ContactOcclusion
-    ScanVisual.js           Scan-line stroke helpers (viewport + CONTACT header)
+    ScanVisual.js           Hangar-parity FLS FX (idle seek beams, acquire lerp, rasters + emitter beams) + CONTACT preview helpers
     RadarDisplay.js         Radar ring/scope renderer (silhouettes, IFF, sweep, nose/tail, chevrons)
     ViewportTelemetry.js  Viewport speed + contact/POI/nav distance labels (collision-aware layout)
     CockpitFrame.js       Cached 16:9 steel/copper HUD chrome + POI rim dots + corners (TL ZOOM · TR TELEMETRY · BL MODES · BR STATUS)
@@ -275,7 +275,7 @@ Full plan + todo list: [`WORLD_GEOGRAPHY_PLAN.md`](WORLD_GEOGRAPHY_PLAN.md) (cod
 **Open (see plan todos):** sector editor inspector polish; trade block / broker / outlaw IFF wiring; fragment gravity; dev gravity μ slider.
 
 ### Polish / follow-ups
-- **Contact Occlusion and Cockpit UX (shipped v0.1.292, opt-in)** — shared `ContactOcclusion.js` for radar / forward scanner / viewport shadows / SCAN darkening; input remap (Mouse back = grapple, Mouse forward = hold FLS, MMB = selection only); FLS passive cone on all contact types; STATUS tabs + Grapple Arm row; ore radar OTHER contacts; full asteroid pip range. **Off by default** (Settings → Display → Contact occlusion; when off, no occluder logic runs); dev drawer → **Occlusion** submenu tunes caster/occluder counts + samples (Save bakes `Constants.js`); shadows use a separate 64-caster cap; angular prefilter skips non-overlapping pairs. Decisions in workspace plan `contact_occlusion_and_cockpit_ux_a9b4a670.plan.md`.
+- **Contact Occlusion and Cockpit UX (shipped v0.1.292, opt-in)** — shared `ContactOcclusion.js` for radar / forward scanner / viewport shadows / SCAN darkening; input remap (Mouse back = grapple, Mouse forward = hold FLS, MMB = selection only); FLS SEEK/ACQUIRE/SCAN/RELEASE FX + CONTACT previews (viewport-matched rotation) + CONTACTS scan row; asteroid scan 1–15 s by tier; COMMS excludes rocks/ore; STATUS tabs + Grapple Arm row; ore radar OTHER contacts; full asteroid pip range. **Off by default** (Settings → Display → Contact occlusion; when off, no occluder logic runs); dev drawer → **Occlusion** submenu tunes caster/occluder counts + samples (Save bakes `Constants.js`); shadows use a separate 64-caster cap; angular prefilter skips non-overlapping pairs. Decisions in workspace plan `contact_occlusion_and_cockpit_ux_a9b4a670.plan.md`.
 - **Asteroid deferred systems** — impact damage / deflection from rock mass (volume × composition density); full drop tables + science-seat readout; laser Mk yield polish; N-body shepherd physics. Radar hero-vs-proc contact-cap priority still open — [`OPEN_QUESTIONS.md`](OPEN_QUESTIONS.md) §9.4.
 - **Space hangar presence / bay mouth traffic (needs more tuning)** — first pass shipped (`HangarPresence`, retrograde reservation spawns, beacon fix, stall retry). Still open: reliable door inbound while player co-orbits Jennings; visible elevator beacon cadence vs interior hangar; spawn speed/distance/geometry; reservation retry pacing; mouth mutex vs `MAX_SHIPS`. Touch `HangarPresence.js`, `AmbientTrafficSystem.spawnBayApproach` / `_tickBayMouth`, `BayTrafficManifest.js`, `Constants.js` (`AMBIENT.*`, `HANGAR.INBOUND_RESERVATION_STALL_SEC`).
 - **Thruster cup size** — tune via Blueprint Author sliders / `visualTuning.js` (still subjective)

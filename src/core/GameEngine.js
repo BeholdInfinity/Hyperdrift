@@ -86,7 +86,9 @@ import {
   STATION,
   AMBIENT,
   NAV,
+  FLS,
 } from '../core/Constants.js';
+import { drawHangarStyleScan, drawIdleSeekBeams, contactScanTarget } from '../systems/ScanVisual.js';
 import { Vec2, angleDifference, clamp } from '../utils/MathUtils.js';
 import {
   BlueprintSandbox,
@@ -3922,8 +3924,8 @@ export class GameEngine {
         fullScope: geo.fullScope,
       });
 
-      // Forward scanner consumes this frame's fresh radar contacts.
-      if (this.mode === 'playing' && this.radarSystem.contacts.length) {
+      // Forward scanner (sweep arm shows even with an empty contact list).
+      if (this.mode === 'playing') {
         this.forwardScanSystem.update(deltaTime, {
           ship: this.ship,
           contacts: this.radarSystem.contacts,
@@ -4453,7 +4455,131 @@ export class GameEngine {
       }, this.camera);
     }
 
+    this._renderForwardScan();
     this._renderSelectedContactViewport();
+  }
+
+  /**
+   * FLS viewport FX — SEEK / ACQUIRE / SCAN / RELEASE.
+   * SEEK: 6 desynced nose beams. ACQUIRE/RELEASE: beams lerp to/from target.
+   * SCAN: hangar rasters + beams on the focus target.
+   */
+  _renderForwardScan() {
+    if (this.scanView === 'scan') return;
+    const fls = this.forwardScanSystem;
+    if (!fls?.active || !fls.origin || !(fls.range > 0) || !this.ship) return;
+
+    const origin = fls.origin;
+    const zoom = this.camera.effectiveZoom || 1;
+    const viewR = this.renderer.viewportRadius / zoom;
+    const beamR = Math.min(fls.range, viewR * 1.4);
+    const bore = fls.bore;
+    const scanT = fls.clock;
+    const lineScale = 1 / zoom;
+    const mode = fls.mode || 'seek';
+
+    const shipExt = this.ship.shipDef?.hullExtents?.();
+    const noseFwd = shipExt?.forward ?? 22;
+    const noseLat = Math.max(6, (shipExt?.forward ?? 22) * 0.22);
+    const cosB = Math.cos(bore);
+    const sinB = Math.sin(bore);
+    const noseX = origin.x + cosB * noseFwd;
+    const noseY = origin.y + sinB * noseFwd;
+    const emitters = [
+      { x: noseX - sinB * noseLat, y: noseY + cosB * noseLat, side: 0 },
+      { x: noseX + sinB * noseLat, y: noseY - cosB * noseLat, side: 1 },
+    ];
+
+    const focus = fls.focus;
+    const tgt = focus ? contactScanTarget(focus) : null;
+    const ac = fls.activeContacts?.[0];
+    const amp = ac
+      ? Math.max(0.45, Math.min(1, (ac.scanPct ?? 0) / Math.max(1, ac.maxScanPct ?? 100) || 0.85))
+      : 0.85;
+
+    this.renderer.renderWorldLayer((ctx) => {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (const em of emitters) {
+        ctx.beginPath();
+        ctx.arc(em.x, em.y, 2.2 * lineScale, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(120, 255, 170, 0.55)';
+        ctx.fill();
+        ctx.beginPath();
+        ctx.arc(em.x, em.y, 5.5 * lineScale, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(60, 220, 120, 0.12)';
+        ctx.fill();
+      }
+      ctx.restore();
+
+      if (mode === 'seek' || !tgt) {
+        drawIdleSeekBeams(ctx, {
+          emitters,
+          bore,
+          halfArc: FLS.HALF_ARC ?? Math.PI / 4,
+          beamR,
+          scanT,
+          lineScale,
+        });
+        return;
+      }
+
+      const overshoot = Math.max(4, 8 * lineScale);
+      if (mode === 'acquire') {
+        const blend = fls.modeBlend ?? 0;
+        drawHangarStyleScan(ctx, {
+          emitters,
+          cx: tgt.cx,
+          cy: tgt.cy,
+          halfLen: tgt.halfLen,
+          halfBeam: tgt.halfBeam,
+          angle: tgt.angle,
+          scanT,
+          amp,
+          lineScale,
+          overshoot,
+          contact: focus.contact,
+          rasterAmp: amp * Math.max(0, (blend - 0.45) / 0.55),
+          beamBlend: blend,
+          seekAngles: fls.blendSeekAngles,
+          beamR,
+        });
+      } else if (mode === 'scan') {
+        drawHangarStyleScan(ctx, {
+          emitters,
+          cx: tgt.cx,
+          cy: tgt.cy,
+          halfLen: tgt.halfLen,
+          halfBeam: tgt.halfBeam,
+          angle: tgt.angle,
+          scanT,
+          amp,
+          lineScale,
+          overshoot,
+          contact: focus.contact,
+        });
+      } else if (mode === 'release') {
+        // Reverse blend: scan → seek (modeBlend 0 at start of release, 1 at end).
+        const blend = 1 - (fls.modeBlend ?? 0);
+        drawHangarStyleScan(ctx, {
+          emitters,
+          cx: tgt.cx,
+          cy: tgt.cy,
+          halfLen: tgt.halfLen,
+          halfBeam: tgt.halfBeam,
+          angle: tgt.angle,
+          scanT,
+          amp: amp * Math.max(0.25, blend),
+          lineScale,
+          overshoot,
+          contact: focus.contact,
+          rasterAmp: amp * Math.max(0, blend - 0.2),
+          beamBlend: blend,
+          seekAngles: fls.blendSeekAngles,
+          beamR,
+        });
+      }
+    }, this.camera);
   }
 
   /** Radar-sourced contacts as raw occlusion candidates (world x/y top level). */

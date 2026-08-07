@@ -611,6 +611,12 @@ export const RADAR = {
 
 /** Forward-looking scanner (FLS) — nose cone, Mouse 4 hold. */
 export const FLS = {
+  /** Half-angle of the forward scan cone (rad). ±45° from ship nose. */
+  HALF_ARC: Math.PI / 4,
+  /** Full ping-pong cycles per second for the sweep arm (±HALF_ARC → ∓HALF_ARC → …). */
+  SWEEP_HZ: 0.6,
+  /** Angular half-width (rad) for sweep-arm “hit” brighten / spark on a contact. */
+  SWEEP_HIT_HALF: 0.06,
   /**
    * Tier rows indexed by effective scanner tier (0 = off).
    * 1 pip = 2× mining laser range; 5 pips = 200 km (radar outer ring).
@@ -623,15 +629,38 @@ export const FLS = {
     { range: 15140 }, // 4 — ~15.1 km
     { range: 20000 }, // 5 — 200 km (radar outer ring)
   ],
-  /** Seconds to full scan at visibility 1, per contact type. */
+  /**
+   * Asteroid FLS scan time maps linearly across all SIZE_TIERS
+   * (proc + hero): smallest rock → ASTEROID_SCAN_SEC.min, largest → max.
+   */
+  ASTEROID_SCAN_SEC: { min: 1, max: 15 },
+  /** Seconds to full scan at visibility 1 for a mid-size non-asteroid contact. */
   SCAN_DURATION: {
-    asteroid: 3,
-    ore: 2,
-    civilian: 10,
-    patrol: 10,
-    station: 10,
-    default: 5,
+    asteroid: 6, // unused for rocks — see ASTEROID_SCAN_SEC
+    ore: 5,
+    civilian: 13,
+    patrol: 13,
+    station: 13,
+    default: 8,
   },
+  /**
+   * Characteristic world size (u) at which SCAN_DURATION applies (non-asteroid).
+   * Actual duration ×= size/ref (linear), clamped by SIZE_SCALE_*.
+   */
+  SIZE_REF: {
+    ore: 7,
+    civilian: 22,
+    patrol: 24,
+    station: 100,
+    default: 24,
+  },
+  /** Min/max multipliers on SCAN_DURATION from object size (non-asteroid). */
+  SIZE_SCALE_MIN: 0.35,
+  SIZE_SCALE_MAX: 3.0,
+  /** SEEK→SCAN beam converge duration (s). */
+  ACQUIRE_SEC: 0.4,
+  /** SCAN→SEEK beam fan-out duration after full scan / lost target (s). */
+  RELEASE_SEC: 0.35,
 };
 
 /** Furthest radar world range (highest TIERS.range). */
