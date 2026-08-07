@@ -216,6 +216,9 @@ export class GameEngine {
     /** Place → Area → Feature registry (Jennings default hangar) */
     this.placeRegistry = placeRegistry;
     bootstrapSectorWorld({ poiSystem: this.poiSystem, station: this.station, placeRegistry: this.placeRegistry });
+    /** Static layout sites — positions refreshed each frame via siteWorldPosition. */
+    this._shepherdMoonSites = listSites('shepherd_moon');
+    this._shepherdMoonBuf = [];
     this.trafficRecord = new TrafficRecord();
     this.trafficEnforcement = new TrafficEnforcement(this.trafficRecord);
     this.warpGateSystem = new WarpGateSystem();
@@ -4348,9 +4351,13 @@ export class GameEngine {
       }, this.camera);
     }
 
-    const shepherdMoons = [];
-    for (const site of listSites('shepherd_moon')) {
-      const pos = siteWorldPosition(site, this.gameTime);
+    const shepherdMoons = this._shepherdMoonBuf;
+    shepherdMoons.length = 0;
+    const moonSites = this._shepherdMoonSites;
+    const moonT = this.gameTime;
+    for (let i = 0; i < moonSites.length; i++) {
+      const site = moonSites[i];
+      const pos = siteWorldPosition(site, moonT);
       shepherdMoons.push({
         x: pos.x,
         y: pos.y,

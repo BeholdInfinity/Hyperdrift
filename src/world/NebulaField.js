@@ -29,6 +29,9 @@ export class NebulaField {
     this._ambientCacheKey = '';
     this._ambientCachePlate = null;
     this._ambientCacheSide = 0;
+    /** Shared pseudo-nebula list for paintAmbientLayer (one gen per camera cell). */
+    this._pseudoCacheKey = '';
+    this._pseudoCache = null;
   }
 
   /**
@@ -37,6 +40,17 @@ export class NebulaField {
    */
   invalidateAmbientCache() {
     this._ambientCacheKey = '';
+    this._pseudoCacheKey = '';
+    this._pseudoCache = null;
+  }
+
+  _ambientPseudoFor(cameraX, cameraY, coverRadius, zoom = 1) {
+    const cell = 2800;
+    const key = `${Math.floor(cameraX / cell)},${Math.floor(cameraY / cell)}|${Math.round(coverRadius / 250)}|${Math.round(zoom * 80)}`;
+    if (this._pseudoCacheKey === key && this._pseudoCache) return this._pseudoCache;
+    this._pseudoCacheKey = key;
+    this._pseudoCache = this._generateAmbientNebulae(cameraX, cameraY, coverRadius, zoom);
+    return this._pseudoCache;
   }
 
   /**
@@ -59,7 +73,7 @@ export class NebulaField {
       sizeMult: layerCfg?.sizeMult ?? base.sizeMult,
     };
 
-    const pseudoNebulae = this._generateAmbientNebulae(cameraX, cameraY, coverRadius, zoom);
+    const pseudoNebulae = this._ambientPseudoFor(cameraX, cameraY, coverRadius, zoom);
     const depth = layerIndex + 1;
     for (const nebula of pseudoNebulae) {
       if (nebula.depth !== depth) continue;

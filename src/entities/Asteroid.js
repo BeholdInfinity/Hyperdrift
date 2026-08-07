@@ -61,13 +61,21 @@ export class Asteroid extends Entity {
     this.allowHeroTiers = false;
   }
 
-  /** Active modules (mining targets). */
+  /** Active modules (mining targets). Cached until layout changes. */
   activeModules() {
-    return (this.modules || []).filter((m) => m.active !== false);
+    if (this._activeModulesCache == null) {
+      this._activeModulesCache = (this.modules || []).filter((m) => m.active !== false);
+    }
+    return this._activeModulesCache;
+  }
+
+  _invalidateActiveModules() {
+    this._activeModulesCache = null;
   }
 
   /** Rebuild composite outline + radius from remaining modules. */
   refreshFromModules() {
+    this._invalidateActiveModules();
     const active = this.activeModules();
     this.capacityRemaining = active.length;
     if (!active.length) {

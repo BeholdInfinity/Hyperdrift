@@ -6,6 +6,9 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Fixed
+- **Frame-rate pass (belt / HUD / particles)** — radar now range-prefilters asteroids and ore before contact/occlusion work (avoids pushing 1k+ off-radar rocks through `raw` each frame); asteroid `activeModules()` is cached until layout changes; depth-compositor bucket layer lists and ambient pseudo-nebula generation are cached per camera cell; shepherd moon site list is cached; particle draws batch by color/alpha; projectile streaks drop per-shot gradients (same look, fewer canvas state changes).
+
 ### Added
 - **FLS look/feel + cockpit scan UX** — Mouse-forward FLS modes: **SEEK** (6 desynced nose beams) → **ACQUIRE** (beams lerp onto target) → **SCAN** (hangar rasters + beams) → **RELEASE** (fan back to SEEK). Soft cone removed; fully scanned contacts skipped for new focus. CONTACT DETAILS: type previews (ship/rock/ore/station) with viewport-matched rotation; rasters only while that contact is actively scanning. Asteroid scan time maps **1 s → 15 s** across all `SIZE_TIERS` (proc + hero); ore/ship/station keep type base × size scale. Full-scan cargo is **known** (no `(est.)`); asteroids list primary ore yields per module. **CONTACTS** list: one-row scan extras (drops/cargo · fixed-column `%` / green **100%** left of range). **COMMS** live channel is ships/stations only (asteroids/ore → NO COMMS TARGET).
 

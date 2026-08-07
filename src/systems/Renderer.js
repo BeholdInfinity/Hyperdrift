@@ -240,14 +240,8 @@ export class Renderer {
   renderAsteroids(asteroids, camera) {
     const zoom = Math.max(camera.effectiveZoom, 0.001);
     const margin = 140 / zoom;
-    const center = camera.screenToWorld(
-      this.centerX,
-      this.centerY,
-      this.centerX,
-      this.centerY
-    );
-    const cx = center.x;
-    const cy = center.y;
+    const cx = camera.position?.x ?? 0;
+    const cy = camera.position?.y ?? 0;
     const viewR = this.viewportRadius / zoom + margin;
     const viewR2 = viewR * viewR;
 
@@ -265,7 +259,7 @@ export class Renderer {
         wctx.rotate(asteroid.angle);
 
         const modules = asteroid.modules?.length
-          ? asteroid.activeModules?.() ?? asteroid.modules.filter((m) => m.active !== false)
+          ? asteroid.activeModules?.() ?? asteroid.modules
           : null;
 
         if (modules?.length) {
@@ -375,31 +369,26 @@ export class Renderer {
   }
 
   renderProjectiles(projectiles, camera) {
+    const zoom = Math.max(camera.effectiveZoom, 0.001);
+    const lw = 3 / zoom;
+    const tipR = 2 / zoom;
     this.renderWorldLayer((ctx) => {
+      ctx.strokeStyle = 'rgba(140, 215, 255, 0.92)';
+      ctx.lineWidth = lw;
+      ctx.fillStyle = '#fff';
       for (const proj of projectiles) {
         if (!proj.active) continue;
 
         ctx.save();
         ctx.translate(proj.position.x, proj.position.y);
         ctx.rotate(proj.angle);
-
-        const grad = ctx.createLinearGradient(-8, 0, 4, 0);
-        grad.addColorStop(0, 'rgba(50, 150, 255, 0)');
-        grad.addColorStop(0.5, 'rgba(100, 200, 255, 0.8)');
-        grad.addColorStop(1, 'rgba(200, 240, 255, 1)');
-
-        ctx.strokeStyle = grad;
-        ctx.lineWidth = 3 / camera.effectiveZoom;
         ctx.beginPath();
         ctx.moveTo(-10, 0);
         ctx.lineTo(4, 0);
         ctx.stroke();
-
-        ctx.fillStyle = '#fff';
         ctx.beginPath();
-        ctx.arc(2, 0, 2 / camera.effectiveZoom, 0, Math.PI * 2);
+        ctx.arc(2, 0, tipR, 0, Math.PI * 2);
         ctx.fill();
-
         ctx.restore();
       }
     }, camera);
@@ -426,6 +415,9 @@ export class Renderer {
       const primarySin = ship ? Math.sin(ship.angle) : 0;
       const primarySx = ship ? ship.position.x : 0;
       const primarySy = ship ? ship.position.y : 0;
+
+      /** @type {Map<string, number[]>} color|alpha → [x,y,r,...] */
+      const batches = new Map();
 
       for (const p of particles) {
         const isShipLocal = p.space === 'ship';
@@ -459,10 +451,31 @@ export class Renderer {
           x = sx + p.x * cos - p.y * sin;
           y = sy + p.x * sin + p.y * cos;
         }
-        ctx.globalAlpha = lifeRatio;
-        ctx.fillStyle = p.color;
+
+        const r = p.size * lifeRatio;
+        if (r <= 0) continue;
+        const alphaKey = Math.round(lifeRatio * 20) / 20;
+        const key = `${p.color}|${alphaKey}`;
+        let batch = batches.get(key);
+        if (!batch) {
+          batch = [];
+          batches.set(key, batch);
+        }
+        batch.push(x, y, r);
+      }
+
+      for (const [key, pts] of batches) {
+        const sep = key.lastIndexOf('|');
+        ctx.fillStyle = key.slice(0, sep);
+        ctx.globalAlpha = parseFloat(key.slice(sep + 1));
         ctx.beginPath();
-        ctx.arc(x, y, p.size * lifeRatio, 0, Math.PI * 2);
+        for (let i = 0; i < pts.length; i += 3) {
+          const x = pts[i];
+          const y = pts[i + 1];
+          const r = pts[i + 2];
+          ctx.moveTo(x + r, y);
+          ctx.arc(x, y, r, 0, Math.PI * 2);
+        }
         ctx.fill();
       }
       ctx.globalAlpha = 1;

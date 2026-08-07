@@ -106,17 +106,46 @@ export function getDepthLayer(id) {
   return depthCompositorConfig.layers.find((l) => l.id === id) || null;
 }
 
-export function getEnabledLayersForDepthBucket(bucket) {
+/** Cached bucket lists — invalidated when layer enable/depth changes. */
+const _bucketLayerCache = {
+  sig: '',
+  below: [],
+  at: [],
+  above: [],
+};
+
+function bucketLayerCacheSignature() {
+  let sig = '';
+  for (const l of depthCompositorConfig.layers) {
+    sig += `${l.id}:${l.enabled ? 1 : 0}:${l.depth};`;
+  }
+  return sig;
+}
+
+function rebuildBucketLayerCache() {
   const layers = depthCompositorConfig.layers.filter((l) => l.enabled);
-  if (bucket === 'below') {
-    return layers.filter((l) => l.depth < 0).sort((a, b) => a.depth - b.depth);
-  }
-  if (bucket === 'at') {
-    return layers.filter((l) => l.depth === 0).sort((a, b) => a.id.localeCompare(b.id));
-  }
-  if (bucket === 'above') {
-    return layers.filter((l) => l.depth > 0).sort((a, b) => a.depth - b.depth);
-  }
+  _bucketLayerCache.below = layers
+    .filter((l) => l.depth < 0)
+    .sort((a, b) => a.depth - b.depth);
+  _bucketLayerCache.at = layers
+    .filter((l) => l.depth === 0)
+    .sort((a, b) => a.id.localeCompare(b.id));
+  _bucketLayerCache.above = layers
+    .filter((l) => l.depth > 0)
+    .sort((a, b) => a.depth - b.depth);
+  _bucketLayerCache.sig = bucketLayerCacheSignature();
+}
+
+function invalidateBucketLayerCache() {
+  _bucketLayerCache.sig = '';
+}
+
+export function getEnabledLayersForDepthBucket(bucket) {
+  const sig = bucketLayerCacheSignature();
+  if (_bucketLayerCache.sig !== sig) rebuildBucketLayerCache();
+  if (bucket === 'below') return _bucketLayerCache.below;
+  if (bucket === 'at') return _bucketLayerCache.at;
+  if (bucket === 'above') return _bucketLayerCache.above;
   return [];
 }
 
@@ -134,6 +163,7 @@ export function patchDepthLayer(id, patch) {
       layer[key] = val;
     }
   }
+  invalidateBucketLayerCache();
   return true;
 }
 
@@ -149,6 +179,7 @@ export function patchDepthCompositorConfig(patch) {
   if (Array.isArray(patch.layers)) {
     depthCompositorConfig.layers = patch.layers;
   }
+  invalidateBucketLayerCache();
 }
 
 export function addDustLayer() {
@@ -168,12 +199,14 @@ export function addDustLayer() {
     color: '#887766',
   };
   depthCompositorConfig.layers.push(layer);
+  invalidateBucketLayerCache();
   return layer;
 }
 
 export function removeDustLayer() {
   const idx = depthCompositorConfig.layers.findIndex((l) => l.id === 'dust');
   if (idx >= 0) depthCompositorConfig.layers.splice(idx, 1);
+  invalidateBucketLayerCache();
 }
 
 export function resetDepthCompositorConfig() {
@@ -185,6 +218,7 @@ export function resetDepthCompositorConfig() {
   };
   depthCompositorConfig.streamSpawnRateMult = 1;
   depthCompositorConfig.layers = buildDefaultLayers();
+  invalidateBucketLayerCache();
 }
 
 function clampDepth(n) {
@@ -254,6 +288,7 @@ export function applyDepthCompositorSnapshot(snap) {
   if (Array.isArray(snap.layers)) {
     depthCompositorConfig.layers = normalizeAllLayers(migrateStreamLayers(snap.layers));
   }
+  invalidateBucketLayerCache();
   return true;
 }
 

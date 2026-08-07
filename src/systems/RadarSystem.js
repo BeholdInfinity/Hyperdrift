@@ -305,9 +305,17 @@ export class RadarSystem {
         priority: 0,
       });
     }
-    if (this.includeAsteroids && ctx.asteroids) {
+    // Only gather in-range rocks/ore — belt fields can hold 1k+ live asteroids;
+    // pushing all of them into raw was O(n) alloc + occlusion prep on thousands
+    // of off-radar contacts every frame.
+    const sensorRange = this.range;
+    const sensorRangeSq = sensorRange > 0 ? sensorRange * sensorRange : 0;
+    if (this.includeAsteroids && ctx.asteroids && sensorRangeSq > 0) {
       for (const ast of ctx.asteroids) {
         if (!ast.active) continue;
+        const dx = ast.position.x - px;
+        const dy = ast.position.y - py;
+        if (dx * dx + dy * dy > sensorRangeSq) continue;
         raw.push({
           id: `ast${ast.id}`,
           ref: ast,
@@ -323,9 +331,12 @@ export class RadarSystem {
         });
       }
     }
-    if (ctx.miningDrops) {
+    if (ctx.miningDrops && sensorRangeSq > 0) {
       for (const drop of ctx.miningDrops) {
         if (drop.active === false) continue;
+        const dx = drop.position.x - px;
+        const dy = drop.position.y - py;
+        if (dx * dx + dy * dy > sensorRangeSq) continue;
         raw.push({
           id: `ore${drop.id}`,
           ref: drop,
