@@ -7,7 +7,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 ## [Unreleased]
 
 ### Planned
-- _(none queued — next slice TBD)_
+- **FLS Mk-tier scan model** — pair count by scanner Mk (1/1/2/2/3); 9 scan passes to 100%; constant perimeter beam speed (object size from silhouette length); pips lerp base→max speed/distance within Mk. Design locked in GDD; numeric v1…v5 TBD (`OPEN_QUESTIONS` §9.5). Not built yet.
 
 ## [0.1.294] — 2026-08-07
 

@@ -229,7 +229,19 @@ Hangar pad status boards still show display Mk stubs; modular catalog now define
 
 **Deferred:** impact damage / deflection, full drop tables + science UI, laser Mk curve polish, N-body shepherds.
 
-**Planned next prototype slice (decisions locked, not built):** Contact Occlusion and Cockpit UX — shared LOS for radar/FLS/viewport/SCAN; Mouse back/forward input remap; FLS on all contacts; STATUS tabs; ore radar OTHER; full asteroid radar range. See workspace plan `contact_occlusion_and_cockpit_ux_a9b4a670.plan.md` and `PROJECT.md` Known gaps.
+### 9.5 FLS Mk-tier scan model *(2026-08 — planned, not built)*
+
+**Locked design (in [`GDD.md`](GDD.md)):** Pair count from scanner **Mk** (not pips): Mk1–2 → 1 pair, Mk3–4 → 2, Mk5 → 3. **9 scan passes** to 100%. Beam **perimeter speed** is constant in world units (size emerges from silhouette length). Pips (≤ Mk max) lerp that Mk’s **base→max** speed and distance. Replaces interim hardcoded scan-duration tables.
+
+| # | Question | Status |
+|---|----------|--------|
+| 9.5.1 | Numeric **v1…v5** beam **speed** values (world u/s along silhouette)? | Open — tune in play |
+| 9.5.2 | Numeric **v1…v5** beam **distance** (FLS cone range) — keep today’s pip ranges or redefine? | Open — today’s FLS.TIERS are a candidate for max-at-pip-cap |
+| 9.5.3 | Pip lerp: linear in allocated pips 1…Mk, or only when pips == Mk for max? | **Default:** linear between base (1 pip) and max (Mk pips) |
+| 9.5.4 | Do synchronized pairs each count a pass when they finish together (+N per cycle), or is pass progress shared? | **Default:** each pair counts independently (+1 per completed cycle per pair) |
+| 9.5.5 | Partial pass if lock lost mid-cycle — keep fractional progress or only whole passes? | Open — lean whole passes only for simplicity |
+
+**Planned next prototype slice:** implement §9.5 FLS Mk model (pair count, scan passes, perimeter speed) when ready — do not start until v-steps or defaults are accepted.
 
 ---
 
@@ -242,4 +254,4 @@ Hangar pad status boards still show display Mk stubs; modular catalog now define
 
 ---
 
-*Last updated: 2026-08-05*
+*Last updated: 2026-08-07*
