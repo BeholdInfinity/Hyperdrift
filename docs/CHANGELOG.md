@@ -6,6 +6,11 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ## [Unreleased]
 
+### Changed
+- **Hangar Bay Scanners restored** — twin board pods + pad ship scan FX return; beams use the same silhouette pair-chords as overworld FLS (perimeter thirds, chords between paired rim points, ghost trails). Board reveal / service timing unchanged.
+- **FLS no longer scans stations** — stations stay on radar / COMMS / dock; FLS focus is ships, asteroids, and ore only.
+- **Ship scan outlines** — FLS / hangar / CONTACT ship scan chords follow section hull footprints (radial envelope), not a fitted ellipse.
+
 ### Planned
 - **FLS Mk-tier scan model** — pair count by scanner Mk (1/1/2/2/3); 9 scan passes to 100%; constant perimeter beam speed (object size from silhouette length); pips lerp base→max speed/distance within Mk. Design locked in GDD; numeric v1…v5 TBD (`OPEN_QUESTIONS` §9.5). Not built yet.
 
@@ -13,7 +18,7 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 
 ### Changed
 - **FLS SCAN FX** — locked SCAN uses three silhouette pairs that open opposite ways around the rim (perimeter thirds) with chords + ghost trails between each pair; nose emitters aim at the six rim points. SEEK / ACQUIRE / RELEASE timing unchanged. CONTACT preview matches the pair chords and clips to the drawn silhouette (scaled asteroid verts / hull ellipse / ore diamond).
-- **Hangar Bay Scanners removed** — twin board pods and pad ship rake FX gone; board reveal / service timing unchanged. Legacy `hangarBayScanner` module ids dropped on normalize.
+- **Hangar Bay Scanners removed** — twin board pods and pad ship rake FX gone; board reveal / service timing unchanged. Legacy `hangarBayScanner` module ids dropped on normalize. *(Restored under Unreleased — removal was meant for overworld station FLS, not hangar ship scan.)*
 
 ## [0.1.293] — 2026-08-07
 

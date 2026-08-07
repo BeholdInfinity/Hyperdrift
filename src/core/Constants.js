@@ -640,7 +640,7 @@ export const FLS = {
     ore: 5,
     civilian: 13,
     patrol: 13,
-    station: 13,
+    // Stations are radar/dock contacts only — FLS does not scan them.
     default: 8,
   },
   /**
@@ -651,7 +651,6 @@ export const FLS = {
     ore: 7,
     civilian: 22,
     patrol: 24,
-    station: 100,
     default: 24,
   },
   /** Min/max multipliers on SCAN_DURATION from object size (non-asteroid). */

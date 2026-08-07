@@ -37,6 +37,7 @@ import {
 import { padMkForSwapGroup } from '../../ships/ShipClasses.js';
 import { getItem } from '../../ships/ItemCatalog.js';
 import { Settings } from '../../core/Settings.js';
+import { drawHangarStyleScan } from '../../systems/ScanVisual.js';
 import {
   getHangarProps,
   getGossipWaypoints,
@@ -313,6 +314,8 @@ export function attachHangarRender(HangarBay) {
     this._drawWallArt(ctx);
     for (const pad of inside) this._drawVisitor(ctx, pad);
     if (hooks.afterOcclusion) hooks.afterOcclusion(ctx);
+    // Ship scan beams sit on top of hulls (pods are drawn on the boards)
+    this._drawShipBoardScans(ctx);
   };
 
   HangarBay.prototype._drawElevationShaft = function (ctx, cx, cy) {
@@ -3949,10 +3952,119 @@ export function attachHangarRender(HangarBay) {
         sb,
       };
 
+      // Twin Hangar Bay Scanners are permanent board hardware (glow while scanning)
+      const scanAmp =
+        hasShip && this._padBoardScanActive(pad) ? this._padBoardScanAmp(pad) : 0;
+      this._drawHangarBayScannerPod(ctx, x0 + 3.5, faceY - 1.5, scanAmp, bay, 0);
+      this._drawHangarBayScannerPod(ctx, x0 + w - 3.5, faceY - 1.5, scanAmp, bay, 1);
+
       ctx.fillStyle = '#c98020';
       ctx.font = 'bold 5.5px monospace';
       ctx.textAlign = 'center';
       ctx.fillText(bayLabels()[bay], cx, bottom - 2);
+    });
+  };
+
+  HangarBay.prototype._drawHangarBayScannerPod = function (ctx, x, y, intensity, bay, side) {
+    const on = intensity > 0.02;
+    const pulse = on
+      ? 0.72 + 0.28 * Math.sin(this.time * 14 + bay * 1.7 + side * 2.1)
+      : 0;
+    const glow = intensity * pulse;
+
+    // Stem into board lip
+    ctx.fillStyle = '#1c2830';
+    ctx.fillRect(x - 1.2, y, 2.4, 3.2);
+    ctx.fillStyle = '#2a3848';
+    ctx.fillRect(x - 2.2, y - 1.6, 4.4, 2.8);
+
+    // Lens / emitter
+    ctx.beginPath();
+    ctx.arc(x, y - 2.4, 2.1, 0, Math.PI * 2);
+    ctx.fillStyle = on ? `rgba(40, 90, 60, ${0.55 + glow * 0.35})` : '#243038';
+    ctx.fill();
+    ctx.strokeStyle = on ? `rgba(90, 220, 140, ${0.35 + glow * 0.5})` : '#4a6070';
+    ctx.lineWidth = 0.7;
+    ctx.stroke();
+
+    if (on) {
+      ctx.beginPath();
+      ctx.arc(x, y - 2.4, 1.1, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(120, 255, 170, ${0.45 + glow * 0.5})`;
+      ctx.fill();
+      // Soft corona
+      ctx.beginPath();
+      ctx.arc(x, y - 2.4, 3.6 + glow * 1.2, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(60, 220, 120, ${0.08 + glow * 0.14})`;
+      ctx.fill();
+    }
+  };
+
+  HangarBay.prototype._shipScanTarget = function (bay) {
+    if (!this._bayHasShip(bay)) return null;
+    const pad = this._servicePad(bay);
+    const cx = padCenters()[bay] ?? 0;
+    let sy = 0;
+    let angle = FACE_NORTH;
+    let def = pad?.shipDef || null;
+    let ref = null;
+    if (this.isPlayerBay(bay) && this._playerShip) {
+      const ship = this._playerShip;
+      sy = ship.position?.y ?? 0;
+      angle = typeof ship.angle === 'number' ? ship.angle : FACE_NORTH;
+      def = ship.shipDef || def;
+      ref = ship;
+    } else if (pad) {
+      sy = pad.shipY || 0;
+      angle = pad.shipAngle ?? FACE_NORTH;
+      def = def || this._ensurePadShipDef(pad);
+      ref = { shipDef: def, angle, position: { x: cx, y: sy } };
+    }
+    const ext = def?.hullExtents?.();
+    const halfLen = Math.max(16, ((ext?.forward || 22) + (ext?.aft || 20)) * 0.52);
+    const halfBeam = Math.max(10, halfLen * 0.42);
+    return {
+      cx,
+      cy: sy,
+      angle,
+      halfLen,
+      halfBeam,
+      contact: { type: 'ship', ref },
+    };
+  };
+
+  HangarBay.prototype._drawShipBoardScans = function (ctx) {
+    padCenters().forEach((cx, bay) => {
+      const pad = this._servicePad(bay);
+      if (!this._padBoardScanActive(pad)) return;
+      const amp = this._padBoardScanAmp(pad);
+      if (amp < 0.02) return;
+      const target = this._shipScanTarget(bay);
+      if (!target) return;
+
+      const boardX0 = cx - BACKSPLASH_HALF_W;
+      const boardW = BACKSPLASH_HALF_W * 2;
+      const faceY = SERVICE_BOARD_TOP;
+      const emitters = [
+        { x: boardX0 + 3.5, y: faceY - 3.8, side: 0 },
+        { x: boardX0 + boardW - 3.5, y: faceY - 3.8, side: 1 },
+      ];
+
+      // Same silhouette pair-chords + rim beams as overworld FLS SCAN.
+      // yScale matches hangar 2.5D depth squash so the outline hugs the drawn hull.
+      const yScale = angledDepthScale(headingIndexFromAngle(target.angle));
+      drawHangarStyleScan(ctx, {
+        emitters,
+        cx: target.cx,
+        cy: target.cy,
+        halfLen: target.halfLen,
+        halfBeam: target.halfBeam,
+        angle: target.angle,
+        scanT: this._padBoardScanClock(pad),
+        amp,
+        contact: target.contact,
+        yScale,
+      });
     });
   };
 

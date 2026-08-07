@@ -3,6 +3,8 @@
  * SCAN: three silhouette pairs open opposite ways around the rim with chords.
  */
 
+import { shipLocalSilhouetteVerts } from '../ships/ShipSilhouette.js';
+
 /** Cap outline verts for FX sampling (stride down if denser). */
 const MAX_OUTLINE = 32;
 
@@ -56,12 +58,55 @@ function wrap01(t) {
   return ((t % 1) + 1) % 1;
 }
 
+/** Resolve ship def from a contact / hangar target ref. */
+function shipDefFrom(contactOrActive, ref) {
+  const c = contactOrActive?.contact || contactOrActive;
+  const r = ref || c?.ref;
+  if (r?.shipDef && typeof r.shipDef.sections === 'function') return r.shipDef;
+  if (r && typeof r.sections === 'function') return r;
+  if (c?.shipDef && typeof c.shipDef.sections === 'function') return c.shipDef;
+  return null;
+}
+
+/** Load local silhouette verts into scratch (_wx/_wy) in world/panel space. */
+function fillShipOutlineWorld(def, cx, cy, angle, scale, yScale) {
+  const local = shipLocalSilhouetteVerts(def);
+  if (!local?.length) return false;
+  const nRaw = local.length;
+  const stride = nRaw > MAX_OUTLINE ? Math.ceil(nRaw / MAX_OUTLINE) : 1;
+  const cos = Math.cos(angle || 0);
+  const sin = Math.sin(angle || 0);
+  const ys = yScale ?? 1;
+  let n = 0;
+  for (let i = 0; i < nRaw && n < MAX_OUTLINE; i += stride) {
+    const v = local[i];
+    const lx = v.x * scale;
+    const ly = v.y * scale * ys;
+    _wx[n] = cx + cos * lx - sin * ly;
+    _wy[n] = cy + sin * lx + cos * ly;
+    n++;
+  }
+  if (n < 3) return false;
+  _vertCount = n;
+  _cum[0] = 0;
+  let total = 0;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    total += Math.hypot(_wx[j] - _wx[i], _wy[j] - _wy[i]);
+    _cum[i + 1] = total;
+  }
+  _perimeter = total > 1e-6 ? total : 1;
+  _silMode = 'poly';
+  return true;
+}
+
 /**
  * Build a canvas clip path matching the contact silhouette (world or panel space).
- * Uses asteroid verts when available; otherwise a rotated ellipse from extents.
+ * Uses asteroid / ship section verts when available; otherwise a rotated ellipse.
  * @param {object} [opts]
  * @param {boolean} [opts.useVerts=true] false → always ellipse / rect
  * @param {number} [opts.scale=1] multiply local verts (CONTACT panel fit)
+ * @param {number} [opts.yScale=1] ship-local Y squash (hangar angled depth)
  * @param {'auto'|'ellipse'|'rect'} [opts.clipShape='auto']
  * @returns {boolean} true if a clip path was begun (caller must clip + restore)
  */
@@ -72,6 +117,7 @@ export function beginContactSilhouetteClip(ctx, contactOrActive, tgt, opts = {})
   const { cx, cy, angle, halfLen, halfBeam } = tgt;
   const useVerts = opts.useVerts !== false;
   const scale = opts.scale ?? 1;
+  const yScale = opts.yScale ?? 1;
   const clipShape = opts.clipShape || 'auto';
 
   ctx.beginPath();
@@ -118,8 +164,28 @@ export function beginContactSilhouetteClip(ctx, contactOrActive, tgt, opts = {})
     return true;
   }
 
+  const def = shipDefFrom(contactOrActive, ref);
+  if (clipShape !== 'ellipse' && useVerts && def) {
+    const local = shipLocalSilhouetteVerts(def);
+    if (local?.length >= 3) {
+      const cos = Math.cos(angle || 0);
+      const sin = Math.sin(angle || 0);
+      for (let i = 0; i < local.length; i++) {
+        const v = local[i];
+        const lx = v.x * scale;
+        const ly = v.y * scale * yScale;
+        const x = cx + cos * lx - sin * ly;
+        const y = cy + sin * lx + cos * ly;
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.closePath();
+      return true;
+    }
+  }
+
   const rx = Math.max(2, halfLen * 0.98);
-  const ry = Math.max(2, halfBeam * 0.92);
+  const ry = Math.max(2, halfBeam * 0.92 * yScale);
   ctx.ellipse(cx, cy, rx, ry, angle || 0, 0, Math.PI * 2);
   return true;
 }
@@ -129,6 +195,7 @@ export function beginContactSilhouetteClip(ctx, contactOrActive, tgt, opts = {})
  * @param {object} [opts]
  * @param {boolean} [opts.useVerts=true]
  * @param {number} [opts.scale=1]
+ * @param {number} [opts.yScale=1]
  * @param {'auto'|'ellipse'|'rect'} [opts.clipShape='auto']
  */
 function prepareSilhouette(contactOrActive, tgt, opts = {}) {
@@ -137,6 +204,7 @@ function prepareSilhouette(contactOrActive, tgt, opts = {}) {
   const { cx, cy, angle, halfLen, halfBeam } = tgt;
   const useVerts = opts.useVerts !== false;
   const scale = opts.scale ?? 1;
+  const yScale = opts.yScale ?? 1;
   const clipShape = opts.clipShape || 'auto';
 
   if (clipShape === 'rect') {
@@ -205,11 +273,21 @@ function prepareSilhouette(contactOrActive, tgt, opts = {}) {
     }
   }
 
+  const def = shipDefFrom(contactOrActive, ref);
+  if (
+    clipShape !== 'ellipse' &&
+    useVerts &&
+    def &&
+    fillShipOutlineWorld(def, cx, cy, angle, scale, yScale)
+  ) {
+    return;
+  }
+
   _silMode = 'ellipse';
   _ecx = cx;
   _ecy = cy;
   _erx = Math.max(2, halfLen * 0.98);
-  _ery = Math.max(2, halfBeam * 0.92);
+  _ery = Math.max(2, halfBeam * 0.92 * yScale);
   _eang = angle || 0;
   _ecos = Math.cos(_eang);
   _esin = Math.sin(_eang);
@@ -280,6 +358,7 @@ function strokePairChords(ctx, amp, lineScale, scanT) {
  * @param {object} [opts]
  * @param {boolean} [opts.useVerts=true]
  * @param {number} [opts.scale=1] panel fit scale for asteroid verts
+ * @param {number} [opts.yScale=1] ship-local Y squash (hangar angled depth)
  * @param {'auto'|'ellipse'|'rect'} [opts.clipShape='auto']
  */
 export function drawSilhouettePairChords(ctx, opts) {
@@ -296,12 +375,13 @@ export function drawSilhouettePairChords(ctx, opts) {
     lineScale = 1,
     useVerts = true,
     scale = 1,
+    yScale = 1,
     clipShape = 'auto',
   } = opts;
   if (!(halfLen > 0) || !(halfBeam > 0)) return;
 
   const tgt = { cx, cy, angle, halfLen, halfBeam };
-  const silOpts = { useVerts, scale, clipShape };
+  const silOpts = { useVerts, scale, yScale, clipShape };
   prepareSilhouette(contact, tgt, silOpts);
 
   ctx.save();
@@ -491,11 +571,13 @@ export function drawHangarStyleScan(ctx, opts) {
     beamBlend = 1,
     seekAngles = null,
     beamR = 0,
+    yScale = 1,
   } = opts;
   if (!emitters?.length || !(halfLen > 0) || !(halfBeam > 0)) return;
 
   const tgt = { cx, cy, angle, halfLen, halfBeam };
-  prepareSilhouette(contact, tgt);
+  const silOpts = { yScale };
+  prepareSilhouette(contact, tgt, silOpts);
 
   const u = pingPong01(scanT * PAIR_SWEEP_HZ);
   fillPairRimPoints(u);
@@ -503,7 +585,7 @@ export function drawHangarStyleScan(ctx, opts) {
   if (rasterAmp > 0.02) {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
-    if (beginContactSilhouetteClip(ctx, contact, tgt)) {
+    if (beginContactSilhouetteClip(ctx, contact, tgt, silOpts)) {
       ctx.clip();
     }
     strokePairChords(ctx, rasterAmp, lineScale, scanT);

@@ -29,11 +29,12 @@ const ASTEROID_SIZE_BOUNDS = asteroidScanSizeBounds();
  * Modes (M4 held):
  *   SEEK    — six desynced beams fan ±HALF_ARC looking for work
  *   ACQUIRE — beams lerp from seek fans onto the focus target
- *   SCAN    — hangar-style rasters + beams on the focus target
+ *   SCAN    — silhouette pair-chords + rim beams on the focus target
  *   RELEASE — beams lerp back out to seek after full scan / lost target
  *
- * Fully scanned contacts are ignored for focus / progress; session scan DB
- * still retains their cargo unlock state.
+ * Eligible contacts: ships, asteroids, ore (not stations). Fully scanned
+ * contacts are ignored for focus / progress; session scan DB still retains
+ * their cargo unlock state.
  */
 export class ForwardScanSystem {
   constructor() {
@@ -74,6 +75,7 @@ export class ForwardScanSystem {
       return asteroidScanSize(r, cap);
     }
     if (c?.type === 'ore') return Math.max(3, (ref?.radius || 5) + 2);
+    // Stations are not FLS-scanned; size helper kept for any leftover callers.
     if (c?.type === 'station' || c?.id === 'station') {
       return Math.max(40, (ref?.radius ?? 160) * 0.5);
     }
@@ -208,8 +210,10 @@ export class ForwardScanSystem {
     }
 
     // Eligible = in cone, visible later, and not fully scanned.
+    // Stations are dock/radar contacts only — FLS does not scan them.
     const inCone = [];
     for (const c of list) {
+      if (c.type === 'station' || c.id === 'station') continue;
       if (this._isFullyScanned(c.id)) continue;
       const pos = this._contactPos(c);
       if (!pos) continue;
