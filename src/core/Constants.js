@@ -257,13 +257,13 @@ export const HANGAR = {
   /** Beat after settle before deck work starts (visitors; player uses board reveal) */
   VISITOR_ARRIVE_SETTLE_DWELL_MIN: 2,
   VISITOR_ARRIVE_SETTLE_DWELL_MAX: 5,
-  /** Hangar Bay Scanners warm up before board text fills */
+  /** Board reveal warm-up before text fills (legacy scanner theater; timing kept) */
   BOARD_REVEAL_PRESCAN_SEC: 0.5,
-  /** Player/visitor board scan after pad settle: SHIP STATS rows top→bottom */
+  /** Player/visitor board reveal after pad settle: SHIP STATS rows top→bottom */
   BOARD_REVEAL_STATS_SEC: 2,
   /** Cargo panel populate after stats */
   BOARD_REVEAL_CARGO_SEC: 1,
-  /** Green ship scan continues this long after cargo panel finishes */
+  /** Brief hold after cargo panel before service pip orders */
   BOARD_REVEAL_SCAN_TAIL_SEC: 0.5,
   /** Max wait after cargo before first service pip (captain menu) */
   BOARD_REVEAL_PIP_GAP_MAX: 2,
@@ -273,7 +273,7 @@ export const HANGAR = {
   /** Captain pip pick: delay when repeating the same type as the previous pip */
   BOARD_REVEAL_PIP_GAP_SAME_MIN: 0.1,
   BOARD_REVEAL_PIP_GAP_SAME_MAX: 0.2,
-  /** Quick Hangar Bay Scanner pass after all service jobs finish (before board goes green) */
+  /** Brief final board hold after all service jobs finish (before board goes green) */
   BOARD_FINAL_SCAN_SEC: 1,
   /** After player-bay captain checklist finishes, wait before rolling a new list (player owns exit). */
   PLAYER_SERVICE_REROLL_MIN: 10,

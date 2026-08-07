@@ -174,7 +174,6 @@ import {
   cargoMkForVisitor,
   cargoBaySpec,
   smoothstep,
-  pingPong01,
   pipRevealDelays,
   clearVisitorThrusters,
   rollVisitorPadMk,
@@ -314,8 +313,6 @@ export function attachHangarRender(HangarBay) {
     this._drawWallArt(ctx);
     for (const pad of inside) this._drawVisitor(ctx, pad);
     if (hooks.afterOcclusion) hooks.afterOcclusion(ctx);
-    // Ship scan beams sit on top of hulls (pods are drawn on the boards)
-    this._drawShipBoardScans(ctx);
   };
 
   HangarBay.prototype._drawElevationShaft = function (ctx, cx, cy) {
@@ -3952,191 +3949,11 @@ export function attachHangarRender(HangarBay) {
         sb,
       };
 
-      // Twin Hangar Bay Scanners are permanent board hardware (glow while scanning)
-      const scanAmp =
-        hasShip && this._padBoardScanActive(pad) ? this._padBoardScanAmp(pad) : 0;
-      this._drawHangarBayScannerPod(ctx, x0 + 3.5, faceY - 1.5, scanAmp, bay, 0);
-      this._drawHangarBayScannerPod(ctx, x0 + w - 3.5, faceY - 1.5, scanAmp, bay, 1);
-
       ctx.fillStyle = '#c98020';
       ctx.font = 'bold 5.5px monospace';
       ctx.textAlign = 'center';
       ctx.fillText(bayLabels()[bay], cx, bottom - 2);
     });
-  };
-
-  HangarBay.prototype._drawHangarBayScannerPod = function (ctx, x, y, intensity, bay, side) {
-    const on = intensity > 0.02;
-    const pulse = on
-      ? 0.72 + 0.28 * Math.sin(this.time * 14 + bay * 1.7 + side * 2.1)
-      : 0;
-    const glow = intensity * pulse;
-
-    // Stem into board lip
-    ctx.fillStyle = '#1c2830';
-    ctx.fillRect(x - 1.2, y, 2.4, 3.2);
-    ctx.fillStyle = '#2a3848';
-    ctx.fillRect(x - 2.2, y - 1.6, 4.4, 2.8);
-
-    // Lens / emitter
-    ctx.beginPath();
-    ctx.arc(x, y - 2.4, 2.1, 0, Math.PI * 2);
-    ctx.fillStyle = on ? `rgba(40, 90, 60, ${0.55 + glow * 0.35})` : '#243038';
-    ctx.fill();
-    ctx.strokeStyle = on ? `rgba(90, 220, 140, ${0.35 + glow * 0.5})` : '#4a6070';
-    ctx.lineWidth = 0.7;
-    ctx.stroke();
-
-    if (on) {
-      ctx.beginPath();
-      ctx.arc(x, y - 2.4, 1.1, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(120, 255, 170, ${0.45 + glow * 0.5})`;
-      ctx.fill();
-      // Soft corona
-      ctx.beginPath();
-      ctx.arc(x, y - 2.4, 3.6 + glow * 1.2, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(60, 220, 120, ${0.08 + glow * 0.14})`;
-      ctx.fill();
-    }
-  };
-
-  HangarBay.prototype._shipScanTarget = function (bay) {
-    if (!this._bayHasShip(bay)) return null;
-    const pad = this._servicePad(bay);
-    const cx = padCenters()[bay] ?? 0;
-    let sy = 0;
-    let angle = FACE_NORTH;
-    let def = pad?.shipDef || null;
-    if (this.isPlayerBay(bay) && this._playerShip) {
-      const ship = this._playerShip;
-      sy = ship.position?.y ?? 0;
-      angle = typeof ship.angle === 'number' ? ship.angle : FACE_NORTH;
-      def = ship.shipDef || def;
-    } else if (pad) {
-      sy = pad.shipY || 0;
-      angle = pad.shipAngle ?? FACE_NORTH;
-      def = def || this._ensurePadShipDef(pad);
-    }
-    const ext = def?.hullExtents?.();
-    const halfLen = Math.max(16, ((ext?.forward || 22) + (ext?.aft || 20)) * 0.52);
-    const halfBeam = Math.max(10, halfLen * 0.42);
-    return { cx, cy: sy, angle, halfLen, halfBeam };
-  };
-
-  HangarBay.prototype._drawShipBoardScans = function (ctx) {
-    padCenters().forEach((cx, bay) => {
-      const pad = this._servicePad(bay);
-      if (!this._padBoardScanActive(pad)) return;
-      const amp = this._padBoardScanAmp(pad);
-      if (amp < 0.02) return;
-      const target = this._shipScanTarget(bay);
-      if (!target) return;
-
-      const boardX0 = cx - BACKSPLASH_HALF_W;
-      const boardW = BACKSPLASH_HALF_W * 2;
-      const faceY = SERVICE_BOARD_TOP;
-      const emitters = [
-        { x: boardX0 + 3.5, y: faceY - 3.8, side: 0 },
-        { x: boardX0 + boardW - 3.5, y: faceY - 3.8, side: 1 },
-      ];
-      const scanT = this._padBoardScanClock(pad);
-
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-
-      // Raster bar: sweeps nose↔aft across the hull (barcode-reader feel)
-      const rasterU = pingPong01(scanT * 1.15);
-      const c = Math.cos(target.angle);
-      const s = Math.sin(target.angle);
-      // Ship local +X is forward; hangar nose is typically north (−Y world when angle=SPAWN)
-      const along = (rasterU * 2 - 1) * target.halfLen;
-      const rx = target.cx + c * along;
-      const ry = target.cy + s * along;
-      const bx = -s * target.halfBeam * 1.15;
-      const by = c * target.halfBeam * 1.15;
-      this._strokeScanSegment(
-        ctx,
-        rx - bx,
-        ry - by,
-        rx + bx,
-        ry + by,
-        amp * 0.85,
-        2.4
-      );
-      this._strokeScanSegment(
-        ctx,
-        rx - bx,
-        ry - by,
-        rx + bx,
-        ry + by,
-        amp,
-        0.85
-      );
-
-      // Ghost trailing rasters
-      for (const trail of [-0.12, 0.12]) {
-        const u2 = pingPong01(scanT * 1.15 + trail);
-        const along2 = (u2 * 2 - 1) * target.halfLen;
-        const rx2 = target.cx + c * along2;
-        const ry2 = target.cy + s * along2;
-        this._strokeScanSegment(
-          ctx,
-          rx2 - bx,
-          ry2 - by,
-          rx2 + bx,
-          ry2 + by,
-          amp * 0.28,
-          1.4
-        );
-      }
-
-      // Corner lasers ping-pong aim points across the hull
-      for (const em of emitters) {
-        const phase = em.side * 0.5;
-        for (let k = 0; k < 3; k++) {
-          const u = pingPong01(scanT * (1.35 + k * 0.17) + phase + k * 0.22);
-          const v = pingPong01(scanT * (0.9 + k * 0.11) + phase * 1.3 + 0.4);
-          // Aim in ship-local frame, then to world
-          const lx = (u * 2 - 1) * target.halfLen * 0.95;
-          const ly = (v * 2 - 1) * target.halfBeam * 0.9;
-          const ax = target.cx + c * lx - s * ly;
-          const ay = target.cy + s * lx + c * ly;
-          // Overshoot slightly past the aim so lines rake the silhouette
-          const dx = ax - em.x;
-          const dy = ay - em.y;
-          const len = Math.hypot(dx, dy) || 1;
-          const ox = ax + (dx / len) * 6;
-          const oy = ay + (dy / len) * 6;
-          const beamAmp = amp * (0.55 + 0.2 * (1 - k * 0.25));
-          this._strokeScanSegment(ctx, em.x, em.y, ox, oy, beamAmp * 0.45, 2.8);
-          this._strokeScanSegment(ctx, em.x, em.y, ox, oy, beamAmp, 0.7);
-          // Contact spark on hull
-          ctx.beginPath();
-          ctx.arc(ax, ay, 1.2 + amp * 0.6, 0, Math.PI * 2);
-          ctx.fillStyle = `rgba(160, 255, 200, ${0.15 * beamAmp})`;
-          ctx.fill();
-        }
-      }
-
-      ctx.restore();
-    });
-  };
-
-  HangarBay.prototype._strokeScanSegment = function (ctx, x0, y0, x1, y1, amp, width) {
-    if (amp < 0.02) return;
-    ctx.strokeStyle = `rgba(70, 230, 130, ${0.22 * amp})`;
-    ctx.lineWidth = width;
-    ctx.lineCap = 'round';
-    ctx.beginPath();
-    ctx.moveTo(x0, y0);
-    ctx.lineTo(x1, y1);
-    ctx.stroke();
-    ctx.strokeStyle = `rgba(180, 255, 210, ${0.35 * amp})`;
-    ctx.lineWidth = Math.max(0.45, width * 0.28);
-    ctx.beginPath();
-    ctx.moveTo(x0, y0);
-    ctx.lineTo(x1, y1);
-    ctx.stroke();
   };
 
   HangarBay.prototype._drawForkliftHub = function (ctx) {

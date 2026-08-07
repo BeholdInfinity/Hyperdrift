@@ -2892,48 +2892,6 @@ export class HangarBay {
     );
   }
 
-  _padBoardScanActive(pad) {
-    const svc = pad?.service;
-    if (!svc) return false;
-    if (svc.phase === 'finalScan') return true;
-    if (svc.phase === 'boardReveal') return this._boardScanLive(svc.reveal);
-    return false;
-  }
-
-  _boardScanIntensity(reveal) {
-    if (!this._boardScanLive(reveal)) return 0;
-    if (reveal.stage === 'preScan') {
-      return Math.min(1, (reveal.t || 0) / 0.14);
-    }
-    if (reveal.stage === 'stats' || reveal.stage === 'cargo') return 1;
-    const rem = HANGAR.BOARD_REVEAL_SCAN_TAIL_SEC - (reveal.t || 0);
-    return Math.max(0, Math.min(1, rem / 0.22));
-  }
-
-  _finalScanIntensity(svc) {
-    const dur = HANGAR.BOARD_FINAL_SCAN_SEC;
-    const t = svc?.finalScanT || 0;
-    if (t < 0.1) return t / 0.1;
-    if (t > dur - 0.12) return Math.max(0, (dur - t) / 0.12);
-    return 1;
-  }
-
-  _padBoardScanClock(pad) {
-    const svc = pad?.service;
-    if (!svc) return 0;
-    // Same laser sweep rate as the intro pass; finalScan just ends sooner (~1s)
-    if (svc.phase === 'finalScan') return svc.finalScanT || 0;
-    return svc.reveal?.scanT || 0;
-  }
-
-  _padBoardScanAmp(pad) {
-    const svc = pad?.service;
-    if (!svc) return 0;
-    if (svc.phase === 'finalScan') return this._finalScanIntensity(svc);
-    if (svc.phase === 'boardReveal') return this._boardScanIntensity(svc.reveal);
-    return 0;
-  }
-
   _tickBoardReveal(svc, dt) {
     const r = svc.reveal;
     if (!r || r.stage === 'done') return;

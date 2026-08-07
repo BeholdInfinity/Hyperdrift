@@ -1,8 +1,33 @@
 /**
- * Scan stroke visuals — green raster lines + emitter beams.
- * Extracted from hangar scan helpers (HangarRender._strokeScanSegment /
- * _drawShipBoardScans) so FLS + CONTACT can share the same look.
+ * Scan stroke visuals — green chords + emitter beams for FLS + CONTACT.
+ * SCAN: three silhouette pairs open opposite ways around the rim with chords.
  */
+
+/** Cap outline verts for FX sampling (stride down if denser). */
+const MAX_OUTLINE = 32;
+
+const _wx = new Float64Array(MAX_OUTLINE);
+const _wy = new Float64Array(MAX_OUTLINE);
+const _cum = new Float64Array(MAX_OUTLINE + 1);
+let _vertCount = 0;
+let _perimeter = 0;
+let _silMode = 'ellipse'; // 'ellipse' | 'poly'
+let _ecx = 0;
+let _ecy = 0;
+let _erx = 0;
+let _ery = 0;
+let _eang = 0;
+let _ecos = 1;
+let _esin = 0;
+
+/** Rim contact points for 3 pairs (left / right walkers). */
+const _lx = new Float64Array(3);
+const _ly = new Float64Array(3);
+const _rx = new Float64Array(3);
+const _ry = new Float64Array(3);
+
+const PAIR_SWEEP_HZ = 1.15;
+const GHOST_TRAILS = [-0.12, 0.12];
 
 /** Two-pass glow stroke used by scanner sweep lines. */
 export function strokeScanSegment(ctx, x0, y0, x1, y1, amp, width) {
@@ -27,11 +52,17 @@ export function pingPong01(t) {
   return u < 1 ? u : 2 - u;
 }
 
+function wrap01(t) {
+  return ((t % 1) + 1) % 1;
+}
+
 /**
  * Build a canvas clip path matching the contact silhouette (world or panel space).
  * Uses asteroid verts when available; otherwise a rotated ellipse from extents.
  * @param {object} [opts]
- * @param {boolean} [opts.useVerts=true] false → always ellipse (panel-scaled previews)
+ * @param {boolean} [opts.useVerts=true] false → always ellipse / rect
+ * @param {number} [opts.scale=1] multiply local verts (CONTACT panel fit)
+ * @param {'auto'|'ellipse'|'rect'} [opts.clipShape='auto']
  * @returns {boolean} true if a clip path was begun (caller must clip + restore)
  */
 export function beginContactSilhouetteClip(ctx, contactOrActive, tgt, opts = {}) {
@@ -40,15 +71,27 @@ export function beginContactSilhouetteClip(ctx, contactOrActive, tgt, opts = {})
   const ref = c?.ref;
   const { cx, cy, angle, halfLen, halfBeam } = tgt;
   const useVerts = opts.useVerts !== false;
+  const scale = opts.scale ?? 1;
+  const clipShape = opts.clipShape || 'auto';
 
   ctx.beginPath();
-  if (useVerts && c?.type === 'asteroid' && ref?.vertices?.length >= 3) {
+  if (clipShape === 'rect') {
     const cos = Math.cos(angle || 0);
     const sin = Math.sin(angle || 0);
-    for (let i = 0; i < ref.vertices.length; i++) {
-      const v = ref.vertices[i];
-      const x = cx + v.x * cos - v.y * sin;
-      const y = cy + v.x * sin + v.y * cos;
+    const hx = Math.max(1, halfLen);
+    const hy = Math.max(1, halfBeam);
+    // Local corners of axis-aligned rect, then rotate into panel/world.
+    const corners = [
+      [-hx, -hy],
+      [hx, -hy],
+      [hx, hy],
+      [-hx, hy],
+    ];
+    for (let i = 0; i < 4; i++) {
+      const lx = corners[i][0];
+      const ly = corners[i][1];
+      const x = cx + cos * lx - sin * ly;
+      const y = cy + sin * lx + cos * ly;
       if (i === 0) ctx.moveTo(x, y);
       else ctx.lineTo(x, y);
     }
@@ -56,7 +99,25 @@ export function beginContactSilhouetteClip(ctx, contactOrActive, tgt, opts = {})
     return true;
   }
 
-  // Ships / ore / station / panel previews: tight rotated ellipse inside extents.
+  if (
+    clipShape !== 'ellipse' &&
+    useVerts &&
+    c?.type === 'asteroid' &&
+    ref?.vertices?.length >= 3
+  ) {
+    const cos = Math.cos(angle || 0);
+    const sin = Math.sin(angle || 0);
+    for (let i = 0; i < ref.vertices.length; i++) {
+      const v = ref.vertices[i];
+      const x = cx + (v.x * cos - v.y * sin) * scale;
+      const y = cy + (v.x * sin + v.y * cos) * scale;
+      if (i === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.closePath();
+    return true;
+  }
+
   const rx = Math.max(2, halfLen * 0.98);
   const ry = Math.max(2, halfBeam * 0.92);
   ctx.ellipse(cx, cy, rx, ry, angle || 0, 0, Math.PI * 2);
@@ -64,31 +125,192 @@ export function beginContactSilhouetteClip(ctx, contactOrActive, tgt, opts = {})
 }
 
 /**
- * Draw scanner raster lines (nose↔aft barcode bar + ghost trails).
- * Caller may clip to a silhouette first for panel previews.
+ * Prepare silhouette sampler scratch from contact + extents.
+ * @param {object} [opts]
+ * @param {boolean} [opts.useVerts=true]
+ * @param {number} [opts.scale=1]
+ * @param {'auto'|'ellipse'|'rect'} [opts.clipShape='auto']
  */
-export function drawScanLinesClipped(ctx, cx, cy, halfLen, halfBeam, angle, scanT, amp, lineScale = 1) {
-  if (amp < 0.02) return;
-  ctx.globalCompositeOperation = 'lighter';
-  const ls = lineScale;
-  const u = pingPong01(scanT * 1.15);
-  const c = Math.cos(angle);
-  const s = Math.sin(angle);
-  // Stay inside silhouette; clip masks any residual overhang.
-  const along = (u * 2 - 1) * halfLen * 0.92;
-  const rx = cx + c * along;
-  const ry = cy + s * along;
-  const bx = -s * halfBeam * 0.98;
-  const by = c * halfBeam * 0.98;
-  strokeScanSegment(ctx, rx - bx, ry - by, rx + bx, ry + by, amp * 0.85, 2.4 * ls);
-  strokeScanSegment(ctx, rx - bx, ry - by, rx + bx, ry + by, amp, 0.85 * ls);
-  for (const trail of [-0.12, 0.12]) {
-    const u2 = pingPong01(scanT * 1.15 + trail);
-    const along2 = (u2 * 2 - 1) * halfLen * 0.92;
-    const rx2 = cx + c * along2;
-    const ry2 = cy + s * along2;
-    strokeScanSegment(ctx, rx2 - bx, ry2 - by, rx2 + bx, ry2 + by, amp * 0.28, 1.4 * ls);
+function prepareSilhouette(contactOrActive, tgt, opts = {}) {
+  const c = contactOrActive?.contact || contactOrActive;
+  const ref = c?.ref;
+  const { cx, cy, angle, halfLen, halfBeam } = tgt;
+  const useVerts = opts.useVerts !== false;
+  const scale = opts.scale ?? 1;
+  const clipShape = opts.clipShape || 'auto';
+
+  if (clipShape === 'rect') {
+    // Sample a tight rectangle perimeter (ore diamond / panel rect).
+    const hx = Math.max(1, halfLen);
+    const hy = Math.max(1, halfBeam);
+    const cos = Math.cos(angle || 0);
+    const sin = Math.sin(angle || 0);
+    const corners = [
+      [-hx, -hy],
+      [hx, -hy],
+      [hx, hy],
+      [-hx, hy],
+    ];
+    for (let i = 0; i < 4; i++) {
+      const lx = corners[i][0];
+      const ly = corners[i][1];
+      _wx[i] = cx + cos * lx - sin * ly;
+      _wy[i] = cy + sin * lx + cos * ly;
+    }
+    _vertCount = 4;
+    _cum[0] = 0;
+    let total = 0;
+    for (let i = 0; i < 4; i++) {
+      const j = (i + 1) % 4;
+      total += Math.hypot(_wx[j] - _wx[i], _wy[j] - _wy[i]);
+      _cum[i + 1] = total;
+    }
+    _perimeter = total > 1e-6 ? total : 1;
+    _silMode = 'poly';
+    return;
   }
+
+  if (
+    clipShape !== 'ellipse' &&
+    useVerts &&
+    c?.type === 'asteroid' &&
+    ref?.vertices?.length >= 3
+  ) {
+    const verts = ref.vertices;
+    const nRaw = verts.length;
+    const stride = nRaw > MAX_OUTLINE ? Math.ceil(nRaw / MAX_OUTLINE) : 1;
+    const cos = Math.cos(angle || 0);
+    const sin = Math.sin(angle || 0);
+    let n = 0;
+    for (let i = 0; i < nRaw && n < MAX_OUTLINE; i += stride) {
+      const v = verts[i];
+      _wx[n] = cx + (v.x * cos - v.y * sin) * scale;
+      _wy[n] = cy + (v.x * sin + v.y * cos) * scale;
+      n++;
+    }
+    if (n >= 3) {
+      _vertCount = n;
+      _cum[0] = 0;
+      let total = 0;
+      for (let i = 0; i < n; i++) {
+        const j = (i + 1) % n;
+        const dx = _wx[j] - _wx[i];
+        const dy = _wy[j] - _wy[i];
+        total += Math.hypot(dx, dy);
+        _cum[i + 1] = total;
+      }
+      _perimeter = total > 1e-6 ? total : 1;
+      _silMode = 'poly';
+      return;
+    }
+  }
+
+  _silMode = 'ellipse';
+  _ecx = cx;
+  _ecy = cy;
+  _erx = Math.max(2, halfLen * 0.98);
+  _ery = Math.max(2, halfBeam * 0.92);
+  _eang = angle || 0;
+  _ecos = Math.cos(_eang);
+  _esin = Math.sin(_eang);
+  _vertCount = 0;
+  _perimeter = 0;
+}
+
+/** Sample silhouette at normalized perimeter t∈[0,1) into out arrays at index i. */
+function sampleSilhouetteInto(t01, ox, oy, i) {
+  const t = wrap01(t01);
+  if (_silMode === 'poly' && _vertCount >= 3) {
+    const target = t * _perimeter;
+    const n = _vertCount;
+    let seg = 0;
+    while (seg < n - 1 && _cum[seg + 1] < target) seg++;
+    const a = _cum[seg];
+    const b = _cum[seg + 1];
+    const span = b - a || 1;
+    const u = (target - a) / span;
+    const j = (seg + 1) % n;
+    ox[i] = _wx[seg] + (_wx[j] - _wx[seg]) * u;
+    oy[i] = _wy[seg] + (_wy[j] - _wy[seg]) * u;
+    return;
+  }
+  const th = t * Math.PI * 2;
+  const lx = _erx * Math.cos(th);
+  const ly = _ery * Math.sin(th);
+  ox[i] = _ecx + _ecos * lx - _esin * ly;
+  oy[i] = _ecy + _esin * lx + _ecos * ly;
+}
+
+/** Fill _lx/_ly/_rx/_ry for shared open/close progress u. */
+function fillPairRimPoints(u) {
+  const open = Math.max(0, Math.min(1, u));
+  for (let k = 0; k < 3; k++) {
+    const start = k / 3;
+    sampleSilhouetteInto(start + 0.5 * open, _lx, _ly, k);
+    sampleSilhouetteInto(start - 0.5 * open, _rx, _ry, k);
+  }
+}
+
+/**
+ * Draw 3 silhouette pair chords (+ ghost trails). Assumes silhouette prepared.
+ * Does not set composite mode / clip — caller owns that.
+ */
+function strokePairChords(ctx, amp, lineScale, scanT) {
+  if (amp < 0.02) return;
+  const ls = lineScale;
+  const u = pingPong01(scanT * PAIR_SWEEP_HZ);
+  fillPairRimPoints(u);
+  for (let k = 0; k < 3; k++) {
+    strokeScanSegment(ctx, _lx[k], _ly[k], _rx[k], _ry[k], amp * 0.85, 2.4 * ls);
+    strokeScanSegment(ctx, _lx[k], _ly[k], _rx[k], _ry[k], amp, 0.85 * ls);
+  }
+  for (let ti = 0; ti < GHOST_TRAILS.length; ti++) {
+    const u2 = pingPong01(scanT * PAIR_SWEEP_HZ + GHOST_TRAILS[ti]);
+    fillPairRimPoints(u2);
+    for (let k = 0; k < 3; k++) {
+      strokeScanSegment(ctx, _lx[k], _ly[k], _rx[k], _ry[k], amp * 0.28, 1.4 * ls);
+    }
+  }
+  // Restore main rim points for beams / sparks.
+  fillPairRimPoints(u);
+}
+
+/**
+ * CONTACT / panel: silhouette-clipped pair chords only (no ship emitters).
+ * @param {object} [opts]
+ * @param {boolean} [opts.useVerts=true]
+ * @param {number} [opts.scale=1] panel fit scale for asteroid verts
+ * @param {'auto'|'ellipse'|'rect'} [opts.clipShape='auto']
+ */
+export function drawSilhouettePairChords(ctx, opts) {
+  const amp = opts.amp ?? 0;
+  if (amp < 0.02) return;
+  const {
+    contact = null,
+    cx,
+    cy,
+    halfLen,
+    halfBeam,
+    angle,
+    scanT = 0,
+    lineScale = 1,
+    useVerts = true,
+    scale = 1,
+    clipShape = 'auto',
+  } = opts;
+  if (!(halfLen > 0) || !(halfBeam > 0)) return;
+
+  const tgt = { cx, cy, angle, halfLen, halfBeam };
+  const silOpts = { useVerts, scale, clipShape };
+  prepareSilhouette(contact, tgt, silOpts);
+
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  if (beginContactSilhouetteClip(ctx, contact, tgt, silOpts)) {
+    ctx.clip();
+  }
+  strokePairChords(ctx, amp, lineScale, scanT);
+  ctx.restore();
 }
 
 /**
@@ -150,19 +372,14 @@ function easeInOut(t) {
 }
 
 /**
- * Lerp six beams between seek fan angles and hangar-style aim points on a target.
+ * Lerp six beams between seek fan angles and live silhouette rim pair points.
+ * Assumes fillPairRimPoints already ran for the target scan progress.
  * blend 0 = pure seek, 1 = pure scan aims.
  */
-export function drawBlendedTargetBeams(ctx, opts) {
+function drawBlendedRimBeams(ctx, opts) {
   const {
     emitters,
     seekAngles,
-    cx,
-    cy,
-    halfLen,
-    halfBeam,
-    angle,
-    scanT,
     blend,
     beamR,
     lineScale = 1,
@@ -173,26 +390,22 @@ export function drawBlendedTargetBeams(ctx, opts) {
 
   const u = Math.max(0, Math.min(1, blend));
   const e = easeInOut(u);
-  const c = Math.cos(angle);
-  const s = Math.sin(angle);
   const ls = lineScale;
 
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   let i = 0;
   for (const em of emitters) {
-    const phase = (em.side ?? 0) * 0.5;
+    const side = em.side ?? 0;
+    const ox = side === 0 ? _lx : _rx;
+    const oy = side === 0 ? _ly : _ry;
     for (let k = 0; k < 3; k++) {
-      const seekAng = seekAngles[i++] ?? angle;
+      const seekAng = seekAngles[i++] ?? 0;
       const seekX = em.x + Math.cos(seekAng) * beamR;
       const seekY = em.y + Math.sin(seekAng) * beamR;
 
-      const uu = pingPong01(scanT * (1.35 + k * 0.17) + phase + k * 0.22);
-      const vv = pingPong01(scanT * (0.9 + k * 0.11) + phase * 1.3 + 0.4);
-      const lx = (uu * 2 - 1) * halfLen * 0.95;
-      const ly = (vv * 2 - 1) * halfBeam * 0.9;
-      const ax = cx + c * lx - s * ly;
-      const ay = cy + s * lx + c * ly;
+      const ax = ox[k];
+      const ay = oy[k];
       const dx = ax - em.x;
       const dy = ay - em.y;
       const len = Math.hypot(dx, dy) || 1;
@@ -205,7 +418,6 @@ export function drawBlendedTargetBeams(ctx, opts) {
       strokeScanSegment(ctx, em.x, em.y, x1, y1, beamAmp * 0.45, 2.8 * ls);
       strokeScanSegment(ctx, em.x, em.y, x1, y1, beamAmp, 0.7 * ls);
 
-      // Sparks fade in as we lock on.
       if (e > 0.35) {
         const sparkA = ((e - 0.35) / 0.65) * 0.15 * beamAmp;
         ctx.beginPath();
@@ -218,11 +430,45 @@ export function drawBlendedTargetBeams(ctx, opts) {
   ctx.restore();
 }
 
+function drawRimBeams(ctx, opts) {
+  const {
+    emitters,
+    lineScale = 1,
+    overshoot = 6,
+    amp = 0.85,
+  } = opts;
+  if (!emitters?.length) return;
+  const ls = lineScale;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const em of emitters) {
+    const side = em.side ?? 0;
+    const ox = side === 0 ? _lx : _rx;
+    const oy = side === 0 ? _ly : _ry;
+    for (let k = 0; k < 3; k++) {
+      const ax = ox[k];
+      const ay = oy[k];
+      const dx = ax - em.x;
+      const dy = ay - em.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const bx = ax + (dx / len) * overshoot;
+      const by = ay + (dy / len) * overshoot;
+      const beamAmp = amp * (0.55 + 0.2 * (1 - k * 0.25));
+      strokeScanSegment(ctx, em.x, em.y, bx, by, beamAmp * 0.45, 2.8 * ls);
+      strokeScanSegment(ctx, em.x, em.y, bx, by, beamAmp, 0.7 * ls);
+      ctx.beginPath();
+      ctx.arc(ax, ay, (1.2 + amp * 0.6) * ls, 0, Math.PI * 2);
+      ctx.fillStyle = `rgba(160, 255, 200, ${0.15 * beamAmp})`;
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
 /**
- * Full hangar-style scan FX on a target: silhouette-clipped rasters + beams
- * from emitters that ping-pong aim points across the hull with contact sparks.
+ * FLS scan FX on a target: silhouette pair chords + rim-aimed nose beams.
  *
- * @param {number} [opts.rasterAmp] separate amp for rasters (0 during early acquire)
+ * @param {number} [opts.rasterAmp] separate amp for chords (0 during early acquire)
  * @param {number} [opts.beamBlend] 0..1 seek→scan beam blend; omit for full scan beams
  * @param {number[]} [opts.seekAngles] required when beamBlend < 1
  * @param {number} [opts.beamR] seek beam length for blending
@@ -249,28 +495,25 @@ export function drawHangarStyleScan(ctx, opts) {
   if (!emitters?.length || !(halfLen > 0) || !(halfBeam > 0)) return;
 
   const tgt = { cx, cy, angle, halfLen, halfBeam };
+  prepareSilhouette(contact, tgt);
 
-  // Rasters masked to the rock/hull silhouette (fade in during acquire).
+  const u = pingPong01(scanT * PAIR_SWEEP_HZ);
+  fillPairRimPoints(u);
+
   if (rasterAmp > 0.02) {
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
     if (beginContactSilhouetteClip(ctx, contact, tgt)) {
       ctx.clip();
     }
-    drawScanLinesClipped(ctx, cx, cy, halfLen, halfBeam, angle, scanT, rasterAmp, lineScale);
+    strokePairChords(ctx, rasterAmp, lineScale, scanT);
     ctx.restore();
   }
 
   if (beamBlend < 0.999 && seekAngles?.length) {
-    drawBlendedTargetBeams(ctx, {
+    drawBlendedRimBeams(ctx, {
       emitters,
       seekAngles,
-      cx,
-      cy,
-      halfLen,
-      halfBeam,
-      angle,
-      scanT,
       blend: beamBlend,
       beamR,
       lineScale,
@@ -280,40 +523,11 @@ export function drawHangarStyleScan(ctx, opts) {
     return;
   }
 
-  // Full scan beams + sparks.
-  const c = Math.cos(angle);
-  const s = Math.sin(angle);
-  const ls = lineScale;
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  for (const em of emitters) {
-    const phase = (em.side ?? 0) * 0.5;
-    for (let k = 0; k < 3; k++) {
-      const u = pingPong01(scanT * (1.35 + k * 0.17) + phase + k * 0.22);
-      const v = pingPong01(scanT * (0.9 + k * 0.11) + phase * 1.3 + 0.4);
-      const lx = (u * 2 - 1) * halfLen * 0.95;
-      const ly = (v * 2 - 1) * halfBeam * 0.9;
-      const ax = cx + c * lx - s * ly;
-      const ay = cy + s * lx + c * ly;
-      const dx = ax - em.x;
-      const dy = ay - em.y;
-      const len = Math.hypot(dx, dy) || 1;
-      const ox = ax + (dx / len) * overshoot;
-      const oy = ay + (dy / len) * overshoot;
-      const beamAmp = amp * (0.55 + 0.2 * (1 - k * 0.25));
-      strokeScanSegment(ctx, em.x, em.y, ox, oy, beamAmp * 0.45, 2.8 * ls);
-      strokeScanSegment(ctx, em.x, em.y, ox, oy, beamAmp, 0.7 * ls);
-      ctx.beginPath();
-      ctx.arc(ax, ay, (1.2 + amp * 0.6) * ls, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(160, 255, 200, ${0.15 * beamAmp})`;
-      ctx.fill();
-    }
-  }
-  ctx.restore();
+  drawRimBeams(ctx, { emitters, lineScale, overshoot, amp });
 }
 
 /**
- * Resolve a radar/FLS contact into hangar-style scan target extents (world).
+ * Resolve a radar/FLS contact into scan target extents (world).
  * @returns {{ cx: number, cy: number, angle: number, halfLen: number, halfBeam: number } | null}
  */
 export function contactScanTarget(contactOrActive) {
@@ -333,7 +547,6 @@ export function contactScanTarget(contactOrActive) {
     return { cx, cy, angle: 0, halfLen: r, halfBeam: r };
   }
   if (c.type === 'station' || c.id === 'station') {
-    // Compact station icon footprint — full STATION.RADIUS would dominate the FX.
     const r = 36;
     return { cx, cy, angle: 0, halfLen: r, halfBeam: r };
   }

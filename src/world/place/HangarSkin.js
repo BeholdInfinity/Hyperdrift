@@ -19,7 +19,6 @@ const ELEMENT_KEYS = [
   'door',
   'elevator',
   'serviceBoard',
-  'hangarBayScanner',
   'crane',
   'forklift',
   'desk',

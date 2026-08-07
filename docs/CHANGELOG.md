@@ -9,6 +9,12 @@ Format based on [Keep a Changelog](https://keepachangelog.com/). Project uses pr
 ### Planned
 - _(none queued — next slice TBD)_
 
+## [0.1.294] — 2026-08-07
+
+### Changed
+- **FLS SCAN FX** — locked SCAN uses three silhouette pairs that open opposite ways around the rim (perimeter thirds) with chords + ghost trails between each pair; nose emitters aim at the six rim points. SEEK / ACQUIRE / RELEASE timing unchanged. CONTACT preview matches the pair chords and clips to the drawn silhouette (scaled asteroid verts / hull ellipse / ore diamond).
+- **Hangar Bay Scanners removed** — twin board pods and pad ship rake FX gone; board reveal / service timing unchanged. Legacy `hangarBayScanner` module ids dropped on normalize.
+
 ## [0.1.293] — 2026-08-07
 
 ### Fixed

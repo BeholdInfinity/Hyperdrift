@@ -13,7 +13,7 @@ import { compositionLabel } from './AsteroidCatalog.js';
 import { oreFillStyle, oreLabel } from './MiningLootCatalog.js';
 import { drawModularShip } from '../ships/ShipRenderer.js';
 import { topDownView } from '../ships/ShipViews.js';
-import { drawScanLinesClipped, beginContactSilhouetteClip } from './ScanVisual.js';
+import { drawSilhouettePairChords } from './ScanVisual.js';
 import {
   drawSectorMapPanel,
   sectorMapClick,
@@ -587,35 +587,19 @@ export class CockpitPanels {
     ) {
       const amp = Math.max(0.35, Math.min(1, scanPct / Math.max(1, maxScanPct) || 0.7));
       this._clip(ctx, renderBox, () => {
-        ctx.save();
-        // Prefer true silhouette (asteroid verts / ellipse) over the panel AABB.
-        if (
-          beginContactSilhouetteClip(
-            ctx,
-            c,
-            {
-              cx: preview.cx,
-              cy: preview.cy,
-              angle: preview.angle,
-              halfLen: preview.halfLen,
-              halfBeam: preview.halfBeam,
-            },
-            { useVerts: false }
-          )
-        ) {
-          ctx.clip();
-        }
-        drawScanLinesClipped(
-          ctx,
-          preview.cx,
-          preview.cy,
-          preview.halfLen,
-          preview.halfBeam,
-          preview.angle,
-          engine.forwardScanSystem?.clock ?? 0,
-          amp
-        );
-        ctx.restore();
+        drawSilhouettePairChords(ctx, {
+          contact: c,
+          cx: preview.cx,
+          cy: preview.cy,
+          halfLen: preview.halfLen,
+          halfBeam: preview.halfBeam,
+          angle: preview.angle,
+          scanT: engine.forwardScanSystem?.clock ?? 0,
+          amp,
+          useVerts: preview.useVerts !== false,
+          scale: preview.scale ?? 1,
+          clipShape: preview.clipShape || 'auto',
+        });
       });
     }
 
@@ -772,7 +756,7 @@ export class CockpitPanels {
 
   /**
    * Draw CONTACT panel silhouette / icon preview (viewport-matched rotation).
-   * @returns {{ cx, cy, halfLen, halfBeam, angle, clip, r?, halfW?, halfH? } | null}
+   * @returns {{ cx, cy, halfLen, halfBeam, angle, scale?, useVerts?, clipShape? } | null}
    */
   _drawContactPreview(ctx, renderBox, c, iffColor, engine) {
     if (!renderBox || renderBox.w < 8 || renderBox.h < 8) return null;
@@ -783,8 +767,8 @@ export class CockpitPanels {
     const viewAngle = this._contactViewAngle(c, engine);
 
     if (shipDef && ref && (c.type === 'civilian' || c.type === 'patrol' || c.type === 'ship')) {
+      const fit = Math.min(renderBox.w, renderBox.h) / 90;
       this._clip(ctx, renderBox, () => {
-        const fit = Math.min(renderBox.w, renderBox.h) / 90;
         ctx.save();
         ctx.translate(cx, cy);
         ctx.scale(fit, fit);
@@ -797,16 +781,20 @@ export class CockpitPanels {
         }
         ctx.restore();
       });
-      const half = Math.min(renderBox.w, renderBox.h) * 0.38;
+      const ext = shipDef.hullExtents?.();
+      const fwd = ext?.forward ?? shipDef.forwardExtent?.() ?? 22;
+      const aft = ext?.aft ?? shipDef.aftExtent?.() ?? 20;
+      const halfLen = Math.max(fwd + aft, 8) * 0.52 * fit;
+      const halfBeam = Math.max(halfLen * 0.42, 4 * fit);
       return {
         cx,
         cy,
-        halfLen: half,
-        halfBeam: half * 0.55,
+        halfLen,
+        halfBeam,
         angle: viewAngle,
-        clip: 'rect',
-        halfW: half,
-        halfH: half * 0.7,
+        useVerts: false,
+        scale: 1,
+        clipShape: 'ellipse',
       };
     }
 
@@ -837,17 +825,16 @@ export class CockpitPanels {
         ctx.stroke();
         ctx.restore();
       });
-      const half = Math.min(renderBox.w, renderBox.h) * 0.4;
+      const half = rWorld * fit;
       return {
         cx,
         cy,
         halfLen: half,
-        halfBeam: half,
+        halfBeam: half * 0.92,
         angle: viewAngle,
-        clip: 'circle',
-        r: half,
-        halfW: half,
-        halfH: half,
+        scale: fit,
+        useVerts: !!(verts && verts.length >= 3),
+        clipShape: 'auto',
       };
     }
 
@@ -855,11 +842,12 @@ export class CockpitPanels {
       const oreType = ref?.oreType || 'stoneOre';
       const fill = oreFillStyle(oreType);
       const s = Math.min(renderBox.w, renderBox.h) * 0.28;
+      const diamondAngle = viewAngle + Math.PI / 4;
       // Ore is a disc in-world; keep a mild diamond cue, still camera-aware.
       this._clip(ctx, renderBox, () => {
         ctx.save();
         ctx.translate(cx, cy);
-        ctx.rotate(viewAngle + Math.PI / 4);
+        ctx.rotate(diamondAngle);
         ctx.fillStyle = fill;
         ctx.fillRect(-s * 0.5, -s * 0.5, s, s);
         ctx.strokeStyle = 'rgba(220, 230, 240, 0.45)';
@@ -867,17 +855,16 @@ export class CockpitPanels {
         ctx.strokeRect(-s * 0.5, -s * 0.5, s, s);
         ctx.restore();
       });
-      const half = s * 0.75;
+      const half = s * 0.5;
       return {
         cx,
         cy,
         halfLen: half,
         halfBeam: half,
-        angle: viewAngle + Math.PI / 4,
-        clip: 'circle',
-        r: half,
-        halfW: half,
-        halfH: half,
+        angle: diamondAngle,
+        useVerts: false,
+        scale: 1,
+        clipShape: 'rect',
       };
     }
 
@@ -906,17 +893,15 @@ export class CockpitPanels {
         ctx.stroke();
         ctx.restore();
       });
-      const half = r * 1.2;
       return {
         cx,
         cy,
-        halfLen: half,
-        halfBeam: half,
+        halfLen: r,
+        halfBeam: r,
         angle: viewAngle,
-        clip: 'circle',
-        r: half,
-        halfW: half,
-        halfH: half,
+        useVerts: false,
+        scale: 1,
+        clipShape: 'ellipse',
       };
     }
 
